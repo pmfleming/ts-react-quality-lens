@@ -2,10 +2,11 @@ import childProcess from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
-import { relativeModuleId, toPosix } from "./files.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { relativeModuleId, toPosix } from "./files.js";
 
 const require = createRequire(import.meta.url);
+const TOOL_TIMEOUT_MS = 120000;
 
 export function loadTypeScriptProject(config, sourceFiles) {
   const ts = requireOptional("typescript");
@@ -88,10 +89,6 @@ export function loadTypeScriptProject(config, sourceFiles) {
 }
 
 export function runDependencyCruiser(config) {
-  const executable = localBin(config.projectRoot, "depcruise");
-  if (!executable) {
-    return { available: false, ran: false, reason: "dependency-cruiser executable was not found" };
-  }
   const args = [
     "--no-config",
     "--output-type",
@@ -102,94 +99,89 @@ export function runDependencyCruiser(config) {
     "none",
     ...existingRelativeRoots(config),
   ];
-  try {
-    const stdout = runLocalTool(executable, args, {
-      cwd: config.projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 120000,
-    });
-    const json = JSON.parse(stdout);
-    return {
-      available: true,
-      ran: true,
-      reason: null,
-      modules: json.modules ?? [],
-      summary: json.summary ?? {},
-    };
-  } catch (error) {
-    return {
-      available: true,
-      ran: false,
-      reason: toolError(error),
-      modules: [],
-      summary: {},
-    };
-  }
+  return runToolAdapter(
+    config,
+    "depcruise",
+    "dependency-cruiser executable was not found",
+    { modules: [], summary: {} },
+    (executable) => {
+      const stdout = runLocalTool(executable, args, {
+        cwd: config.projectRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: TOOL_TIMEOUT_MS,
+      });
+      const json = JSON.parse(stdout);
+      return {
+        modules: json.modules ?? [],
+        summary: json.summary ?? {},
+      };
+    },
+  );
 }
 
 export function runJscpd(config) {
-  const executable = localBin(config.projectRoot, "jscpd");
-  if (!executable) {
-    return { available: false, ran: false, reason: "jscpd executable was not found", duplicates: [] };
-  }
-  const outputDir = path.join(config.outputDir, ".tooling", "jscpd");
-  fs.rmSync(outputDir, { recursive: true, force: true });
-  fs.mkdirSync(outputDir, { recursive: true });
+  const outputDir = path.join(config.outputDir, ".tooling", `jscpd-${process.pid}-${Date.now()}`);
   const args = [
     "--reporters",
     "json",
     "--output",
-    outputDir,
+    toPosix(path.relative(config.projectRoot, outputDir)),
     "--min-lines",
     "5",
     "--min-tokens",
     "45",
     "--format",
     "typescript,javascript,tsx,jsx",
-    "--silent",
     "--exitCode",
     "0",
-    ...existingAbsoluteRoots(config),
+    ...existingRelativeRoots(config),
   ];
-  try {
-    runLocalTool(executable, args, {
-      cwd: config.projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 120000,
-    });
-    const reportPath = path.join(outputDir, "jscpd-report.json");
-    const report = fs.existsSync(reportPath) ? JSON.parse(fs.readFileSync(reportPath, "utf8")) : {};
-    return {
-      available: true,
-      ran: true,
-      reason: null,
-      duplicates: report.duplicates ?? [],
-      statistics: report.statistics ?? {},
-    };
-  } catch (error) {
-    return {
-      available: true,
-      ran: false,
-      reason: toolError(error),
-      duplicates: [],
-      statistics: {},
-    };
-  }
+  return runToolAdapter(
+    config,
+    "jscpd",
+    "jscpd executable was not found",
+    { duplicates: [], statistics: {} },
+    (executable) => {
+      fs.mkdirSync(outputDir, { recursive: true });
+      runLocalTool(executable, args, {
+        cwd: config.projectRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: TOOL_TIMEOUT_MS,
+      });
+      const reportPath = path.join(outputDir, "jscpd-report.json");
+      const report = fs.existsSync(reportPath) ? JSON.parse(fs.readFileSync(reportPath, "utf8")) : {};
+      return {
+        duplicates: report.duplicates ?? [],
+        statistics: report.statistics ?? {},
+      };
+    },
+  );
 }
 
 export function runReactHooksLint(config) {
-  const executable = localBin(config.projectRoot, "eslint");
-  if (!executable) {
-    return { available: false, ran: false, reason: "eslint executable was not found", messages: [] };
-  }
-  const configPath = path.join(config.outputDir, ".tooling", "eslint-react-hooks.config.mjs");
+  const configPath = path.join(config.outputDir, ".tooling", `eslint-react-hooks-${process.pid}-${Date.now()}.config.mjs`);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  const projectPackageUrl = packageJsonUrl(config.projectRoot);
+  const toolPackageUrl = packageJsonUrl(repoRoot());
   fs.writeFileSync(
     configPath,
-    `import reactHooks from "eslint-plugin-react-hooks";
-import tsParser from "@typescript-eslint/parser";
+    `import { createRequire } from "node:module";
+
+const projectRequire = createRequire(${JSON.stringify(projectPackageUrl)});
+const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
+
+function requireTool(name) {
+  try {
+    return projectRequire(name);
+  } catch {
+    return toolRequire(name);
+  }
+}
+
+const reactHooks = requireTool("eslint-plugin-react-hooks");
+const tsParser = requireTool("@typescript-eslint/parser");
 
 export default [
   {
@@ -223,40 +215,43 @@ export default [
     "--no-error-on-unmatched-pattern",
     ...existingRelativeRoots(config),
   ];
+  return runToolAdapter(
+    config,
+    "eslint",
+    "eslint executable was not found",
+    { messages: [] },
+    (executable) => {
+      const stdout = runLocalTool(executable, args, {
+        cwd: config.projectRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: TOOL_TIMEOUT_MS,
+      });
+      return { messages: normalizeEslintMessages(JSON.parse(stdout), config) };
+    },
+    (error) => {
+      const stdout = String(error.stdout ?? "");
+      return stdout.trim().startsWith("[") ? { messages: normalizeEslintMessages(JSON.parse(stdout), config) } : null;
+    },
+  );
+}
+
+function runToolAdapter(config, executableName, missingReason, empty, run, recover = null) {
+  const executable = localBin(config.projectRoot, executableName);
+  if (!executable) {
+    return { available: false, ran: false, reason: missingReason, ...empty };
+  }
   try {
-    const stdout = runLocalTool(executable, args, {
-      cwd: config.projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 120000,
-    });
-    return {
-      available: true,
-      ran: true,
-      reason: null,
-      messages: normalizeEslintMessages(JSON.parse(stdout), config),
-    };
+    return { available: true, ran: true, reason: null, ...run(executable) };
   } catch (error) {
-    const stdout = String(error.stdout ?? "");
-    if (stdout.trim().startsWith("[")) {
-      return {
-        available: true,
-        ran: true,
-        reason: null,
-        messages: normalizeEslintMessages(JSON.parse(stdout), config),
-      };
-    }
-    return {
-      available: true,
-      ran: false,
-      reason: toolError(error),
-      messages: [],
-    };
+    const recovered = recover?.(error);
+    if (recovered) return { available: true, ran: true, reason: null, ...recovered };
+    return { available: true, ran: false, reason: toolError(error), ...empty };
   }
 }
 
 export function detectFrameworkDetails(config, project) {
-  const files = new Set(project.sourceFiles.map((file) => file.relativePath));
+  const files = new Set<string>(project.sourceFiles.map((file) => file.relativePath));
   const appRoutes = [...files].filter((file) => /(?:^|\/)app\/.*(?:page|layout|route|loading|error)\.[jt]sx?$/.test(file));
   const pagesRoutes = [...files].filter((file) => /(?:^|\/)pages\/.*\.[jt]sx?$/.test(file));
   const remixRoutes = [...files].filter((file) => /(?:^|\/)routes\/.*\.[jt]sx?$/.test(file));
@@ -290,7 +285,6 @@ export function detectFrameworkDetails(config, project) {
 function typedModuleRecord(ts, checker, program, config, sourceFile) {
   const exports = [];
   const declarations = [];
-  const imports = [];
   const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
   if (moduleSymbol) {
     for (const symbol of checker.getExportsOfModule(moduleSymbol)) {
@@ -303,12 +297,16 @@ function typedModuleRecord(ts, checker, program, config, sourceFile) {
 
   visit(sourceFile);
 
-  return {
+  const record = {
     file: toPosix(path.relative(config.projectRoot, sourceFile.fileName)),
     exports,
     declarations,
-    imports,
   };
+  Object.defineProperty(record, "sourceFile", {
+    value: sourceFile,
+    enumerable: false,
+  });
+  return record;
 
   function visit(node) {
     if (isDeclarationNode(ts, node) && node.name && ts.isIdentifier(node.name)) {
@@ -319,20 +317,6 @@ function typedModuleRecord(ts, checker, program, config, sourceFile) {
         line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
         type: symbol ? safeTypeString(checker, symbol, node) : null,
         exported: hasModifier(ts, node, ts.SyntaxKind.ExportKeyword),
-      });
-    }
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-      const resolved = ts.resolveModuleName(
-        node.moduleSpecifier.text,
-        sourceFile.fileName,
-        program.getCompilerOptions(),
-        ts.sys,
-      ).resolvedModule;
-      imports.push({
-        specifier: node.moduleSpecifier.text,
-        line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
-        resolved_file: resolved?.resolvedFileName ? toPosix(path.relative(config.projectRoot, resolved.resolvedFileName)) : null,
-        external: Boolean(resolved?.isExternalLibraryImport),
       });
     }
     ts.forEachChild(node, visit);
@@ -401,14 +385,21 @@ function compilerOptionSummary(options) {
 }
 
 function localBin(projectRoot, name) {
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const names = process.platform === "win32" ? [`${name}.cmd`, name] : [name];
-  for (const root of [projectRoot, repoRoot]) {
+  for (const root of [projectRoot, repoRoot()]) {
     for (const candidate of names.map((binName) => path.join(root, "node_modules", ".bin", binName))) {
       if (fs.existsSync(candidate)) return candidate;
     }
   }
   return null;
+}
+
+function packageJsonUrl(root) {
+  return pathToFileURL(path.join(root, "package.json")).href;
+}
+
+function repoRoot() {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
 function existingAbsoluteRoots(config) {

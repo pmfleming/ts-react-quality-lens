@@ -1,5 +1,5 @@
 import os from "node:os";
-import { LENS_NAME, SCHEMA_VERSION } from "./tasks.mjs";
+import { LENS_NAME, SCHEMA_VERSION } from "./tasks.js";
 
 export function provenance(command, sourceType = "static") {
   return {

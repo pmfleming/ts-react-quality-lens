@@ -67,8 +67,20 @@ export function normalizeImportPath(fromFile, specifier, config) {
 }
 
 function resolveSourcePath(base) {
+  const parsed = path.parse(base);
+  const sourceMappedCandidates =
+    parsed.ext === ".js"
+      ? [path.join(parsed.dir, `${parsed.name}.ts`), path.join(parsed.dir, `${parsed.name}.tsx`)]
+      : parsed.ext === ".jsx"
+        ? [path.join(parsed.dir, `${parsed.name}.tsx`)]
+        : parsed.ext === ".mjs"
+          ? [path.join(parsed.dir, `${parsed.name}.mts`), path.join(parsed.dir, `${parsed.name}.ts`)]
+          : parsed.ext === ".cjs"
+            ? [path.join(parsed.dir, `${parsed.name}.cts`), path.join(parsed.dir, `${parsed.name}.ts`)]
+            : [];
   const candidates = [
     base,
+    ...sourceMappedCandidates,
     `${base}.ts`,
     `${base}.tsx`,
     `${base}.js`,

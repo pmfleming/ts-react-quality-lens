@@ -3,21 +3,29 @@
   "version": "0.1.0",
   "description": "Reusable TypeScript and React quality measurement artifacts for project-management-board.",
   "type": "module",
+  "main": "./dist/src/cli.js",
   "bin": {
-    "ts-react-quality-lens": "./bin/ts-react-quality-lens.mjs"
+    "ts-react-quality-lens": "./dist/bin/ts-react-quality-lens.js"
   },
   "scripts": {
-    "test": "node --test test/cli.test.mjs",
-    "catalog": "node ./bin/ts-react-quality-lens.mjs catalog --config ./examples/basic/ts-react-quality-lens.config.json",
-    "measure": "node ./bin/ts-react-quality-lens.mjs measure all --config ./examples/basic/ts-react-quality-lens.config.json"
+    "build": "tsc -p tsconfig.json",
+    "ci": "npm run lint && npm run build && npm run format:check && npm run test",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "format:check": "npm run build && node dist/scripts/format-check.js",
+    "test": "npm run build && node --test dist/test/cli.test.js",
+    "catalog": "npm run build && node ./dist/bin/ts-react-quality-lens.js catalog --config ./examples/basic/ts-react-quality-lens.config.json",
+    "measure": "npm run build && node ./dist/bin/ts-react-quality-lens.js measure all --config ./examples/basic/ts-react-quality-lens.config.json",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=20"
   },
   "files": [
-    "bin/",
+    "dist/",
     "src/",
+    "bin/",
     "README.md",
+    "tsconfig.json",
     "ts-react-quality-lens.schema.json"
   ],
   "license": "MIT",

@@ -23,13 +23,14 @@ Create `ts-react-quality-lens.config.json` in the project you want to measure:
 Run the catalog:
 
 ```sh
-node ./bin/ts-react-quality-lens.mjs catalog --config ./ts-react-quality-lens.config.json
+npm run build
+node ./dist/bin/ts-react-quality-lens.js catalog --config ./ts-react-quality-lens.config.json
 ```
 
 Run all measurements:
 
 ```sh
-node ./bin/ts-react-quality-lens.mjs measure all --config ./ts-react-quality-lens.config.json
+node ./dist/bin/ts-react-quality-lens.js measure all --config ./ts-react-quality-lens.config.json
 ```
 
 Artifacts are written under `output_dir`.

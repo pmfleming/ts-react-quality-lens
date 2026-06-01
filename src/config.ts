@@ -18,6 +18,31 @@ const DEFAULT_EXCLUDES = [
   "*.d.ts",
 ];
 
+const FRAMEWORK_RULES = [
+  { name: "next", deps: ["next"], files: ["next.config.js"] },
+  { name: "remix", deps: ["@remix-run/react", "@remix-run/node"] },
+  { name: "expo", deps: ["expo"] },
+  { name: "astro-react", deps: ["astro"] },
+  { name: "vite", deps: ["vite"], files: ["vite.config.ts"] },
+  { name: "react-router", deps: ["react-router", "react-router-dom"] },
+  { name: "react", deps: ["react"] },
+];
+
+const TEST_RUNNER_RULES = [
+  { name: "vitest", deps: ["vitest"], scriptIncludes: ["vitest"] },
+  { name: "jest", deps: ["jest"], scriptIncludes: ["jest"] },
+  { name: "playwright", deps: ["@playwright/test"], files: ["playwright.config.ts"] },
+  { name: "cypress", deps: ["cypress"], files: ["cypress.config.ts"] },
+  { name: "node", scriptIncludes: ["node --test"] },
+];
+
+const PACKAGE_MANAGER_RULES = [
+  { name: "pnpm", files: ["pnpm-lock.yaml"] },
+  { name: "yarn", files: ["yarn.lock"] },
+  { name: "bun", files: ["bun.lockb", "bun.lock"] },
+  { name: "npm", files: ["package-lock.json", "package.json"] },
+];
+
 export function loadConfig(configArg) {
   const configPath = path.resolve(configArg ?? "ts-react-quality-lens.config.json");
   const configDir = path.dirname(configPath);
@@ -111,13 +136,7 @@ function autoPath(root, name) {
 }
 
 function detectPackageManager(root) {
-  if (fs.existsSync(path.join(root, "pnpm-lock.yaml"))) return "pnpm";
-  if (fs.existsSync(path.join(root, "yarn.lock"))) return "yarn";
-  if (fs.existsSync(path.join(root, "bun.lockb")) || fs.existsSync(path.join(root, "bun.lock"))) {
-    return "bun";
-  }
-  if (fs.existsSync(path.join(root, "package-lock.json"))) return "npm";
-  return fs.existsSync(path.join(root, "package.json")) ? "npm" : "unknown";
+  return matchingRule(PACKAGE_MANAGER_RULES, root, new Set())?.name ?? "unknown";
 }
 
 function normalizeAuto(value, detector) {
@@ -127,27 +146,22 @@ function normalizeAuto(value, detector) {
 
 function detectFramework(root, packageJson) {
   const deps = dependencyNames(packageJson);
-  if (deps.has("next") || fs.existsSync(path.join(root, "next.config.js"))) return "next";
-  if (deps.has("@remix-run/react") || deps.has("@remix-run/node")) return "remix";
-  if (deps.has("expo")) return "expo";
-  if (deps.has("astro")) return "astro-react";
-  if (deps.has("vite") || fs.existsSync(path.join(root, "vite.config.ts"))) return "vite";
-  if (deps.has("react-router") || deps.has("react-router-dom")) return "react-router";
-  if (deps.has("react")) return "react";
-  return "unknown";
+  return matchingRule(FRAMEWORK_RULES, root, deps)?.name ?? "unknown";
 }
 
 function detectTestRunner(root, packageJson) {
   const deps = dependencyNames(packageJson);
   const scripts = Object.values(packageJson?.scripts ?? {}).join(" ");
-  if (deps.has("vitest") || scripts.includes("vitest")) return "vitest";
-  if (deps.has("jest") || scripts.includes("jest")) return "jest";
-  if (deps.has("@playwright/test") || fs.existsSync(path.join(root, "playwright.config.ts"))) {
-    return "playwright";
-  }
-  if (deps.has("cypress") || fs.existsSync(path.join(root, "cypress.config.ts"))) return "cypress";
-  if (scripts.includes("node --test")) return "node";
-  return "unknown";
+  return matchingRule(TEST_RUNNER_RULES, root, deps, scripts)?.name ?? "unknown";
+}
+
+function matchingRule(rules, root, deps, scripts = "") {
+  return rules.find((rule) => {
+    const hasDependency = (rule.deps ?? []).some((dependency) => deps.has(dependency));
+    const hasFile = (rule.files ?? []).some((file) => fs.existsSync(path.join(root, file)));
+    const hasScript = (rule.scriptIncludes ?? []).some((snippet) => scripts.includes(snippet));
+    return hasDependency || hasFile || hasScript;
+  });
 }
 
 function dependencyNames(packageJson) {

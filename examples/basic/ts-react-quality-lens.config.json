@@ -6,5 +6,5 @@
   "output_dir": "target/analysis",
   "framework": "auto",
   "test_runner": "auto",
-  "test_command": ""
+  "test_command": "node --test src/format.test.js"
 }
