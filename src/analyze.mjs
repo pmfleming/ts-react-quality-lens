@@ -10,15 +10,35 @@ import {
   relativeModuleId,
   toPosix,
 } from "./files.mjs";
+import {
+  detectFrameworkDetails,
+  loadTypeScriptProject,
+  runDependencyCruiser,
+  runJscpd,
+  runReactHooksLint,
+} from "./integrations.mjs";
 import { artifactBase } from "./provenance.mjs";
 import { readArtifact, writeArtifact } from "./writer.mjs";
 
 export function analyzeProject(config) {
   const sourceFiles = discoverSourceFiles(config).map((file) => readSourceFile(file, config.projectRoot));
   const testFiles = discoverTestFiles(config).map((file) => readSourceFile(file, config.projectRoot));
-  const modules = sourceFiles.map((file) => analyzeModule(config, file));
+  const tsProject = loadTypeScriptProject(config, sourceFiles);
+  const modules = sourceFiles.map((file) => analyzeModule(config, file, tsProject));
   const imports = modules.flatMap((module) => module.imports);
-  return { sourceFiles, testFiles, modules, imports };
+  const frameworkDetails = detectFrameworkDetails(config, { sourceFiles, testFiles, modules, imports });
+  return { sourceFiles, testFiles, modules, imports, tsProject, frameworkDetails };
+}
+
+function analysisConfidence(config, project, extra = {}) {
+  return createConfidence(config, {
+    typescript_compiler_api_available: project.tsProject.available,
+    typescript_program_loaded: project.tsProject.loaded,
+    typescript_program_reason: project.tsProject.reason,
+    type_information_available: project.tsProject.loaded,
+    framework_conventions_detected: Object.values(project.frameworkDetails.conventions).some(Boolean),
+    ...extra,
+  });
 }
 
 export function measureHotspots(config, command) {
@@ -30,7 +50,7 @@ export function measureHotspots(config, command) {
   }
   records.sort((left, right) => right.score - left.score || left.id.localeCompare(right.id));
   const artifact = {
-    ...artifactBase(config, "quality.hotspots", command, createConfidence(config)),
+    ...artifactBase(config, "quality.hotspots", command, analysisConfidence(config, project)),
     summary: {
       source_files: project.sourceFiles.length,
       records: records.length,
@@ -44,6 +64,7 @@ export function measureHotspots(config, command) {
 
 export function measureClones(config, command) {
   const project = analyzeProject(config);
+  const jscpd = runJscpd(config);
   const blocks = [];
   for (const file of [...project.sourceFiles, ...project.testFiles]) {
     const relevantLines = file.lines
@@ -63,16 +84,36 @@ export function measureClones(config, command) {
       });
     }
   }
-  const groups = [...groupBy(blocks, (block) => block.hash).values()]
+  const heuristicGroups = [...groupBy(blocks, (block) => block.hash).values()]
     .filter((group) => new Set(group.map((block) => `${block.file}:${block.start_line}`)).size > 1)
     .map((group) => cloneGroup(group))
     .sort((left, right) => right.score - left.score);
+  const jscpdGroups = jscpd.ran ? jscpd.duplicates.map((duplicate, index) => jscpdCloneGroup(config, duplicate, index)) : [];
+  const groups = [...jscpdGroups, ...heuristicGroups].sort((left, right) => right.score - left.score);
   const artifact = {
-    ...artifactBase(config, "quality.clones", command, createConfidence(config)),
+    ...artifactBase(
+      config,
+      "quality.clones",
+      command,
+      analysisConfidence(config, project, {
+        jscpd_available: jscpd.available,
+        jscpd_ran: jscpd.ran,
+      }),
+    ),
     summary: {
       clone_groups: groups.length,
+      jscpd_clone_groups: jscpdGroups.length,
+      heuristic_clone_groups: heuristicGroups.length,
       source_clone_groups: groups.filter((group) => !group.test_code).length,
       test_clone_groups: groups.filter((group) => group.test_code).length,
+    },
+    tool_status: {
+      jscpd: {
+        available: jscpd.available,
+        ran: jscpd.ran,
+        reason: jscpd.reason ?? null,
+        statistics: jscpd.statistics ?? {},
+      },
     },
     groups,
   };
@@ -85,7 +126,7 @@ export function measureEscapeHatches(config, command) {
   const records = project.modules.flatMap((module) => escapeRecords(module));
   const byKind = countBy(records, (record) => record.kind);
   const artifact = {
-    ...artifactBase(config, "quality.escape_hatches", command, createConfidence(config)),
+    ...artifactBase(config, "quality.escape_hatches", command, analysisConfidence(config, project)),
     summary: {
       records: records.length,
       files_with_escape_hatches: new Set(records.map((record) => record.file)).size,
@@ -100,13 +141,17 @@ export function measureEscapeHatches(config, command) {
 export function measureTypeHealth(config, command) {
   const project = analyzeProject(config);
   const records = project.modules.flatMap((module) => typeHealthRecords(module));
+  const diagnostics = project.tsProject.diagnostics ?? [];
   const artifact = {
-    ...artifactBase(config, "quality.type_health", command, createConfidence(config)),
+    ...artifactBase(config, "quality.type_health", command, analysisConfidence(config, project)),
     summary: {
       records: records.length,
       high_risk_records: records.filter((record) => record.risk === "high").length,
       wide_types: records.filter((record) => record.signals.some((signal) => signal.kind === "wide_surface")).length,
+      compiler_diagnostics: diagnostics.length,
     },
+    compiler_options: project.tsProject.compiler_options ?? null,
+    diagnostics,
     records,
   };
   writeArtifact(config, "type_health.json", artifact);
@@ -115,9 +160,11 @@ export function measureTypeHealth(config, command) {
 
 export function measureDependencyHealth(config, command) {
   const project = analyzeProject(config);
+  const depcruise = runDependencyCruiser(config);
   const internalEdges = project.imports.filter((edge) => edge.to_kind === "relative");
   const externalEdges = project.imports.filter((edge) => edge.to_kind === "external");
   const cycles = findCycles(internalEdges);
+  const depcruiseCycles = depcruise.ran ? dependencyCruiserCycles(config, depcruise.modules) : [];
   const deepRelativeImports = project.imports.filter((edge) => edge.specifier.startsWith("../../"));
   const barrelModules = project.modules.filter((module) => module.isBarrel);
   const records = [
@@ -128,6 +175,15 @@ export function measureDependencyHealth(config, command) {
       score: Math.min(100, cycle.length * 18),
       files: cycle,
       evidence: cycle.join(" -> "),
+    })),
+    ...depcruiseCycles.map((cycle, index) => ({
+      id: `depcruise-cycle:${index + 1}`,
+      kind: "import_cycle",
+      severity: cycle.length > 3 ? "high" : "medium",
+      score: Math.min(100, cycle.length * 20),
+      files: cycle,
+      evidence: cycle.join(" -> "),
+      source: "dependency-cruiser",
     })),
     ...deepRelativeImports.map((edge) => ({
       id: `deep-import:${edge.from}:${edge.line}`,
@@ -150,24 +206,42 @@ export function measureDependencyHealth(config, command) {
     })),
   ];
   const artifact = {
-    ...artifactBase(config, "quality.dependency_health", command, createConfidence(config)),
+    ...artifactBase(
+      config,
+      "quality.dependency_health",
+      command,
+      analysisConfidence(config, project, {
+        dependency_cruiser_available: depcruise.available,
+        dependency_cruiser_ran: depcruise.ran,
+      }),
+    ),
     summary: {
       internal_edges: internalEdges.length,
       external_edges: externalEdges.length,
-      cycles: cycles.length,
+      cycles: uniqueCycleCount(cycles, depcruiseCycles),
+      heuristic_cycles: cycles.length,
+      dependency_cruiser_cycles: depcruiseCycles.length,
       deep_relative_imports: deepRelativeImports.length,
       barrel_modules: barrelModules.length,
+    },
+    tool_status: {
+      dependency_cruiser: {
+        available: depcruise.available,
+        ran: depcruise.ran,
+        reason: depcruise.reason ?? null,
+        summary: depcruise.summary ?? {},
+      },
     },
     records,
     graph: {
       nodes: project.modules.map((module) => ({ id: module.id, file: module.file })),
-      edges: project.imports.map((edge) => ({
-        from: edge.from,
-        to: edge.to,
-        kind: edge.to_kind,
-        import_kind: edge.import_kind,
-        line: edge.line,
-      })),
+      edges: depcruise.ran ? dependencyCruiserEdges(config, depcruise.modules) : project.imports.map((edge) => ({
+          from: edge.from,
+          to: edge.to,
+          kind: edge.to_kind,
+          import_kind: edge.import_kind,
+          line: edge.line,
+        })),
     },
   };
   writeArtifact(config, "dependency_health.json", artifact);
@@ -189,14 +263,14 @@ export function measureCorrectnessCatalog(config, command, runTests = false) {
       config,
       runTests ? "correctness.all" : "correctness.catalog",
       command,
-      createConfidence(config, { test_command_configured: Boolean(config.testCommand) }),
+      analysisConfidence(config, project, { test_command_configured: Boolean(config.testCommand) }),
     ),
     summary,
     execution,
     tests,
   };
   const catalog = {
-    ...artifactBase(config, "correctness.catalog", command, createConfidence(config)),
+    ...artifactBase(config, "correctness.catalog", command, analysisConfidence(config, project)),
     summary,
     tests: tests.map((test) => ({
       id: test.id,
@@ -248,7 +322,7 @@ export function measureLocality(config, command) {
     };
   });
   const artifact = {
-    ...artifactBase(config, "quality.locality_dynamic", command, createConfidence(config)),
+    ...artifactBase(config, "quality.locality_dynamic", command, analysisConfidence(config, project)),
     summary: {
       records: records.length,
       high_risk_records: records.filter((record) => record.risk === "high").length,
@@ -288,7 +362,7 @@ export function measureLeverage(config, command) {
     };
   });
   const artifact = {
-    ...artifactBase(config, "quality.locality_leverage", command, createConfidence(config)),
+    ...artifactBase(config, "quality.locality_leverage", command, analysisConfidence(config, project)),
     summary: {
       records: records.length,
       shared_hubs: records.filter((record) => record.classification === "shared_hub").length,
@@ -301,6 +375,7 @@ export function measureLeverage(config, command) {
 
 export function measureReactHealth(config, command) {
   const project = analyzeProject(config);
+  const hooksLint = runReactHooksLint(config);
   const records = [];
   for (const module of project.modules) {
     for (const component of module.components) {
@@ -325,11 +400,47 @@ export function measureReactHealth(config, command) {
       });
     }
   }
+  for (const message of hooksLint.messages ?? []) {
+    records.push({
+      id: `react-hooks:${message.file}:${message.line}:${message.rule_id}`,
+      module_id: message.file.replace(/\.[cm]?[jt]sx?$/, ""),
+      file: message.file,
+      name: message.rule_id,
+      line: message.line,
+      score: message.severity === "error" ? 85 : 55,
+      risk: message.severity === "error" ? "high" : "medium",
+      source: "eslint-plugin-react-hooks",
+      signals: [
+        {
+          kind: message.rule_id === "react-hooks/rules-of-hooks" ? "rules_of_hooks_violation" : "exhaustive_deps_violation",
+          message: message.message,
+        },
+      ],
+    });
+  }
   const artifact = {
-    ...artifactBase(config, "quality.react_health", command, createConfidence(config)),
+    ...artifactBase(
+      config,
+      "quality.react_health",
+      command,
+      analysisConfidence(config, project, {
+        eslint_react_hooks_available: hooksLint.available,
+        eslint_react_hooks_ran: hooksLint.ran,
+      }),
+    ),
     summary: {
-      components: records.length,
+      components: project.modules.reduce((count, module) => count + module.components.length, 0),
+      records: records.length,
+      hook_lint_findings: hooksLint.messages?.length ?? 0,
       high_risk_components: records.filter((record) => record.risk === "high").length,
+    },
+    framework: project.frameworkDetails,
+    tool_status: {
+      eslint_react_hooks: {
+        available: hooksLint.available,
+        ran: hooksLint.ran,
+        reason: hooksLint.reason ?? null,
+      },
     },
     records,
   };
@@ -359,7 +470,7 @@ export function measureArchitectureMap(config, command) {
     line: edge.line,
   }));
   const artifact = {
-    ...artifactBase(config, "map.architecture", command, createConfidence(config)),
+    ...artifactBase(config, "map.architecture", command, analysisConfidence(config, project)),
     summary: {
       nodes: nodes.length,
       edges: edges.length,
@@ -369,6 +480,7 @@ export function measureArchitectureMap(config, command) {
       ),
     },
     groups: groupMapNodes(nodes),
+    framework: project.frameworkDetails,
     nodes,
     edges,
   };
@@ -376,8 +488,9 @@ export function measureArchitectureMap(config, command) {
   return artifact;
 }
 
-function analyzeModule(config, file) {
+function analyzeModule(config, file, tsProject) {
   const id = relativeModuleId(config.projectRoot, file.path);
+  const typed = tsProject.modules.get(id) ?? null;
   const imports = extractImports(config, file, id);
   const functions = extractFunctions(file);
   const types = extractTypes(file);
@@ -400,6 +513,7 @@ function analyzeModule(config, file) {
     exports,
     escapeCounts,
     isBarrel: isBarrel(file),
+    typed,
     text: file.text,
     sourceFile: file,
   };
@@ -583,7 +697,7 @@ function escapeRecords(module) {
 }
 
 function typeHealthRecords(module) {
-  return module.types.map((type) => {
+  const records = module.types.map((type) => {
     const signals = [];
     if (type.field_count > 10) signals.push({ kind: "wide_surface", value: type.field_count });
     if (type.union_members > 6) signals.push({ kind: "large_union", value: type.union_members });
@@ -611,6 +725,48 @@ function typeHealthRecords(module) {
       },
     };
   });
+  for (const declaration of module.typed?.declarations ?? []) {
+    if (records.some((record) => record.name === declaration.name && record.line === declaration.line)) continue;
+    const weakType = !declaration.type || declaration.type === "any" || declaration.type === "Function";
+    const score = weakType ? 45 : 10;
+    records.push({
+      id: `typed-symbol:${module.id}:${declaration.name}:${declaration.line}`,
+      module_id: module.id,
+      file: module.file,
+      name: declaration.name,
+      kind: declaration.kind,
+      exported: declaration.exported,
+      line: declaration.line,
+      score,
+      risk: riskForScore(score),
+      source: "typescript-compiler-api",
+      signals: weakType ? [{ kind: "weak_inferred_type", value: declaration.type ?? "unknown" }] : [],
+      metrics: {
+        inferred_type: declaration.type,
+      },
+    });
+  }
+  for (const exported of module.typed?.exports ?? []) {
+    if (!exported.type || exported.type === "any") {
+      records.push({
+        id: `typed-export:${module.id}:${exported.name}`,
+        module_id: module.id,
+        file: module.file,
+        name: exported.name,
+        kind: "export",
+        exported: true,
+        line: null,
+        score: 55,
+        risk: "medium",
+        source: "typescript-compiler-api",
+        signals: [{ kind: "weak_export_type", value: exported.type ?? "unknown" }],
+        metrics: {
+          inferred_type: exported.type,
+        },
+      });
+    }
+  }
+  return records;
 }
 
 function testRecord(config, file, modules) {
@@ -929,6 +1085,36 @@ function cloneGroup(group) {
   };
 }
 
+function jscpdCloneGroup(config, duplicate, index) {
+  const first = duplicate.firstFile ?? {};
+  const second = duplicate.secondFile ?? {};
+  const instances = [first, second]
+    .filter((item) => item.name)
+    .map((item) => ({
+      file: toPosix(path.relative(config.projectRoot, path.resolve(item.name))),
+      start_line: item.start ?? item.startLoc?.line ?? null,
+      end_line: item.end ?? item.endLoc?.line ?? null,
+    }));
+  const fileCount = new Set(instances.map((item) => item.file)).size;
+  const lines = duplicate.lines ?? duplicate.fragment?.split(/\r?\n/).length ?? 0;
+  const score = Math.min(100, lines * 4 + fileCount * 18 + 15);
+  return {
+    id: `jscpd:${duplicate.format ?? "unknown"}:${index + 1}`,
+    engine: "jscpd",
+    hash: duplicate.hash ?? null,
+    classification: instances.every((item) => /(?:\.test|\.spec)\.[jt]sx?$/.test(item.file)) ? "test_clone" : "source_clone",
+    test_code: instances.every((item) => /(?:\.test|\.spec)\.[jt]sx?$/.test(item.file)),
+    score,
+    risk: riskForScore(score),
+    signals: [
+      { kind: "line_count", value: lines },
+      { kind: "file_count", value: fileCount },
+      { kind: "format", value: duplicate.format ?? "unknown" },
+    ],
+    instances,
+  };
+}
+
 function inferTestFramework(config, text) {
   if (config.testRunner !== "unknown") return config.testRunner;
   if (/\bimport\s+\{[^}]*test[^}]*\}\s+from\s+["']node:test/.test(text)) return "node";
@@ -946,6 +1132,59 @@ function maxScoreFor(records = [], file, mode = "score") {
     );
   }
   return Math.max(0, ...candidates.map((record) => record.score ?? 0));
+}
+
+function dependencyCruiserEdges(config, modules) {
+  return modules.flatMap((module) => {
+    const from = module.source ? stripSourceExtension(toPosix(module.source)) : null;
+    if (!from) return [];
+    return (module.dependencies ?? []).map((dependency) => ({
+      from,
+      to: dependency.resolved ? stripSourceExtension(toPosix(dependency.resolved)) : dependency.module,
+      kind: dependency.coreModule || dependency.npm ? "external" : dependency.resolved ? "relative" : "unresolved",
+      import_kind: dependency.dependencyTypes?.includes("dynamic") ? "dynamic" : "static",
+      line: dependency.moduleSystem === "es6" ? null : null,
+      source: "dependency-cruiser",
+    }));
+  });
+}
+
+function dependencyCruiserCycles(config, modules) {
+  const cycles = [];
+  for (const module of modules) {
+    const from = module.source ? stripSourceExtension(toPosix(module.source)) : null;
+    for (const dependency of module.dependencies ?? []) {
+      for (const cycle of dependency.cycle ?? []) {
+        const files = [from, ...cycle.map((item) => stripSourceExtension(toPosix(item.name ?? item)))]
+          .filter(Boolean)
+          .map((file) => stripProjectPrefix(config, file));
+        if (files.length > 1) cycles.push(files);
+      }
+    }
+  }
+  return dedupeBy(cycles, (cycle) => canonicalCycle([...cycle, cycle[0]]));
+}
+
+function uniqueCycleCount(...cycleSets) {
+  return new Set(
+    cycleSets.flat().map((cycle) => {
+      if (!cycle.length) return "";
+      const closed = cycle[0] === cycle.at(-1) ? cycle : [...cycle, cycle[0]];
+      return canonicalCycle(closed);
+    }),
+  ).size;
+}
+
+function stripProjectPrefix(config, value) {
+  const absolute = path.resolve(config.projectRoot, value);
+  if (absolute.startsWith(config.projectRoot)) {
+    return stripSourceExtension(toPosix(path.relative(config.projectRoot, absolute)));
+  }
+  return stripSourceExtension(value);
+}
+
+function stripSourceExtension(value) {
+  return value.replace(/\.[cm]?[jt]sx?$/, "");
 }
 
 function correctnessMap(artifact) {

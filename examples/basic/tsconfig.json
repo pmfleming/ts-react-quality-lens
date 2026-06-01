@@ -3,7 +3,9 @@
     "strict": true,
     "jsx": "react-jsx",
     "target": "ES2022",
-    "module": "ESNext"
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node", "react"]
   },
   "include": ["src"]
 }

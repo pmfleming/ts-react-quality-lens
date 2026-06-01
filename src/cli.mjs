@@ -49,11 +49,24 @@ export async function runCli(argv) {
   );
 }
 
-export function runMeasure(config, taskId, command) {
+export function runMeasure(config, taskId, command, options = {}) {
   if (taskId === "all") {
     const results = [];
-    for (const id of TASKS.map((task) => task.id)) {
-      results.push(...runMeasure(config, id, command));
+    const orderedTaskIds = [
+      "quality.hotspots",
+      "quality.clones",
+      "quality.escape_hatches",
+      "quality.type_health",
+      "quality.dependency_health",
+      "correctness.catalog",
+      "quality.locality_dynamic",
+      "quality.locality_leverage",
+      "quality.react_health",
+      "correctness.all",
+      "map.architecture",
+    ];
+    for (const id of orderedTaskIds) {
+      results.push(...runMeasure(config, id, command, { skipPrerequisites: true }));
     }
     return results;
   }
@@ -72,7 +85,7 @@ export function runMeasure(config, taskId, command) {
     case "quality.type_health":
       return [measureTypeHealth(config, command)];
     case "quality.locality_dynamic":
-      ensurePrerequisites(config, command, ["correctness.catalog"]);
+      if (!options.skipPrerequisites) ensurePrerequisites(config, command, ["correctness.catalog"]);
       return [measureLocality(config, command)];
     case "quality.locality_leverage":
       return [measureLeverage(config, command)];
@@ -85,20 +98,22 @@ export function runMeasure(config, taskId, command) {
     case "correctness.all":
       return [measureCorrectnessCatalog(config, command, true)];
     case "map.architecture":
-      ensurePrerequisites(
-        config,
-        command,
-        [
-          "quality.hotspots",
-          "quality.escape_hatches",
-          "quality.type_health",
-          "quality.dependency_health",
-          "correctness.catalog",
-          "quality.locality_dynamic",
-          "quality.locality_leverage",
-          "quality.react_health",
-        ],
-      );
+      if (!options.skipPrerequisites) {
+        ensurePrerequisites(
+          config,
+          command,
+          [
+            "quality.hotspots",
+            "quality.escape_hatches",
+            "quality.type_health",
+            "quality.dependency_health",
+            "correctness.catalog",
+            "quality.locality_dynamic",
+            "quality.locality_leverage",
+            "quality.react_health",
+          ],
+        );
+      }
       return [measureArchitectureMap(config, command)];
     default:
       throw new Error(`Task is registered but has no measurement handler: ${taskId}`);

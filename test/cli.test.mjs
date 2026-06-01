@@ -50,4 +50,21 @@ test("measure all writes MVP artifacts", () => {
   const map = JSON.parse(fs.readFileSync(path.join(config.outputDir, "map.json"), "utf8"));
   assert.ok(map.nodes.length > 0);
   assert.ok(map.edges.length > 0);
+
+  const typeHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "type_health.json"), "utf8"));
+  assert.equal(typeHealth.confidence.typescript_compiler_api_available, true);
+  assert.equal(typeHealth.confidence.typescript_program_loaded, true);
+  assert.ok(typeHealth.records.some((record) => record.source === "typescript-compiler-api"));
+
+  const dependencyHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "dependency_health.json"), "utf8"));
+  assert.equal(dependencyHealth.tool_status.dependency_cruiser.available, true);
+  assert.equal(dependencyHealth.tool_status.dependency_cruiser.ran, true);
+
+  const clones = JSON.parse(fs.readFileSync(path.join(config.outputDir, "clones.json"), "utf8"));
+  assert.equal(clones.tool_status.jscpd.available, true);
+  assert.equal(clones.tool_status.jscpd.ran, true);
+
+  const reactHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "react_health.json"), "utf8"));
+  assert.equal(reactHealth.tool_status.eslint_react_hooks.available, true);
+  assert.equal(reactHealth.tool_status.eslint_react_hooks.ran, true);
 });
