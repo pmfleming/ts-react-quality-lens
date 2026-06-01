@@ -1,0 +1,24 @@
+{
+  "name": "ts-react-quality-lens",
+  "version": "0.1.0",
+  "description": "Reusable TypeScript and React quality measurement artifacts for project-management-board.",
+  "type": "module",
+  "bin": {
+    "ts-react-quality-lens": "./bin/ts-react-quality-lens.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/cli.test.mjs",
+    "catalog": "node ./bin/ts-react-quality-lens.mjs catalog --config ./examples/basic/ts-react-quality-lens.config.json",
+    "measure": "node ./bin/ts-react-quality-lens.mjs measure all --config ./examples/basic/ts-react-quality-lens.config.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "ts-react-quality-lens.schema.json"
+  ],
+  "license": "MIT"
+}

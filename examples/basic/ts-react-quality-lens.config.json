@@ -1,0 +1,10 @@
+{
+  "project_name": "quality-lens-basic-fixture",
+  "project_root": ".",
+  "source_roots": ["src"],
+  "test_roots": ["src"],
+  "output_dir": "target/analysis",
+  "framework": "auto",
+  "test_runner": "auto",
+  "test_command": ""
+}

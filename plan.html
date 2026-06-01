@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TypeScript React Quality Lens Plan</title>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>TypeScript React Quality Lens Plan</h1>
+      <p>
+        This document is the build plan for <strong>ts-react-quality-lens</strong>, a reusable measurement engine for
+        TypeScript and React projects. It mirrors the successful boundaries of <strong>rust-quality-lens</strong> while
+        adapting the measurements to TypeScript, React, frontend architecture, and modern JavaScript tooling.
+      </p>
+    </header>
+
+    <section>
+      <h2>1. Purpose</h2>
+      <p>
+        The goal of <strong>ts-react-quality-lens</strong> is to produce structured, explainable JSON measurements for
+        TypeScript and React codebases. It should identify quality risks, correctness gaps, architecture pressure,
+        type-system weakness, React-specific hazards, dependency issues, and change hotspots.
+      </p>
+      <p>
+        Like <strong>rust-quality-lens</strong>, this repository should not own a dashboard, web server, or project UI.
+        Its job is to act as a reusable producer of analysis artifacts. The dashboard and local task runner should remain
+        in <strong>project-management-board</strong>.
+      </p>
+    </section>
+
+    <section>
+      <h2>2. Repository Boundary</h2>
+      <p>
+        The new lens should live as a sibling repository rather than inside <strong>rust-quality-lens</strong>. The two
+        projects should share a contract, not an implementation.
+      </p>
+      <ul>
+        <li><strong>rust-quality-lens</strong>: reusable Rust quality, correctness, locality, leverage, and architecture-map producers.</li>
+        <li><strong>ts-react-quality-lens</strong>: reusable TypeScript, JavaScript, JSX, TSX, and React quality producers.</li>
+        <li><strong>project-management-board</strong>: dashboard, task catalog consumer, local run API, and visualization host.</li>
+      </ul>
+      <p>
+        If common behavior emerges across lenses, it can later be extracted into a shared contract package. That should wait
+        until duplication is clear and stable.
+      </p>
+    </section>
+
+    <section>
+      <h2>3. Design Principles</h2>
+      <ul>
+        <li>Produce stable machine-readable artifacts, not prose reports only.</li>
+        <li>Keep all measurements explainable through visible evidence and signals.</li>
+        <li>Prefer project-native signals such as tsconfig, package scripts, test runner config, and framework conventions.</li>
+        <li>Do not require a specific React framework.</li>
+        <li>Support monorepos from the start where reasonable.</li>
+        <li>Distinguish missing evidence from healthy evidence.</li>
+        <li>Preserve unknown, partial, stale, or unsupported states in artifact metadata.</li>
+        <li>Avoid hardcoding dashboard task metadata in measured projects.</li>
+        <li>Let the dashboard consume the lens catalog exactly as it does for Rust.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4. Core Contract</h2>
+      <p>
+        The new lens should provide the same high-level interface as <strong>rust-quality-lens</strong>.
+      </p>
+      <ul>
+        <li>A project-local config file.</li>
+        <li>A <strong>catalog</strong> command that prints board-compatible task metadata.</li>
+        <li>A <strong>measure</strong> command that runs one task or all tasks.</li>
+        <li>Stable task IDs.</li>
+        <li>Stable artifact names.</li>
+        <li>Output artifacts under a configured analysis directory.</li>
+        <li>Measurement confidence metadata in every major artifact.</li>
+        <li>Source provenance: command, host, measured timestamp, and source type.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>5. Configuration Model</h2>
+      <p>
+        The first version should support explicit configuration while also providing useful auto-detection.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Concept</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>project_name</td>
+            <td>Human-readable project name used in catalog and map metadata.</td>
+          </tr>
+          <tr>
+            <td>project_root</td>
+            <td>Measured project root. Relative paths resolve from the config file.</td>
+          </tr>
+          <tr>
+            <td>source_roots</td>
+            <td>Directories to analyze, commonly src, app, pages, components, packages, or libs.</td>
+          </tr>
+          <tr>
+            <td>test_roots</td>
+            <td>Directories and colocated test patterns used by the correctness catalog.</td>
+          </tr>
+          <tr>
+            <td>output_dir</td>
+            <td>Artifact output directory. Prefer target/analysis for consistency with rust-quality-lens.</td>
+          </tr>
+          <tr>
+            <td>tsconfig</td>
+            <td>Main TypeScript project config. Auto-detect tsconfig.json when omitted.</td>
+          </tr>
+          <tr>
+            <td>package_manager</td>
+            <td>npm, pnpm, yarn, bun, or auto-detected from lockfiles.</td>
+          </tr>
+          <tr>
+            <td>framework</td>
+            <td>React framework, such as Vite, Next.js, Remix, Expo, Astro React, or auto.</td>
+          </tr>
+          <tr>
+            <td>test_runner</td>
+            <td>Vitest, Jest, Playwright, Cypress, Node test runner, or auto.</td>
+          </tr>
+          <tr>
+            <td>exclude</td>
+            <td>Generated files, build outputs, vendored folders, snapshots, coverage, and framework output folders.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>6. Task Catalog</h2>
+      <p>
+        Task IDs should be stable and should follow the shape already consumed by <strong>project-management-board</strong>.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Task ID</th>
+            <th>Category</th>
+            <th>Artifact</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>quality.hotspots</td>
+            <td>quality</td>
+            <td>hotspots.json</td>
+            <td>Ranks complex files, functions, components, hooks, reducers, route modules, and utilities.</td>
+          </tr>
+          <tr>
+            <td>quality.clones</td>
+            <td>quality</td>
+            <td>clones.json</td>
+            <td>Finds repeated TypeScript, JSX, component, hook, style, and test structures.</td>
+          </tr>
+          <tr>
+            <td>quality.escape_hatches</td>
+            <td>quality</td>
+            <td>ts_escape_hatches.json</td>
+            <td>Tracks type-system, runtime, React, module, and lint-suppression escape hatches.</td>
+          </tr>
+          <tr>
+            <td>quality.type_health</td>
+            <td>quality</td>
+            <td>type_health.json</td>
+            <td>Measures health of interfaces, type aliases, component props, generics, exports, and public APIs.</td>
+          </tr>
+          <tr>
+            <td>quality.locality_dynamic</td>
+            <td>quality</td>
+            <td>locality_metrics.json</td>
+            <td>Measures dependency distance, hidden coupling, test locality, churn, contributors, and ownership spread.</td>
+          </tr>
+          <tr>
+            <td>quality.locality_leverage</td>
+            <td>quality</td>
+            <td>leverage_metrics.json</td>
+            <td>Measures architectural leverage, reach, abstraction value, divergence pressure, and co-change ripple.</td>
+          </tr>
+          <tr>
+            <td>quality.react_health</td>
+            <td>quality</td>
+            <td>react_health.json</td>
+            <td>Measures component size, props, hooks, effects, render risk, context coupling, and state complexity.</td>
+          </tr>
+          <tr>
+            <td>quality.dependency_health</td>
+            <td>quality</td>
+            <td>dependency_health.json</td>
+            <td>Measures import cycles, layer violations, package boundaries, barrels, deep imports, and dependency pressure.</td>
+          </tr>
+          <tr>
+            <td>correctness.catalog</td>
+            <td>correctness</td>
+            <td>correctness_review.json and test_catalog.json</td>
+            <td>Discovers tests and maps them to modules, routes, features, components, and hooks.</td>
+          </tr>
+          <tr>
+            <td>correctness.all</td>
+            <td>correctness</td>
+            <td>correctness_review.json</td>
+            <td>Runs the configured test command and attaches status to the correctness catalog.</td>
+          </tr>
+          <tr>
+            <td>map.architecture</td>
+            <td>map</td>
+            <td>map.json</td>
+            <td>Builds the dashboard-ready architecture graph and combined risk map.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>7. Rust Measurement Equivalents</h2>
+
+      <section>
+        <h3>7.1 Hotspots</h3>
+        <p>
+          The Rust lens ranks complexity hotspots using cognitive complexity, cyclomatic complexity, maintainability,
+          effort, size, and density. The TypeScript React equivalent should rank risky source units across files,
+          functions, components, hooks, reducers, route handlers, loaders, actions, and utilities.
+        </p>
+        <h4>Signals</h4>
+        <ul>
+          <li>Cognitive complexity.</li>
+          <li>Cyclomatic complexity.</li>
+          <li>Maximum nesting depth.</li>
+          <li>Conditional branch count.</li>
+          <li>Boolean expression complexity.</li>
+          <li>Async control-flow pressure.</li>
+          <li>Try/catch/finally density.</li>
+          <li>Function length and file length.</li>
+          <li>JSX density inside components.</li>
+          <li>Render branch complexity.</li>
+          <li>Mapped JSX regions.</li>
+          <li>Reducer case count.</li>
+          <li>Route module responsibility count.</li>
+        </ul>
+        <h4>Records</h4>
+        <ul>
+          <li>File records.</li>
+          <li>Function records.</li>
+          <li>Component records.</li>
+          <li>Hook records.</li>
+          <li>Reducer records.</li>
+          <li>Route module records.</li>
+        </ul>
+        <h4>Important Distinction</h4>
+        <p>
+          Component complexity should not be treated exactly like ordinary function complexity. A component with moderate
+          function complexity can still be risky if its JSX tree has many conditional branches, nested render helpers, and
+          mixed responsibilities.
+        </p>
+      </section>
+
+      <section>
+        <h3>7.2 Clones</h3>
+        <p>
+          The Rust lens detects token and AST-like clones. The TypeScript React equivalent should detect repeated utilities,
+          components, hooks, form logic, reducers, tests, route scaffolding, and styling variants.
+        </p>
+        <h4>Clone Classes</h4>
+        <ul>
+          <li>Exact token clones.</li>
+          <li>Identifier-normalized clones.</li>
+          <li>Literal-normalized clones.</li>
+          <li>AST-normalized function clones.</li>
+          <li>AST-normalized component clones.</li>
+          <li>Repeated hook patterns.</li>
+          <li>Repeated test setup and assertions.</li>
+          <li>Repeated route modules or API handlers.</li>
+          <li>Repeated className or styling structures.</li>
+        </ul>
+        <h4>Scoring</h4>
+        <ul>
+          <li>Cross-file clones should score higher than same-file repetition.</li>
+          <li>Cross-feature clones should score higher than clones within a local family of variants.</li>
+          <li>Large clones should score higher than small clones.</li>
+          <li>Clones in tests should be reported separately because duplication tradeoffs differ in test code.</li>
+          <li>Generated code, snapshots, and compiled output should be excluded.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>7.3 Escape Hatches</h3>
+        <p>
+          The Rust lens tracks unsafe blocks, FFI, raw memory, mutable globals, glob imports, and lint suppressions.
+          TypeScript and React have a different kind of danger: places where code opts out of static safety, React rules,
+          module boundaries, or browser safety.
+        </p>
+        <h4>Type-System Escapes</h4>
+        <ul>
+          <li>Explicit any.</li>
+          <li>Implicit any.</li>
+          <li>Unknown values used without narrowing.</li>
+          <li>Non-null assertions.</li>
+          <li>Type assertions.</li>
+          <li>Double assertions.</li>
+          <li>as any.</li>
+          <li>as never.</li>
+          <li>Overly broad object, Function, Record&lt;string, unknown&gt;, and Promise&lt;any&gt; surfaces.</li>
+          <li>Untyped JSON parsing.</li>
+          <li>Declaration shims that hide real dependency types.</li>
+        </ul>
+        <h4>Compiler and Lint Escapes</h4>
+        <ul>
+          <li>ts-ignore.</li>
+          <li>ts-expect-error.</li>
+          <li>ts-nocheck.</li>
+          <li>eslint-disable.</li>
+          <li>eslint-disable-next-line.</li>
+          <li>File-level rule suppressions.</li>
+          <li>Hook dependency suppressions.</li>
+          <li>Broad suppressions without a nearby explanation.</li>
+        </ul>
+        <h4>Runtime and Browser Escapes</h4>
+        <ul>
+          <li>dangerouslySetInnerHTML.</li>
+          <li>eval-like APIs.</li>
+          <li>Dynamic Function construction.</li>
+          <li>Direct DOM mutation inside React components.</li>
+          <li>Module-level mutable state.</li>
+          <li>Window globals.</li>
+          <li>Local storage used as hidden shared state.</li>
+          <li>Event buses and singleton registries.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>7.4 Type Health</h3>
+        <p>
+          The Rust lens measures wide structs, large enums, broad method surfaces, and impl spread. The TypeScript React
+          equivalent should measure structural risk in interfaces, type aliases, unions, classes, public exports, component
+          props, hook return values, and generic APIs.
+        </p>
+        <h4>Signals</h4>
+        <ul>
+          <li>Wide interfaces.</li>
+          <li>Wide component prop types.</li>
+          <li>Large unions.</li>
+          <li>Large discriminated unions.</li>
+          <li>Deeply nested object types.</li>
+          <li>Many optional props.</li>
+          <li>Boolean prop combinations that imply hidden modes.</li>
+          <li>Recursive conditional types.</li>
+          <li>Deep mapped types.</li>
+          <li>Many type parameters.</li>
+          <li>Overloaded function signatures.</li>
+          <li>Exported functions with weak return types.</li>
+          <li>Types declared or augmented across many files.</li>
+        </ul>
+        <h4>React-Specific Type Health</h4>
+        <ul>
+          <li>Components with broad props and little composition.</li>
+          <li>Props mixing data fetching, rendering, interaction, styling, and routing concerns.</li>
+          <li>Callback props with unclear contracts.</li>
+          <li>Children typed too broadly where a structured slot would be clearer.</li>
+          <li>Hook return tuples with unclear positional semantics.</li>
+          <li>Context values with too many fields or too many update functions.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>7.5 Code Locality</h3>
+        <p>
+          The Rust lens measures far dependencies, hidden coupling, public interface explicitness, test locality, churn,
+          contributors, and layer violations. The TypeScript React equivalent should answer whether a developer can understand
+          and change a feature locally.
+        </p>
+        <h4>Signals</h4>
+        <ul>
+          <li>Far imports across unrelated features.</li>
+          <li>UI importing infrastructure directly.</li>
+          <li>Feature modules importing private files from other features.</li>
+          <li>Deep relative imports.</li>
+          <li>Path aliases that obscure ownership boundaries.</li>
+          <li>Hidden coupling through stores, contexts, globals, singletons, local storage, and event emitters.</li>
+          <li>Provider values shared across too many modules.</li>
+          <li>Tests far from source.</li>
+          <li>No direct tests.</li>
+          <li>High churn.</li>
+          <li>Many contributors.</li>
+          <li>Frequent co-change with distant modules.</li>
+        </ul>
+        <h4>Test Locality Classes</h4>
+        <ul>
+          <li>Colocated test.</li>
+          <li>Nearby feature test.</li>
+          <li>External integration test only.</li>
+          <li>E2E evidence only.</li>
+          <li>Story evidence only.</li>
+          <li>No evidence.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>7.6 Architecture Leverage</h3>
+        <p>
+          The Rust lens measures whether modules provide leverage or create ripple risk. The TypeScript React equivalent
+          should identify stable primitives, brittle hubs, duplicated abstractions, and modules whose dependents keep working
+          around them.
+        </p>
+        <h4>Positive Signals</h4>
+        <ul>
+          <li>Clear public API.</li>
+          <li>Well-typed exports.</li>
+          <li>Stable shared primitives.</li>
+          <li>Reusable design-system components.</li>
+          <li>Focused custom hooks.</li>
+          <li>Validated service boundaries.</li>
+          <li>Low co-change ripple despite broad use.</li>
+          <li>Self-contained leaf modules.</li>
+        </ul>
+        <h4>Risk Signals</h4>
+        <ul>
+          <li>High inbound reach with weak types.</li>
+          <li>Function-heavy surfaces with little domain modeling.</li>
+          <li>Many callers wrapping or adapting the same module.</li>
+          <li>Duplicated components near the abstraction.</li>
+          <li>High co-change ripple.</li>
+          <li>Shared modules importing feature-specific code.</li>
+          <li>Design-system components depending on application state.</li>
+          <li>Hooks that are shared widely but expose unstable contracts.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>7.7 Correctness Catalog</h3>
+        <p>
+          The Rust lens discovers tests and optionally runs them. The TypeScript React equivalent should discover all meaningful
+          correctness evidence and map it back to source modules, routes, components, hooks, and features.
+        </p>
+        <h4>Evidence Sources</h4>
+        <ul>
+          <li>Vitest tests.</li>
+          <li>Jest tests.</li>
+          <li>Node test runner tests.</li>
+          <li>Testing Library component tests.</li>
+          <li>Hook tests.</li>
+          <li>Integration tests.</li>
+          <li>Playwright tests.</li>
+          <li>Cypress tests.</li>
+          <li>Storybook stories.</li>
+          <li>Storybook interaction tests.</li>
+          <li>Framework route tests.</li>
+        </ul>
+        <h4>Test Status</h4>
+        <ul>
+          <li>Passed.</li>
+          <li>Failed.</li>
+          <li>Skipped.</li>
+          <li>Todo.</li>
+          <li>Unknown.</li>
+          <li>Not run.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>7.8 Architecture Map</h3>
+        <p>
+          The Rust lens builds a graph with modules, dependencies, risk scores, correctness evidence, locality, leverage,
+          artifact status, and category signals. The TypeScript React equivalent should produce the same kind of board-ready
+          graph while reflecting frontend architecture.
+        </p>
+        <h4>Node Types</h4>
+        <ul>
+          <li>Package.</li>
+          <li>Feature.</li>
+          <li>Route.</li>
+          <li>Module.</li>
+          <li>Component.</li>
+          <li>Hook.</li>
+          <li>Context provider.</li>
+          <li>Store.</li>
+          <li>Service client.</li>
+          <li>Test group.</li>
+        </ul>
+        <h4>Edge Types</h4>
+        <ul>
+          <li>Static import.</li>
+          <li>Dynamic import.</li>
+          <li>Type-only import.</li>
+          <li>Route ownership.</li>
+          <li>Test reference.</li>
+          <li>Provider relationship.</li>
+          <li>Store usage.</li>
+          <li>Co-change relationship.</li>
+        </ul>
+      </section>
+    </section>
+
+    <section>
+      <h2>8. Additional Opportunities Beyond Rust Parity</h2>
+
+      <section>
+        <h3>8.1 React Health</h3>
+        <ul>
+          <li>Oversized components.</li>
+          <li>Components with too many props.</li>
+          <li>Boolean prop mode explosions.</li>
+          <li>Prop drilling depth.</li>
+          <li>Too many local state variables.</li>
+          <li>Too many refs.</li>
+          <li>Effects that derive state instead of synchronizing with external systems.</li>
+          <li>Effects mixing fetching, transformation, subscriptions, and state updates.</li>
+          <li>Custom hooks with mixed responsibilities.</li>
+          <li>Components defined inside components.</li>
+          <li>Nested render helpers.</li>
+          <li>Large conditional render blocks.</li>
+          <li>Repeated component variants.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>8.2 Hooks and Effects Risk</h3>
+        <ul>
+          <li>Rules-of-hooks violations.</li>
+          <li>Exhaustive dependency violations.</li>
+          <li>Suppressions around hook dependency arrays.</li>
+          <li>Stale closure risk.</li>
+          <li>Missing effect cleanup.</li>
+          <li>Effects that should be event handlers.</li>
+          <li>Effects that should be render-time derivations.</li>
+          <li>Custom hooks returning unstable objects or callbacks.</li>
+          <li>Custom hooks hiding global coupling.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>8.3 Render Performance Risk</h3>
+        <ul>
+          <li>Expensive computation during render.</li>
+          <li>Inline object, array, and function props passed to memoized children.</li>
+          <li>Large list rendering without virtualization hints.</li>
+          <li>Unstable keys.</li>
+          <li>Context providers with unstable values.</li>
+          <li>Context providers with broad values.</li>
+          <li>High-fanout components receiving frequently changing props.</li>
+          <li>Repeated derived state causing avoidable renders.</li>
+          <li>Overuse of memoization hiding unclear data flow.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>8.4 Accessibility Health</h3>
+        <ul>
+          <li>Interactive elements without accessible names.</li>
+          <li>Click handlers on non-interactive elements.</li>
+          <li>Invalid ARIA usage.</li>
+          <li>Suspicious ARIA usage.</li>
+          <li>Missing form labels.</li>
+          <li>Missing or low-quality image alt text.</li>
+          <li>Dialog components without focus-management evidence.</li>
+          <li>Custom controls without keyboard interaction evidence.</li>
+          <li>Forms without visible or programmatic error association.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>8.5 TypeScript Strictness Health</h3>
+        <ul>
+          <li>strict disabled.</li>
+          <li>noImplicitAny disabled.</li>
+          <li>strictNullChecks disabled.</li>
+          <li>noUncheckedIndexedAccess disabled.</li>
+          <li>exactOptionalPropertyTypes disabled.</li>
+          <li>noImplicitOverride disabled.</li>
+          <li>allowJs and checkJs posture.</li>
+          <li>skipLibCheck hiding dependency type issues.</li>
+          <li>Inconsistent tsconfig inheritance in monorepos.</li>
+          <li>Path aliases that make boundaries unclear.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>8.6 Dependency Health</h3>
+        <ul>
+          <li>Import cycles.</li>
+          <li>Layer violations.</li>
+          <li>Deep imports into private internals.</li>
+          <li>Feature-to-feature private imports.</li>
+          <li>Duplicate dependency versions.</li>
+          <li>Heavy dependencies imported by client entry points.</li>
+          <li>Server-only modules imported into client paths.</li>
+          <li>Client-only modules imported into server paths.</li>
+          <li>Barrel files with excessive fan-in or fan-out.</li>
+          <li>Package boundary violations in workspaces.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>8.7 Bundle and Runtime Opportunity</h3>
+        <ul>
+          <li>Large route-level dependency surfaces.</li>
+          <li>Missing dynamic import opportunities.</li>
+          <li>Unexpected client bundle dependencies.</li>
+          <li>Large shared chunks caused by convenience imports.</li>
+          <li>Duplicate utility libraries.</li>
+          <li>Polyfill pressure.</li>
+          <li>Design-system imports that pull in too much code.</li>
+        </ul>
+      </section>
+    </section>
+
+    <section>
+      <h2>9. Artifact Design</h2>
+      <p>
+        Each artifact should be useful alone and composable into the architecture map. Records should include stable IDs,
+        file paths, line numbers where possible, scores, signals, evidence, provenance, and measurement confidence.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Artifact</th>
+            <th>Contents</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>hotspots.json</td>
+            <td>Ranked complexity and maintainability records for files, symbols, components, hooks, reducers, and routes.</td>
+          </tr>
+          <tr>
+            <td>clones.json</td>
+            <td>Clone groups with engine, hash, classification, instances, score, and signals.</td>
+          </tr>
+          <tr>
+            <td>ts_escape_hatches.json</td>
+            <td>Safety escape records grouped by module, file, kind, count, location, and severity.</td>
+          </tr>
+          <tr>
+            <td>type_health.json</td>
+            <td>Type, interface, prop, generic, class, and public API structural health records.</td>
+          </tr>
+          <tr>
+            <td>locality_metrics.json</td>
+            <td>Module-level dependency distance, hidden coupling, test locality, churn, contributor, and co-change records.</td>
+          </tr>
+          <tr>
+            <td>leverage_metrics.json</td>
+            <td>Module-level reach, abstraction value, public surface, divergence, and ripple records.</td>
+          </tr>
+          <tr>
+            <td>react_health.json</td>
+            <td>Component, hook, state, effect, context, and render-risk records.</td>
+          </tr>
+          <tr>
+            <td>dependency_health.json</td>
+            <td>Cycles, layer violations, package boundaries, deep imports, barrels, and dependency pressure.</td>
+          </tr>
+          <tr>
+            <td>correctness_review.json</td>
+            <td>Test summary, discovered tests, layer grouping, execution status, and correctness evidence.</td>
+          </tr>
+          <tr>
+            <td>test_catalog.json</td>
+            <td>Flat list of discovered tests with IDs, names, paths, source mapping, status, and command hints.</td>
+          </tr>
+          <tr>
+            <td>map.json</td>
+            <td>Dashboard-ready graph, category risks, evidence, summary metadata, and artifact status.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>10. Risk Model</h2>
+      <p>
+        The first risk model should be simple and explainable. It should produce useful rankings without pretending to be
+        mathematically perfect.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Risk Category</th>
+            <th>Inputs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Maintainability</td>
+            <td>Complexity, file size, component size, type complexity, clone pressure, weak boundaries.</td>
+          </tr>
+          <tr>
+            <td>Change</td>
+            <td>Churn, contributor count, co-change ripple, defect history, test distance.</td>
+          </tr>
+          <tr>
+            <td>Correctness</td>
+            <td>Failing tests, skipped tests, unknown tests, missing tests, hook violations, unsafe async patterns.</td>
+          </tr>
+          <tr>
+            <td>Render Performance</td>
+            <td>Unstable render inputs, broad contexts, expensive render work, large lists, high fanout.</td>
+          </tr>
+          <tr>
+            <td>Accessibility</td>
+            <td>Static accessibility findings and missing interaction evidence.</td>
+          </tr>
+          <tr>
+            <td>Architecture</td>
+            <td>Cycles, layer violations, far dependencies, hubs, unclear public APIs, server/client boundary issues.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>11. Measurement Confidence</h2>
+      <p>
+        Every major artifact should report confidence. This protects the dashboard from treating absent evidence as good news.
+      </p>
+      <ul>
+        <li>Whether source roots exist.</li>
+        <li>Whether tsconfig was found.</li>
+        <li>Whether the TypeScript project loaded successfully.</li>
+        <li>Whether type information was available.</li>
+        <li>Whether dependencies were installed.</li>
+        <li>Whether package manager detection succeeded.</li>
+        <li>Whether test runner detection succeeded.</li>
+        <li>Whether framework detection succeeded.</li>
+        <li>Whether git history was available.</li>
+        <li>Whether configured excludes were applied.</li>
+        <li>Whether unsupported file types were skipped.</li>
+        <li>Whether stale prerequisite artifacts were detected.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>12. Framework Detection</h2>
+      <p>
+        The lens should work generically, then add richer interpretation when framework conventions are detected.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Framework</th>
+            <th>Detection and Extra Interpretation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Vite</td>
+            <td>Detect Vite config, src entry points, Vitest config, and client-only assumptions.</td>
+          </tr>
+          <tr>
+            <td>Next.js</td>
+            <td>Detect app router, pages router, server components, client components, route handlers, layouts, and loading/error boundaries.</td>
+          </tr>
+          <tr>
+            <td>Remix</td>
+            <td>Detect route modules, loaders, actions, nested routes, and route-level data boundaries.</td>
+          </tr>
+          <tr>
+            <td>React Router</td>
+            <td>Detect route definitions, lazy modules, route loaders, and nested route ownership.</td>
+          </tr>
+          <tr>
+            <td>Expo / React Native</td>
+            <td>Detect native platform files, app directory conventions, and React Native accessibility patterns.</td>
+          </tr>
+          <tr>
+            <td>Storybook</td>
+            <td>Use stories as UI coverage evidence and map stories back to components.</td>
+          </tr>
+          <tr>
+            <td>Monorepo</td>
+            <td>Detect npm, pnpm, yarn, Nx, Turborepo, and package workspaces.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>13. Implementation Phases</h2>
+
+      <section>
+        <h3>Phase 1: Contract and Skeleton</h3>
+        <ul>
+          <li>Create the repository.</li>
+          <li>Define package metadata and CLI entry points.</li>
+          <li>Implement configuration loading.</li>
+          <li>Implement catalog output.</li>
+          <li>Implement artifact writing conventions.</li>
+          <li>Implement provenance and measurement confidence helpers.</li>
+          <li>Create fixture projects for tests.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Phase 2: Static TypeScript Measurements</h3>
+        <ul>
+          <li>Implement source discovery.</li>
+          <li>Implement TypeScript project loading.</li>
+          <li>Implement hotspots.</li>
+          <li>Implement escape hatches.</li>
+          <li>Implement type health.</li>
+          <li>Implement clone detection baseline.</li>
+          <li>Implement dependency graph baseline.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Phase 3: Correctness and Git Evidence</h3>
+        <ul>
+          <li>Discover tests across common runners.</li>
+          <li>Map tests to modules, components, hooks, routes, and features.</li>
+          <li>Optionally run tests.</li>
+          <li>Collect git churn, contributors, defect commits, and co-change data.</li>
+          <li>Feed correctness and git evidence into locality and map artifacts.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Phase 4: React-Specific Measurements</h3>
+        <ul>
+          <li>Implement component health.</li>
+          <li>Implement hook and effect risk.</li>
+          <li>Implement render performance risk.</li>
+          <li>Implement context and state coupling analysis.</li>
+          <li>Implement accessibility health baseline.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Phase 5: Architecture Map</h3>
+        <ul>
+          <li>Combine hotspots, correctness, locality, leverage, React health, and dependency health.</li>
+          <li>Produce board-compatible graph nodes and edges.</li>
+          <li>Group nodes by package, feature, route, or folder.</li>
+          <li>Expose category risk scores and evidence.</li>
+          <li>Represent unknown and stale artifacts honestly.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Phase 6: Dashboard Integration</h3>
+        <ul>
+          <li>Verify project-management-board can consume the catalog.</li>
+          <li>Verify each task can run individually.</li>
+          <li>Verify artifacts appear under the expected output directory.</li>
+          <li>Verify the architecture map renders with meaningful groups, nodes, edges, scores, and signals.</li>
+        </ul>
+      </section>
+    </section>
+
+    <section>
+      <h2>14. Recommended MVP</h2>
+      <p>
+        The first useful version should establish the contract and deliver trustworthy static insight before attempting deeper
+        browser, bundle, and runtime analysis.
+      </p>
+      <ol>
+        <li>Config loading.</li>
+        <li>Catalog output.</li>
+        <li>Hotspots.</li>
+        <li>Escape hatches.</li>
+        <li>Type health.</li>
+        <li>Dependency health.</li>
+        <li>Correctness catalog.</li>
+        <li>Architecture map.</li>
+      </ol>
+      <p>
+        React health, render performance, accessibility, and bundle intelligence should follow once the base graph and artifact
+        model are stable.
+      </p>
+    </section>
+
+    <section>
+      <h2>15. Validation Strategy</h2>
+      <ul>
+        <li>Fixture with simple TypeScript utilities.</li>
+        <li>Fixture with React components and hooks.</li>
+        <li>Fixture with deliberate type escape hatches.</li>
+        <li>Fixture with duplicate components and utilities.</li>
+        <li>Fixture with dependency cycles and layer violations.</li>
+        <li>Fixture with colocated and distant tests.</li>
+        <li>Fixture with Next.js-style server/client boundaries.</li>
+        <li>Snapshot tests for JSON artifact shape.</li>
+        <li>Golden tests for scores and signal labels.</li>
+        <li>Integration test for catalog plus measure all.</li>
+        <li>Dashboard smoke test through project-management-board.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>16. Initial Tooling Bets</h2>
+      <ul>
+        <li><strong>TypeScript compiler API</strong>: project loading, source files, symbols, types, exports, imports, and diagnostics.</li>
+        <li><strong>typescript-eslint</strong>: ESTree traversal, typed lint-style analysis, and rule-compatible services.</li>
+        <li><strong>eslint-plugin-react-hooks</strong>: hooks correctness and React Compiler diagnostics.</li>
+        <li><strong>dependency-cruiser</strong>: dependency graph, cycles, and boundary validation.</li>
+        <li><strong>jscpd</strong>: initial clone detection baseline.</li>
+        <li><strong>Vitest, Jest, Playwright, and Cypress detection</strong>: correctness catalog and optional execution.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>17. Open Decisions</h2>
+      <ul>
+        <li>Whether implementation should be pure Node/TypeScript or a Python CLI wrapping Node analyzers.</li>
+        <li>Whether to create a shared cross-lens artifact schema package now or later.</li>
+        <li>How much framework-specific logic belongs in core versus adapters.</li>
+        <li>How strict first-version risk thresholds should be.</li>
+        <li>Whether accessibility should be static-only at first or include optional browser checks later.</li>
+        <li>Whether bundle analysis belongs in the first release or a later performance lens.</li>
+        <li>Whether React Native should be first-class in the initial scope or treated as a later adapter.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>18. Definition of Done</h2>
+      <ul>
+        <li>A TypeScript/React project can add a local lens config.</li>
+        <li>The lens can print a catalog with stable task IDs.</li>
+        <li>The lens can run all MVP measurements.</li>
+        <li>The lens writes board-compatible JSON artifacts.</li>
+        <li>The architecture map includes modules, edges, scores, signals, evidence, and artifact status.</li>
+        <li>The dashboard can run tasks and display results without hardcoding TypeScript-specific task metadata.</li>
+        <li>The fixture suite proves the core measurements are deterministic.</li>
+        <li>The README explains repository boundaries, quick start, artifacts, and dashboard integration.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

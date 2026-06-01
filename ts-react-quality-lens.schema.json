@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pmfleming/ts-react-quality-lens/ts-react-quality-lens.schema.json",
+  "title": "ts-react-quality-lens artifact",
+  "type": "object",
+  "required": ["schema_version", "task_id", "project", "provenance", "confidence", "summary"],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "project": {
+      "type": "object",
+      "required": ["name", "root"],
+      "properties": {
+        "name": { "type": "string" },
+        "root": { "type": "string" },
+        "framework": { "type": "string" },
+        "package_manager": { "type": "string" },
+        "test_runner": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["lens", "schema_version", "command", "host", "measured_at", "source_type"],
+      "properties": {
+        "lens": { "const": "ts-react-quality-lens" },
+        "schema_version": { "type": "string" },
+        "command": { "type": "string" },
+        "host": { "type": "string" },
+        "measured_at": { "type": "string" },
+        "source_type": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["boolean", "string", "number", "null"]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
