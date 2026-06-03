@@ -1,45 +1,46 @@
 import childProcess from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type * as tsTypes from "typescript";
 import { relativeModuleId, toPosix } from "./files.js";
+import type {
+  Config,
+  DependencyCruiserResult,
+  DiagnosticRecord,
+  EslintReactHooksResult,
+  JscpdResult,
+  SourceFileRecord,
+  TypedDeclaration,
+  TypedModuleRecord,
+  TypeScriptProject,
+} from "./types.js";
 
 const require = createRequire(import.meta.url);
 const TOOL_TIMEOUT_MS = 120000;
 
-export function loadTypeScriptProject(config, sourceFiles) {
+type ExecError = Error & { stdout?: unknown; stderr?: unknown; status?: number };
+type ToolRunOptions = childProcess.ExecFileSyncOptionsWithStringEncoding;
+
+export function loadTypeScriptProject(config: Config, sourceFiles: SourceFileRecord[]): TypeScriptProject {
   const ts = requireOptional("typescript");
   if (!ts) {
-    return {
-      available: false,
-      loaded: false,
-      reason: "typescript package is not installed",
-      diagnostics: [],
-      modules: new Map(),
-    };
+    return unloadedTypeScriptProject(false, "typescript package is not installed");
   }
   if (!config.tsconfig || !fs.existsSync(config.tsconfig)) {
-    return {
-      available: true,
-      loaded: false,
-      reason: "tsconfig was not found",
-      diagnostics: [],
-      modules: new Map(),
-    };
+    return unloadedTypeScriptProject(true, "tsconfig was not found");
   }
 
   try {
     const configText = ts.sys.readFile(config.tsconfig);
+    if (configText === undefined) return unloadedTypeScriptProject(true, "tsconfig could not be read");
     const parsedJson = ts.parseConfigFileTextToJson(config.tsconfig, configText);
     if (parsedJson.error) {
-      return {
-        available: true,
-        loaded: false,
-        reason: flattenTsMessage(ts, parsedJson.error.messageText),
-        diagnostics: [diagnosticRecord(ts, parsedJson.error, config.projectRoot)],
-        modules: new Map(),
-      };
+      return unloadedTypeScriptProject(true, flattenTsMessage(ts, parsedJson.error.messageText), [
+        diagnosticRecord(ts, parsedJson.error, config.projectRoot),
+      ]);
     }
     const parsed = ts.parseJsonConfigFileContent(
       parsedJson.config,
@@ -56,7 +57,7 @@ export function loadTypeScriptProject(config, sourceFiles) {
       },
     });
     const checker = program.getTypeChecker();
-    const diagnostics = ts.getPreEmitDiagnostics(program).map((diagnostic) =>
+    const diagnostics = ts.getPreEmitDiagnostics(program).map((diagnostic: tsTypes.Diagnostic) =>
       diagnosticRecord(ts, diagnostic, config.projectRoot),
     );
     const wanted = new Set(sourceFiles.map((file) => path.resolve(file.path).toLowerCase()));
@@ -78,17 +79,25 @@ export function loadTypeScriptProject(config, sourceFiles) {
       modules,
     };
   } catch (error) {
-    return {
-      available: true,
-      loaded: false,
-      reason: error instanceof Error ? error.message : String(error),
-      diagnostics: [],
-      modules: new Map(),
-    };
+    return unloadedTypeScriptProject(true, error instanceof Error ? error.message : String(error));
   }
 }
 
-export function runDependencyCruiser(config) {
+function unloadedTypeScriptProject(
+  available: boolean,
+  reason: string,
+  diagnostics: DiagnosticRecord[] = [],
+): TypeScriptProject {
+  return {
+    available,
+    loaded: false,
+    reason,
+    diagnostics,
+    modules: new Map(),
+  };
+}
+
+export function runDependencyCruiser(config: Config): DependencyCruiserResult {
   const args = [
     "--no-config",
     "--output-type",
@@ -104,7 +113,7 @@ export function runDependencyCruiser(config) {
     "depcruise",
     "dependency-cruiser executable was not found",
     { modules: [], summary: {} },
-    (executable) => {
+    (executable: string) => {
       const stdout = runLocalTool(executable, args, {
         cwd: config.projectRoot,
         encoding: "utf8",
@@ -120,13 +129,13 @@ export function runDependencyCruiser(config) {
   );
 }
 
-export function runJscpd(config) {
-  const outputDir = path.join(config.outputDir, ".tooling", `jscpd-${process.pid}-${Date.now()}`);
+export function runJscpd(config: Config): JscpdResult {
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-jscpd-${process.pid}-`));
   const args = [
     "--reporters",
     "json",
     "--output",
-    toPosix(path.relative(config.projectRoot, outputDir)),
+    outputDir,
     "--min-lines",
     "5",
     "--min-tokens",
@@ -142,71 +151,34 @@ export function runJscpd(config) {
     "jscpd",
     "jscpd executable was not found",
     { duplicates: [], statistics: {} },
-    (executable) => {
-      fs.mkdirSync(outputDir, { recursive: true });
-      runLocalTool(executable, args, {
-        cwd: config.projectRoot,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: TOOL_TIMEOUT_MS,
-      });
-      const reportPath = path.join(outputDir, "jscpd-report.json");
-      const report = fs.existsSync(reportPath) ? JSON.parse(fs.readFileSync(reportPath, "utf8")) : {};
-      return {
-        duplicates: report.duplicates ?? [],
-        statistics: report.statistics ?? {},
-      };
+    (executable: string) => {
+      try {
+        runLocalTool(executable, args, {
+          cwd: config.projectRoot,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: TOOL_TIMEOUT_MS,
+        });
+        const reportPath = path.join(outputDir, "jscpd-report.json");
+        const report = fs.existsSync(reportPath) ? JSON.parse(fs.readFileSync(reportPath, "utf8")) : {};
+        return {
+          duplicates: report.duplicates ?? [],
+          statistics: report.statistics ?? {},
+        };
+      } finally {
+        fs.rmSync(outputDir, { recursive: true, force: true });
+      }
     },
   );
 }
 
-export function runReactHooksLint(config) {
-  const configPath = path.join(config.outputDir, ".tooling", `eslint-react-hooks-${process.pid}-${Date.now()}.config.mjs`);
+export function runReactHooksLint(config: Config): EslintReactHooksResult {
+  const toolingDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-eslint-${process.pid}-`));
+  const configPath = path.join(toolingDir, "eslint-react-hooks.config.mjs");
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   const projectPackageUrl = packageJsonUrl(config.projectRoot);
   const toolPackageUrl = packageJsonUrl(repoRoot());
-  fs.writeFileSync(
-    configPath,
-    `import { createRequire } from "node:module";
-
-const projectRequire = createRequire(${JSON.stringify(projectPackageUrl)});
-const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
-
-function requireTool(name) {
-  try {
-    return projectRequire(name);
-  } catch {
-    return toolRequire(name);
-  }
-}
-
-const reactHooks = requireTool("eslint-plugin-react-hooks");
-const tsParser = requireTool("@typescript-eslint/parser");
-
-export default [
-  {
-    files: ["**/*.{js,jsx,ts,tsx}"],
-    ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
-    languageOptions: {
-      parser: tsParser,
-      parserOptions: {
-        ecmaFeatures: { jsx: true },
-        ecmaVersion: "latest",
-        sourceType: "module"
-      }
-    },
-    plugins: {
-      "react-hooks": reactHooks
-    },
-    rules: {
-      "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn"
-    }
-  }
-];
-`,
-    "utf8",
-  );
+  fs.writeFileSync(configPath, reactHooksConfig(projectPackageUrl, toolPackageUrl), "utf8");
   const args = [
     "--config",
     configPath,
@@ -220,23 +192,54 @@ export default [
     "eslint",
     "eslint executable was not found",
     { messages: [] },
-    (executable) => {
-      const stdout = runLocalTool(executable, args, {
-        cwd: config.projectRoot,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: TOOL_TIMEOUT_MS,
-      });
-      return { messages: normalizeEslintMessages(JSON.parse(stdout), config) };
+    (executable: string) => {
+      try {
+        const stdout = runLocalTool(executable, args, {
+          cwd: config.projectRoot,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: TOOL_TIMEOUT_MS,
+        });
+        return { messages: normalizeEslintMessages(JSON.parse(stdout), config) };
+      } finally {
+        fs.rmSync(toolingDir, { recursive: true, force: true });
+      }
     },
-    (error) => {
+    (error: ExecError) => {
       const stdout = String(error.stdout ?? "");
-      return stdout.trim().startsWith("[") ? { messages: normalizeEslintMessages(JSON.parse(stdout), config) } : null;
+      try {
+        return stdout.trim().startsWith("[") ? { messages: normalizeEslintMessages(JSON.parse(stdout), config) } : null;
+      } finally {
+        fs.rmSync(toolingDir, { recursive: true, force: true });
+      }
     },
   );
 }
 
-function runToolAdapter(config, executableName, missingReason, empty, run, recover = null) {
+function reactHooksConfig(projectPackageUrl: string, toolPackageUrl: string): string {
+  return `import { createRequire } from "node:module";
+const projectRequire = createRequire(${JSON.stringify(projectPackageUrl)});
+const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
+function requireTool(name) { try { return projectRequire(name); } catch { return toolRequire(name); } }
+const reactHooks = requireTool("eslint-plugin-react-hooks");
+const tsParser = requireTool("@typescript-eslint/parser");
+export default [{
+  files: ["**/*.{js,jsx,ts,tsx}"], ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
+  languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module" } },
+  plugins: { "react-hooks": reactHooks },
+  rules: { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "warn" }
+}];
+`;
+}
+
+function runToolAdapter<T extends Record<string, unknown>>(
+  config: Config,
+  executableName: string,
+  missingReason: string,
+  empty: T,
+  run: (executable: string) => T,
+  recover: ((error: ExecError) => T | null) | null = null,
+) {
   const executable = localBin(config.projectRoot, executableName);
   if (!executable) {
     return { available: false, ran: false, reason: missingReason, ...empty };
@@ -244,13 +247,17 @@ function runToolAdapter(config, executableName, missingReason, empty, run, recov
   try {
     return { available: true, ran: true, reason: null, ...run(executable) };
   } catch (error) {
-    const recovered = recover?.(error);
+    const execError = error as ExecError;
+    const recovered = recover?.(execError);
     if (recovered) return { available: true, ran: true, reason: null, ...recovered };
-    return { available: true, ran: false, reason: toolError(error), ...empty };
+    return { available: true, ran: false, reason: toolError(execError), ...empty };
   }
 }
 
-export function detectFrameworkDetails(config, project) {
+export function detectFrameworkDetails(
+  config: Config,
+  project: { sourceFiles: SourceFileRecord[]; testFiles: SourceFileRecord[]; modules: Array<{ file: string }>; imports: unknown[] },
+) {
   const files = new Set<string>(project.sourceFiles.map((file) => file.relativePath));
   const appRoutes = [...files].filter((file) => /(?:^|\/)app\/.*(?:page|layout|route|loading|error)\.[jt]sx?$/.test(file));
   const pagesRoutes = [...files].filter((file) => /(?:^|\/)pages\/.*\.[jt]sx?$/.test(file));
@@ -282,9 +289,16 @@ export function detectFrameworkDetails(config, project) {
   };
 }
 
-function typedModuleRecord(ts, checker, program, config, sourceFile) {
+function typedModuleRecord(
+  ts: typeof tsTypes,
+  checker: tsTypes.TypeChecker,
+  program: tsTypes.Program,
+  config: Config,
+  sourceFile: tsTypes.SourceFile,
+): TypedModuleRecord {
+  void program;
   const exports = [];
-  const declarations = [];
+  const declarations: TypedDeclaration[] = [];
   const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
   if (moduleSymbol) {
     for (const symbol of checker.getExportsOfModule(moduleSymbol)) {
@@ -308,8 +322,8 @@ function typedModuleRecord(ts, checker, program, config, sourceFile) {
   });
   return record;
 
-  function visit(node) {
-    if (isDeclarationNode(ts, node) && node.name && ts.isIdentifier(node.name)) {
+  function visit(node: tsTypes.Node): void {
+    if (isNamedDeclarationNode(ts, node)) {
       const symbol = checker.getSymbolAtLocation(node.name);
       declarations.push({
         name: node.name.text,
@@ -323,7 +337,7 @@ function typedModuleRecord(ts, checker, program, config, sourceFile) {
   }
 }
 
-function diagnosticRecord(ts, diagnostic, projectRoot) {
+function diagnosticRecord(ts: typeof tsTypes, diagnostic: tsTypes.Diagnostic, projectRoot: string): DiagnosticRecord {
   const file = diagnostic.file?.fileName ? toPosix(path.relative(projectRoot, diagnostic.file.fileName)) : null;
   const lineChar =
     diagnostic.file && typeof diagnostic.start === "number"
@@ -339,24 +353,34 @@ function diagnosticRecord(ts, diagnostic, projectRoot) {
   };
 }
 
-function isDeclarationNode(ts, node) {
-  return (
-    ts.isFunctionDeclaration(node) ||
-    ts.isClassDeclaration(node) ||
-    ts.isInterfaceDeclaration(node) ||
-    ts.isTypeAliasDeclaration(node) ||
-    ts.isEnumDeclaration(node) ||
-    ts.isVariableDeclaration(node)
-  );
+function isNamedDeclarationNode(
+  ts: typeof tsTypes,
+  node: tsTypes.Node,
+): node is tsTypes.Declaration & { name: tsTypes.Identifier } {
+  if (
+    !(
+      ts.isFunctionDeclaration(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isInterfaceDeclaration(node) ||
+      ts.isTypeAliasDeclaration(node) ||
+      ts.isEnumDeclaration(node) ||
+      ts.isVariableDeclaration(node)
+    )
+  ) {
+    return false;
+  }
+  const name = node.name;
+  return Boolean(name && ts.isIdentifier(name));
 }
 
-function hasModifier(ts, node, kind) {
-  return Boolean(ts.getModifiers?.(node)?.some((modifier) => modifier.kind === kind));
+function hasModifier(ts: typeof tsTypes, node: tsTypes.Node, kind: tsTypes.SyntaxKind): boolean {
+  return Boolean(ts.getModifiers?.(node as tsTypes.HasModifiers)?.some((modifier) => modifier.kind === kind));
 }
 
-function safeTypeString(checker, symbol, node) {
+function safeTypeString(checker: tsTypes.TypeChecker, symbol: tsTypes.Symbol, node?: tsTypes.Node): string | null {
   try {
     const declaration = node ?? symbol.valueDeclaration ?? symbol.declarations?.[0];
+    if (!declaration) return null;
     const type =
       symbol.valueDeclaration || node
         ? checker.getTypeOfSymbolAtLocation(symbol, declaration)
@@ -367,11 +391,11 @@ function safeTypeString(checker, symbol, node) {
   }
 }
 
-function flattenTsMessage(ts, messageText) {
+function flattenTsMessage(ts: typeof tsTypes, messageText: string | tsTypes.DiagnosticMessageChain): string {
   return ts.flattenDiagnosticMessageText(messageText, "\n");
 }
 
-function compilerOptionSummary(options) {
+function compilerOptionSummary(options: tsTypes.CompilerOptions) {
   return {
     strict: Boolean(options.strict),
     noImplicitAny: Boolean(options.noImplicitAny || options.strict),
@@ -384,7 +408,7 @@ function compilerOptionSummary(options) {
   };
 }
 
-function localBin(projectRoot, name) {
+function localBin(projectRoot: string, name: string): string | null {
   const names = process.platform === "win32" ? [`${name}.cmd`, name] : [name];
   for (const root of [projectRoot, repoRoot()]) {
     for (const candidate of names.map((binName) => path.join(root, "node_modules", ".bin", binName))) {
@@ -394,7 +418,7 @@ function localBin(projectRoot, name) {
   return null;
 }
 
-function packageJsonUrl(root) {
+function packageJsonUrl(root: string): string {
   return pathToFileURL(path.join(root, "package.json")).href;
 }
 
@@ -402,30 +426,34 @@ function repoRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
-function existingAbsoluteRoots(config) {
+function existingAbsoluteRoots(config: Config): string[] {
   return config.sourceRoots.filter((root) => fs.existsSync(root));
 }
 
-function existingRelativeRoots(config) {
+function existingRelativeRoots(config: Config): string[] {
   return existingAbsoluteRoots(config).map((root) => toPosix(path.relative(config.projectRoot, root)) || ".");
 }
 
-function normalizeEslintMessages(results, config) {
+function normalizeEslintMessages(results: Array<{ filePath: string; messages: Array<{ ruleId?: string; line?: number; column?: number; severity?: number; message: string }> }>, config: Config) {
   return results.flatMap((result) =>
     result.messages
-      .filter((message) => message.ruleId?.startsWith("react-hooks/"))
+      .filter((message): message is { ruleId: string; line?: number; column?: number; severity?: number; message: string } =>
+        Boolean(message.ruleId?.startsWith("react-hooks/")),
+      )
       .map((message) => ({
         file: toPosix(path.relative(config.projectRoot, result.filePath)),
         line: message.line ?? null,
         column: message.column ?? null,
         rule_id: message.ruleId,
-        severity: message.severity === 2 ? "error" : "warning",
+        severity: message.severity === 2 ? "error" as const : "warning" as const,
         message: message.message,
       })),
   );
 }
 
-function requireOptional(name) {
+function requireOptional(name: "typescript"): typeof tsTypes | null;
+function requireOptional(name: string): unknown;
+function requireOptional(name: string): unknown {
   try {
     return require(name);
   } catch {
@@ -433,7 +461,7 @@ function requireOptional(name) {
   }
 }
 
-function runLocalTool(executable, args, options) {
+function runLocalTool(executable: string, args: string[], options: ToolRunOptions): string {
   if (process.platform === "win32" && executable.toLowerCase().endsWith(".cmd")) {
     const commandLine = [executable, ...args].map(quoteWindowsArg).join(" ");
     return childProcess.execFileSync("cmd.exe", ["/d", "/s", "/c", commandLine], options);
@@ -443,13 +471,13 @@ function runLocalTool(executable, args, options) {
   });
 }
 
-function quoteWindowsArg(value) {
+function quoteWindowsArg(value: string): string {
   const text = String(value);
   if (!/[ \t"&|<>^]/.test(text)) return text;
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-function toolError(error) {
+function toolError(error: ExecError): string {
   const stderr = String(error.stderr ?? "").trim();
   const stdout = String(error.stdout ?? "").trim();
   const message = error instanceof Error ? error.message : String(error);

@@ -10,6 +10,12 @@ import {
   measureReactHealth,
   measureTypeHealth,
 } from "./quality.js";
+import type { AnalysisContext, Artifact, Config } from "../types.js";
+
+type MeasureTask = {
+  handler: (config: Config, command: string, context: AnalysisContext) => Artifact;
+  prerequisites?: string[];
+};
 
 export const MEASURE_ORDER = [
   "quality.hotspots",
@@ -23,9 +29,9 @@ export const MEASURE_ORDER = [
   "quality.react_health",
   "correctness.all",
   "map.architecture",
-];
+] as const;
 
-export const MEASURE_TASKS = new Map(
+export const MEASURE_TASKS = new Map<string, MeasureTask>(
   [
     ["quality.hotspots", { handler: measureHotspots }],
     ["quality.clones", { handler: measureClones }],

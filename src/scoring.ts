@@ -1,10 +1,18 @@
 import * as ts from "typescript";
 import { lineForIndex } from "./files.js";
+import { RISK_MODEL, riskForScore, severityScore } from "./risk-model.js";
 import { callExpressionName, lineForNode } from "./ts-ast.js";
+import type { FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, Severity, Signal, TypeRecord, TypedDeclaration, TypedExport } from "./types.js";
 
-export function fileHotspotRecord(module) {
+export { riskForScore } from "./risk-model.js";
+
+export function fileHotspotRecord(module: ModuleRecord): ScoredRecord {
   const branchCount = module.functions.reduce((total, fn) => total + Math.max(0, fn.complexity - 1), 0);
-  const score = Math.round(module.lines * 0.3 + branchCount * 2 + module.imports.length * 2);
+  const score = Math.round(
+    module.lines * RISK_MODEL.hotspot.file_line_weight +
+      branchCount * RISK_MODEL.hotspot.file_branch_weight +
+      module.imports.length * RISK_MODEL.hotspot.file_import_weight,
+  );
   return {
     id: `file:${module.id}`,
     kind: "file",
@@ -21,9 +29,13 @@ export function fileHotspotRecord(module) {
   };
 }
 
-export function functionHotspotRecord(module, fn) {
+export function functionHotspotRecord(module: ModuleRecord, fn: FunctionRecord): ScoredRecord {
   const score = Math.round(
-    fn.complexity * 8 + fn.nesting_depth * 5 + fn.lines * 0.4 + fn.jsx_density * 2 + fn.jsxConditionals * 6,
+    fn.complexity * RISK_MODEL.hotspot.function_complexity_weight +
+      fn.nesting_depth * RISK_MODEL.hotspot.function_nesting_weight +
+      fn.lines * RISK_MODEL.hotspot.function_line_weight +
+      fn.jsx_density * RISK_MODEL.hotspot.function_jsx_density_weight +
+      fn.jsxConditionals * RISK_MODEL.hotspot.function_jsx_conditional_weight,
   );
   return {
     id: fn.id,
@@ -44,31 +56,32 @@ export function functionHotspotRecord(module, fn) {
   };
 }
 
-export function escapeRecords(module) {
+export function escapeRecords(module: ModuleRecord): ScoredRecord[] {
   const sourceFile = module.astSourceFile;
   const records = [...suppressionRecords(module)];
   if (!sourceFile) return records;
+  const astSourceFile = sourceFile;
 
-  function add(kind, severity, node, evidence = node.getText(sourceFile)) {
+  function add(kind: string, severity: Severity, node: ts.Node, evidence = node.getText(astSourceFile)): void {
     records.push({
-      id: `escape:${module.id}:${kind}:${lineForNode(sourceFile, node)}:${node.getStart(sourceFile)}`,
+      id: `escape:${module.id}:${kind}:${lineForNode(astSourceFile, node)}:${node.getStart(astSourceFile)}`,
       module_id: module.id,
       file: module.file,
       kind,
       severity,
-      line: lineForNode(sourceFile, node),
+      line: lineForNode(astSourceFile, node),
       evidence: evidence.replace(/\s+/g, " ").slice(0, 120),
     });
   }
 
-  function visit(node) {
+  function visit(node: ts.Node): void {
     if (node.kind === ts.SyntaxKind.AnyKeyword) add("explicit_any", "medium", node);
     if (node.kind === ts.SyntaxKind.UnknownKeyword) add("unknown_without_narrowing", "low", node);
     if (ts.isNonNullExpression(node)) add("non_null_assertion", "medium", node);
     if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
       add(nestedAssertion(node) ? "double_assertion" : "type_assertion", nestedAssertion(node) ? "high" : "medium", node);
     }
-    if (isTopLevelMutableStatement(sourceFile, node)) add("module_level_mutable_state", "medium", node);
+    if (isTopLevelMutableStatement(astSourceFile, node)) add("module_level_mutable_state", "medium", node);
     if (isDangerousHtml(node)) add("dangerous_html", "high", node);
     if (isEvalLikeCall(node)) add("eval_like_api", "high", node);
     if (isDirectDomMutation(node)) add("direct_dom_mutation", "medium", node);
@@ -80,90 +93,104 @@ export function escapeRecords(module) {
   return records;
 }
 
-export function typeHealthRecords(module) {
+export function typeHealthRecords(module: ModuleRecord): ScoredRecord[] {
   const typedDeclarations = new Map((module.typed?.declarations ?? []).map((item) => [`${item.name}:${item.line}`, item]));
-  const records = module.types.map((type) => {
-    const signals = [];
-    if (type.field_count > 10) signals.push({ kind: "wide_surface", value: type.field_count });
-    if (type.union_members > 6) signals.push({ kind: "large_union", value: type.union_members });
-    if (type.optional_count > 5) signals.push({ kind: "many_optional_fields", value: type.optional_count });
-    if (type.generic_params > 3) signals.push({ kind: "many_type_parameters", value: type.generic_params });
-    if (/\bany\b/.test(type.body)) signals.push({ kind: "weak_type_member", value: "any" });
-    const score =
-      type.field_count * 4 + type.union_members * 5 + type.optional_count * 3 + type.generic_params * 8 + signals.length * 8;
-    return {
-      id: `type:${module.id}:${type.name}:${type.line}`,
-      module_id: module.id,
-      file: module.file,
-      name: type.name,
-      kind: type.kind,
-      exported: type.exported,
-      line: type.line,
-      score,
-      risk: riskForScore(score),
-      signals,
-      source: "structural-type-scan",
-      typed_info: typedDeclarations.get(`${type.name}:${type.line}`) ?? null,
-      metrics: {
-        field_count: type.field_count,
-        optional_count: type.optional_count,
-        union_members: type.union_members,
-        generic_params: type.generic_params,
-      },
-    };
-  });
-  for (const declaration of module.typed?.declarations ?? []) {
-    if (records.some((record) => record.name === declaration.name && record.line === declaration.line)) continue;
-    const weakType = isWeakType(declaration.type);
-    const exportedApi =
-      declaration.exported && ["FunctionDeclaration", "ClassDeclaration", "EnumDeclaration"].includes(declaration.kind);
-    if (!weakType && !exportedApi) continue;
-    const score = weakType ? 45 : 18;
-    records.push({
-      id: `typed-symbol:${module.id}:${declaration.name}:${declaration.line}`,
-      module_id: module.id,
-      file: module.file,
-      name: declaration.name,
-      kind: declaration.kind,
-      exported: declaration.exported,
-      line: declaration.line,
-      score,
-      risk: riskForScore(score),
-      source: "typescript-compiler-api",
-      signals: weakType ? [{ kind: "weak_inferred_type", value: declaration.type ?? "unknown" }] : [],
-      metrics: {
-        inferred_type: declaration.type,
-      },
-    });
-  }
-  for (const exported of module.typed?.exports ?? []) {
-    if (isWeakType(exported.type)) {
-      records.push({
-        id: `typed-export:${module.id}:${exported.name}`,
-        module_id: module.id,
-        file: module.file,
-        name: exported.name,
-        kind: "export",
-        exported: true,
-        line: null,
-        score: 55,
-        risk: "medium",
-        source: "typescript-compiler-api",
-        signals: [{ kind: "weak_export_type", value: exported.type ?? "unknown" }],
-        metrics: {
-          inferred_type: exported.type,
-        },
-      });
-    }
-  }
-  return records;
+  const structuralRecords = module.types.map((type) => structuralTypeRecord(module, type, typedDeclarations));
+  const structuralKeys = new Set(module.types.map((type) => `${type.name}:${type.line}`));
+  const declarationRecords = (module.typed?.declarations ?? [])
+    .filter((declaration) => !structuralKeys.has(`${declaration.name}:${declaration.line}`))
+    .map((declaration) => typedDeclarationRecord(module, declaration))
+    .filter((record): record is ScoredRecord => Boolean(record));
+  const exportRecords = (module.typed?.exports ?? [])
+    .map((exported) => weakTypedExportRecord(module, exported))
+    .filter((record): record is ScoredRecord => Boolean(record));
+  return [...structuralRecords, ...declarationRecords, ...exportRecords];
 }
 
-export function frameworkRiskRecords(project) {
+function structuralTypeRecord(
+  module: ModuleRecord,
+  type: TypeRecord,
+  typedDeclarations: Map<string, TypedDeclaration>,
+): ScoredRecord {
+  const signals = typeHealthSignals(type);
+  const score =
+    type.field_count * 4 + type.union_members * 5 + type.optional_count * 3 + type.generic_params * 8 + signals.length * 8;
+  return {
+    id: `type:${module.id}:${type.name}:${type.line}`,
+    module_id: module.id,
+    file: module.file,
+    name: type.name,
+    kind: type.kind,
+    exported: type.exported,
+    line: type.line,
+    score,
+    risk: riskForScore(score),
+    signals,
+    source: "structural-type-scan",
+    typed_info: typedDeclarations.get(`${type.name}:${type.line}`) ?? null,
+    metrics: {
+      field_count: type.field_count,
+      optional_count: type.optional_count,
+      union_members: type.union_members,
+      generic_params: type.generic_params,
+    },
+  };
+}
+
+function typeHealthSignals(type: TypeRecord): Signal[] {
+  return [
+    ...(type.field_count > 10 ? [{ kind: "wide_surface", value: type.field_count }] : []),
+    ...(type.union_members > 6 ? [{ kind: "large_union", value: type.union_members }] : []),
+    ...(type.optional_count > 5 ? [{ kind: "many_optional_fields", value: type.optional_count }] : []),
+    ...(type.generic_params > 3 ? [{ kind: "many_type_parameters", value: type.generic_params }] : []),
+    ...(/\bany\b/.test(type.body) ? [{ kind: "weak_type_member", value: "any" }] : []),
+  ];
+}
+
+function typedDeclarationRecord(module: ModuleRecord, declaration: TypedDeclaration): ScoredRecord | null {
+  const weakType = isWeakType(declaration.type);
+  const exportedApi = declaration.exported && ["FunctionDeclaration", "ClassDeclaration", "EnumDeclaration"].includes(declaration.kind);
+  if (!weakType && !exportedApi) return null;
+  const score = weakType ? 45 : 18;
+  return {
+    id: `typed-symbol:${module.id}:${declaration.name}:${declaration.line}`,
+    module_id: module.id,
+    file: module.file,
+    name: declaration.name,
+    kind: declaration.kind,
+    exported: declaration.exported,
+    line: declaration.line,
+    score,
+    risk: riskForScore(score),
+    source: "typescript-compiler-api",
+    signals: weakType ? [{ kind: "weak_inferred_type", value: declaration.type ?? "unknown" }] : [],
+    metrics: { inferred_type: declaration.type },
+  };
+}
+
+function weakTypedExportRecord(module: ModuleRecord, exported: TypedExport): ScoredRecord | null {
+  if (!isWeakType(exported.type)) return null;
+  return {
+    id: `typed-export:${module.id}:${exported.name}`,
+    module_id: module.id,
+    file: module.file,
+    name: exported.name,
+    kind: "export",
+    exported: true,
+    line: null,
+    score: 55,
+    risk: "medium",
+    source: "typescript-compiler-api",
+    signals: [{ kind: "weak_export_type", value: exported.type ?? "unknown" }],
+    metrics: { inferred_type: exported.type },
+  };
+}
+
+export function frameworkRiskRecords(project: ProjectAnalysis): ScoredRecord[] {
   const details = project.frameworkDetails;
   const clientFiles = new Set(details.client_components);
   const serverFiles = new Set(details.server_only_signals);
-  const records = [];
+  const records: ScoredRecord[] = [];
   for (const file of details.client_components.filter((item) => serverFiles.has(item))) {
     records.push({
       id: `framework:client-server-boundary:${file}`,
@@ -177,9 +204,22 @@ export function frameworkRiskRecords(project) {
       signals: [{ kind: "client_component_with_server_only_signal" }],
     });
   }
+  for (const file of transitiveClientServerBoundaryFiles(project, clientFiles, serverFiles)) {
+    records.push({
+      id: `framework:transitive-client-server-boundary:${file}`,
+      module_id: file.replace(/\.[cm]?[jt]sx?$/, ""),
+      file,
+      name: "transitive client/server boundary",
+      line: 1,
+      score: 70,
+      risk: "high",
+      source: "framework-adapter",
+      signals: [{ kind: "client_component_transitively_imports_server_only" }],
+    });
+  }
   for (const route of details.routes) {
     const module = project.modules.find((item) => item.file === route.file);
-    const responsibilitySignals = [];
+    const responsibilitySignals: Signal[] = [];
     if (module?.components.length) responsibilitySignals.push({ kind: "route_renders_ui" });
     if (/\b(?:fetch|load|loader|action|process\.env|fs\.|node:fs)\b/.test(module?.text ?? "")) {
       responsibilitySignals.push({ kind: "route_data_or_server_responsibility" });
@@ -215,14 +255,46 @@ export function frameworkRiskRecords(project) {
   return records;
 }
 
-export function hiddenCouplingSignals(module) {
+function transitiveClientServerBoundaryFiles(
+  project: ProjectAnalysis,
+  clientFiles: Set<string>,
+  serverFiles: Set<string>,
+): string[] {
+  const fileById = new Map(project.modules.map((module) => [module.id, module.file]));
+  const graph = new Map<string, string[]>();
+  for (const edge of project.imports.filter((item) => item.to_kind === "relative")) {
+    graph.set(edge.from, [...(graph.get(edge.from) ?? []), edge.to]);
+  }
+  return [...clientFiles].filter((file) => reachesServerOnly(file.replace(/\.[cm]?[jt]sx?$/, ""), graph, fileById, serverFiles));
+}
+
+function reachesServerOnly(
+  start: string,
+  graph: Map<string, string[]>,
+  fileById: Map<string, string>,
+  serverFiles: Set<string>,
+): boolean {
+  const seen = new Set<string>();
+  const stack = [...(graph.get(start) ?? [])];
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current || seen.has(current)) continue;
+    seen.add(current);
+    if (serverFiles.has(fileById.get(current) ?? "")) return true;
+    stack.push(...(graph.get(current) ?? []));
+  }
+  return false;
+}
+
+export function hiddenCouplingSignals(module: ModuleRecord): Array<{ kind: string; line: number }> {
   const sourceFile = module.astSourceFile;
   if (!sourceFile) return [];
-  const records = [];
-  function add(kind, node) {
-    records.push({ kind, line: lineForNode(sourceFile, node) });
+  const astSourceFile = sourceFile;
+  const records: Array<{ kind: string; line: number }> = [];
+  function add(kind: string, node: ts.Node): void {
+    records.push({ kind, line: lineForNode(astSourceFile, node) });
   }
-  function visit(node) {
+  function visit(node: ts.Node): void {
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
       if (node.expression.text === "window") add("window_global", node);
       if (node.expression.text === "localStorage") add("local_storage", node);
@@ -240,34 +312,28 @@ export function hiddenCouplingSignals(module) {
   return records;
 }
 
-export function maxScoreFor(records = [], file, mode = "score") {
+export function maxScoreFor(records: ScoredRecord[] = [], file: string, mode: "score" | "severity" = "score"): number {
   const candidates = records.filter((record) => record.file === file || record.files?.includes(file));
   if (mode === "severity") {
     return Math.max(
       0,
-      ...candidates.map((record) => ({ high: 75, medium: 45, low: 20 }[record.severity] ?? record.score ?? 0)),
+      ...candidates.map((record) => severityScore(record.severity) ?? record.score ?? 0),
     );
   }
   return Math.max(0, ...candidates.map((record) => record.score ?? 0));
 }
 
-export function riskForScore(score) {
-  if (score >= 70) return "high";
-  if (score >= 35) return "medium";
-  return "low";
-}
-
-function isWeakType(type) {
+function isWeakType(type: string | null): boolean {
   return !type || type === "any" || type === "Function" || type === "(...args: any[]) => any";
 }
 
-function suppressionRecords(module) {
-  const specs: Array<[string, RegExp, string]> = [
+function suppressionRecords(module: ModuleRecord): ScoredRecord[] {
+  const specs: Array<[string, RegExp, Severity]> = [
     ["ts_suppression", /^\s*(?:(?:\/\/.*)|(?:\/\*.*))@ts-(?:ignore|expect-error|nocheck)/gm, "high"],
     ["eslint_suppression", /^\s*(?:(?:\/\/.*)|(?:\/\*.*))eslint-disable(?:-next-line)?/gm, "medium"],
   ];
   return specs.flatMap(([kind, re, severity]) => {
-    const records = [];
+    const records: ScoredRecord[] = [];
     let match;
     while ((match = re.exec(module.text))) {
       records.push({
@@ -284,11 +350,11 @@ function suppressionRecords(module) {
   });
 }
 
-function nestedAssertion(node) {
+function nestedAssertion(node: ts.AsExpression | ts.TypeAssertion): boolean {
   return ts.isAsExpression(node.expression) || ts.isTypeAssertionExpression(node.expression);
 }
 
-function isTopLevelMutableStatement(sourceFile, node) {
+function isTopLevelMutableStatement(sourceFile: ts.SourceFile, node: ts.Node): boolean {
   return (
     ts.isVariableStatement(node) &&
     node.parent === sourceFile &&
@@ -296,15 +362,15 @@ function isTopLevelMutableStatement(sourceFile, node) {
   );
 }
 
-function isDangerousHtml(node) {
+function isDangerousHtml(node: ts.Node): boolean {
   return ts.isIdentifier(node) && node.text === "dangerouslySetInnerHTML";
 }
 
-function isEvalLikeCall(node) {
+function isEvalLikeCall(node: ts.Node): boolean {
   return ts.isCallExpression(node) && ["eval", "Function"].includes(callExpressionName(node) ?? "");
 }
 
-function isDirectDomMutation(node) {
+function isDirectDomMutation(node: ts.Node): boolean {
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
     const receiver = node.expression.expression;
     return (
@@ -321,7 +387,7 @@ function isDirectDomMutation(node) {
   );
 }
 
-function isBrowserGlobalAccess(node) {
+function isBrowserGlobalAccess(node: ts.Node): boolean {
   return (
     ts.isPropertyAccessExpression(node) &&
     ts.isIdentifier(node.expression) &&

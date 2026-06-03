@@ -1,7 +1,9 @@
 import os from "node:os";
+import crypto from "node:crypto";
 import { LENS_NAME, SCHEMA_VERSION } from "./tasks.js";
+import type { Confidence, Config, ProjectAnalysis } from "./types.js";
 
-export function provenance(command, sourceType = "static") {
+export function provenance(command: string, sourceType = "static") {
   return {
     lens: LENS_NAME,
     schema_version: SCHEMA_VERSION,
@@ -12,7 +14,13 @@ export function provenance(command, sourceType = "static") {
   };
 }
 
-export function artifactBase(config, taskId, command, confidence) {
+export function artifactBase(
+  config: Config,
+  taskId: string,
+  command: string,
+  confidence: Confidence,
+  sourceSetHash: string | null = null,
+) {
   return {
     schema_version: SCHEMA_VERSION,
     task_id: taskId,
@@ -23,7 +31,21 @@ export function artifactBase(config, taskId, command, confidence) {
       package_manager: config.packageManager,
       test_runner: config.testRunner,
     },
-    provenance: provenance(command),
+    provenance: {
+      ...provenance(command),
+      ...(sourceSetHash ? { source_set_hash: sourceSetHash } : {}),
+    },
     confidence,
   };
+}
+
+export function sourceSetHash(project: Pick<ProjectAnalysis, "sourceFiles">): string {
+  const hash = crypto.createHash("sha256");
+  for (const file of [...project.sourceFiles].sort((left, right) => left.relativePath.localeCompare(right.relativePath))) {
+    hash.update(file.relativePath);
+    hash.update("\0");
+    hash.update(file.text);
+    hash.update("\0");
+  }
+  return `sha256:${hash.digest("hex")}`;
 }

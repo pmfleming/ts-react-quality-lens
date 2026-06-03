@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ts-react-quality-lens — Improvement Review</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #161b22;
+      --panel-2: #1c2330;
+      --ink: #e6edf3;
+      --muted: #9aa7b4;
+      --line: #2b323c;
+      --accent: #4ea1ff;
+      --code: #79c0ff;
+      --high: #ff6b6b;
+      --med: #ffb454;
+      --low: #5ec8a0;
+      --info: #8a9bb0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 96px; }
+    header.doc { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 32px; }
+    h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: -0.5px; }
+    h2 { font-size: 22px; margin: 48px 0 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+    h3 { font-size: 17px; margin: 28px 0 8px; }
+    p { margin: 12px 0; }
+    a { color: var(--accent); }
+    .lede { color: var(--muted); font-size: 17px; }
+    .meta { color: var(--info); font-size: 13px; margin-top: 12px; }
+    code, kbd { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; font-size: 13px; }
+    code { color: var(--code); background: rgba(110,170,255,.10); padding: 1px 5px; border-radius: 4px; }
+    pre {
+      background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+      padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.5;
+    }
+    pre code { background: none; padding: 0; color: #c9d4e0; }
+    .tag {
+      display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle;
+    }
+    .tag.high { background: rgba(255,107,107,.16); color: var(--high); border: 1px solid rgba(255,107,107,.35); }
+    .tag.med  { background: rgba(255,180,84,.14); color: var(--med); border: 1px solid rgba(255,180,84,.3); }
+    .tag.low  { background: rgba(94,200,160,.14); color: var(--low); border: 1px solid rgba(94,200,160,.3); }
+    .tag.info { background: rgba(138,155,176,.14); color: var(--info); border: 1px solid rgba(138,155,176,.3); }
+    .finding {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 18px 20px; margin: 18px 0;
+    }
+    .finding h3 { margin-top: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .loc { color: var(--muted); font-size: 12.5px; margin: 4px 0 10px; }
+    .loc code { font-size: 12px; }
+    .rec { border-left: 3px solid var(--accent); padding: 2px 0 2px 14px; margin: 12px 0 0; color: #d6e2ee; }
+    .rec strong { color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    td.center, th.center { text-align: center; white-space: nowrap; }
+    ul { margin: 10px 0; padding-left: 22px; }
+    li { margin: 5px 0; }
+    .pill { font-size: 12px; color: var(--muted); }
+    .strength { color: var(--low); font-weight: 600; }
+    .callout {
+      background: linear-gradient(180deg, rgba(78,161,255,.08), rgba(78,161,255,.02));
+      border: 1px solid rgba(78,161,255,.25); border-radius: 10px; padding: 16px 20px; margin: 20px 0;
+    }
+    footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--info); font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header class="doc">
+    <h1>ts-react-quality-lens — Opportunities to Improve</h1>
+    <p class="lede">
+      A code review of the measurement engine: what is solid, what is risky, and where the highest-leverage
+      improvements are. This document does not change any code — it is an inventory of opportunities.
+    </p>
+    <p class="meta">
+      Scope: all of <code>src/</code> (24 modules), <code>bin/</code>, <code>scripts/</code>, <code>test/</code>,
+      build config, and CI. Reviewed at commit <code>672b921</code> (v0.1.0). Date: 2026-06-02.
+    </p>
+  </header>
+
+  <h2>1. Executive summary</h2>
+  <p>
+    <code>ts-react-quality-lens</code> is a well-structured analysis engine. The artifact contract, the
+    confidence metadata, the graceful tool fallbacks, and the atomic artifact writes are genuinely good
+    design and should be preserved. The biggest single opportunity is also the most ironic one: <strong>a
+    library whose job is measuring TypeScript quality ships with type checking effectively turned off and
+    almost no type annotations of its own.</strong> Beyond that, there are a handful of correctness bugs in
+    the heuristics, a few performance cliffs on large repos, and a build/CI pipeline that does redundant work.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>#</th><th>Opportunity</th><th class="center">Severity</th><th>Theme</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>Type checking is disabled (<code>strict: false</code>) and functions are unannotated → the engine is mostly implicit <code>any</code></td><td class="center"><span class="tag high">High</span></td><td>Type safety</td></tr>
+      <tr><td>2</td><td><code>findCycles</code> is exponential and re-explores paths from every node</td><td class="center"><span class="tag high">High</span></td><td>Performance</td></tr>
+      <tr><td>3</td><td>The config <code>schema.json</code> exists but is never validated at runtime</td><td class="center"><span class="tag med">Medium</span></td><td>Robustness</td></tr>
+      <tr><td>4</td><td>Regex-based <code>any</code>/assertion counting overcounts comments, strings, and identifiers</td><td class="center"><span class="tag med">Medium</span></td><td>Correctness</td></tr>
+      <tr><td>5</td><td>Per-test status is reported as <code>"unknown"</code> even after a passing run</td><td class="center"><span class="tag med">Medium</span></td><td>Correctness</td></tr>
+      <tr><td>6</td><td><code>npm run ci</code> builds the project ~4 times; <code>lint</code> is really a type check</td><td class="center"><span class="tag med">Medium</span></td><td>Build / DX</td></tr>
+      <tr><td>7</td><td>Temp tool directories under <code>output_dir/.tooling</code> are created per run and never cleaned</td><td class="center"><span class="tag med">Medium</span></td><td>Hygiene</td></tr>
+      <tr><td>8</td><td><code>gitChurn</code> walks full history with a fragile filename/author heuristic</td><td class="center"><span class="tag low">Low</span></td><td>Correctness / Perf</td></tr>
+      <tr><td>9</td><td>Test suite is a single environment-dependent integration test</td><td class="center"><span class="tag low">Low</span></td><td>Testing</td></tr>
+      <tr><td>10</td><td><code>execSync</code> on a config-supplied test command — document the trust boundary</td><td class="center"><span class="tag low">Low</span></td><td>Security</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>What to do first:</strong> turn on <code>strict</code> and type the core data shapes (#1). It is the
+    change that pays back everywhere else — it will surface several of the other bugs in this list for free, and
+    it makes the emitted <code>.d.ts</code> a real contract for consumers instead of a wall of <code>any</code>.
+  </div>
+
+  <h2>2. What is already good</h2>
+  <ul>
+    <li><span class="strength">Confidence as a first-class output.</span> <code>createConfidence</code> /
+      <code>analysisConfidence</code> (<code>src/config.ts:91</code>, <code>src/analysis-context.ts:40</code>)
+      make "we couldn't measure this" visible to consumers instead of silently producing zeros. This is the
+      right instinct for an explainable lens.</li>
+    <li><span class="strength">Graceful tool degradation.</span> <code>runToolAdapter</code>
+      (<code>src/integrations.ts:239</code>) gives every external tool a uniform
+      <code>{ available, ran, reason }</code> envelope and a built-in fallback. jscpd, dependency-cruiser, and
+      eslint-plugin-react-hooks are all optional.</li>
+    <li><span class="strength">Atomic, deterministic artifacts.</span> <code>writeArtifact</code>
+      (<code>src/writer.ts:4</code>) writes to a temp file then renames; records are sorted by score then id so
+      diffs are stable.</li>
+    <li><span class="strength">Clean separation.</span> Pure scoring (<code>src/scoring.ts</code>), extraction
+      (<code>src/extract.ts</code>), and per-task measures (<code>src/measures/*</code>) are nicely isolated, and
+      the analysis context memoizes the expensive project parse so <code>measure all</code> parses once.</li>
+    <li><span class="strength">Cross-platform care.</span> Windows <code>.cmd</code> quoting and
+      case-insensitive path matching (<code>src/integrations.ts:387,436</code>) show real attention to detail.</li>
+  </ul>
+
+  <h2>3. Type safety <span class="tag high">High</span></h2>
+
+  <div class="finding">
+    <h3>3.1 Type checking is turned off in a TypeScript quality tool</h3>
+    <p class="loc"><code>tsconfig.json:12</code> — <code>"strict": false</code></p>
+    <p>
+      The tool flags weak typing in the code it measures (<code>quality.escape_hatches</code>,
+      <code>quality.type_health</code>), yet its own <code>tsconfig</code> sets <code>strict: false</code>.
+      Combined with the fact that almost no function declares parameter types — e.g.
+      <code>runCli(argv)</code> (<code>src/cli.ts:13</code>), <code>runMeasure(config, taskId, command, ...)</code>
+      (<code>src/cli.ts:49</code>), <code>loadConfig(configArg)</code> (<code>src/config.ts:46</code>),
+      <code>analyzeModule(config, file, tsProject)</code> (<code>src/extract.ts:14</code>) — the entire engine
+      runs as implicit <code>any</code>. The compiler is currently catching almost nothing.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> enable <code>strict</code> (or at minimum
+      <code>noImplicitAny</code> + <code>strictNullChecks</code>) and introduce named interfaces for the core
+      shapes — <code>Config</code>, <code>SourceFile</code>, <code>ModuleRecord</code>, <code>FunctionRecord</code>,
+      <code>Artifact</code>, <code>Confidence</code>. Do it incrementally: turn the flag on, fix the
+      <code>any</code>s in <code>config.ts</code>/<code>files.ts</code>/<code>extract.ts</code> first, and let the
+      types flow outward.</p>
+  </div>
+
+  <div class="finding">
+    <h3>3.2 The emitted <code>.d.ts</code> contract is untyped</h3>
+    <p class="loc"><code>package.json:23</code> (ships <code>dist/</code>), <code>tsconfig.json:10</code> (<code>declaration: true</code>)</p>
+    <p>
+      The package is described as a "contract" producer, and it emits declaration files. But because everything
+      is implicit <code>any</code>, the generated <code>.d.ts</code> exports functions with <code>any</code>
+      parameters and <code>any</code> returns. A consumer importing <code>analyzeProject</code> or the artifact
+      types gets no real contract — only the JSON shape, which lives only in the
+      <code>ts-react-quality-lens.schema.json</code> file.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> once #3.1 lands, export the artifact and record types from a single
+      <code>src/types.ts</code> and re-export them from the package entry so both the runtime engine and external
+      consumers share one definition. This is what makes the "stable contract" claim true at the type level.</p>
+  </div>
+
+  <h2>4. Correctness of the heuristics</h2>
+
+  <div class="finding">
+    <h3>4.1 Regex <code>any</code>/assertion counts overcount <span class="tag med">Medium</span></h3>
+    <p class="loc"><code>src/extract.ts:23-27</code> (<code>escapeCounts</code>), consumed in <code>src/measures/quality.ts:100</code> (<code>weakSurface</code>)</p>
+    <p>
+      <code>escapeCounts.any</code> is <code>countMatches(file.text, /\bany\b/g)</code> over raw source — it
+      matches the word <code>any</code> inside comments, string literals, and identifiers (<code>company</code>
+      does not match due to <code>\b</code>, but <code>"any value"</code> in a doc comment or a JSX text node
+      does). The assertion regex similarly matches <code>as</code> in places that are not type assertions. These
+      inflated counts feed <code>leverage.weak_surface</code>, which can wrongly demote a clean module to
+      <code>high</code> risk. Note the AST-based <code>escapeRecords</code> (<code>src/scoring.ts:47</code>)
+      already does this <em>correctly</em> via the compiler — the regex path is the weak one.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> derive <code>weakSurface</code> from the AST escape-hatch records
+      you already compute, rather than from the regex <code>escapeCounts</code>. That removes the false positives
+      and deletes a redundant scan.</p>
+  </div>
+
+  <div class="finding">
+    <h3>4.2 Passing tests are recorded as <code>"unknown"</code> <span class="tag med">Medium</span></h3>
+    <p class="loc"><code>src/measures/correctness.ts:35</code></p>
+    <pre><code>status: execution.status === "passed" ? "unknown" : "not_run"</code></pre>
+    <p>
+      After <code>correctness.all</code> runs the suite and it passes, every per-test entry in
+      <code>test_catalog.json</code> is labelled <code>"unknown"</code> rather than <code>"passed"</code>. The
+      root cause is that <code>runTestCommand</code> (<code>src/correctness.ts:25</code>) only captures the
+      aggregate process exit code, so it genuinely cannot attribute pass/fail to individual tests — the ternary
+      is papering over a missing capability. The result reads as backwards to a consumer.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> either (a) be honest and report a single suite-level status,
+      leaving per-test status as <code>not_run</code>; or (b) parse the runner's machine-readable output (Vitest
+      <code>--reporter=json</code>, Jest <code>--json</code>, <code>node --test --reporter=tap</code>) and attach
+      real per-test results. Option (b) is the high-value version and fits the "explainable evidence" goal.</p>
+  </div>
+
+  <div class="finding">
+    <h3>4.3 <code>gitChurn</code> uses a fragile filename/author heuristic over full history <span class="tag low">Low</span></h3>
+    <p class="loc"><code>src/history.ts:7-25</code></p>
+    <p>
+      <code>git log --name-only --format=%an</code> is parsed by treating any line that matches
+      <code>/\.[cm]?[jt]sx?$/</code> as a filename and every other non-empty line as an author. An author whose
+      display name ends in <code>.ts</code> would be misread as a file; a path that does not end in a JS/TS
+      extension is silently dropped. It also walks the entire repository history on every run and never restricts
+      to <code>source_roots</code>, which is slow on large/old repos and counts churn for files that have since
+      been deleted or renamed.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> use a record separator that cannot collide with paths
+      (<code>--format=%x00%an%x00</code> or <code>-z</code>), scope with <code>-- &lt;source_roots&gt;</code>, and
+      consider a <code>--since</code> window so churn reflects recent activity rather than all of history.</p>
+  </div>
+
+  <div class="finding">
+    <h3>4.4 Multi-line named exports defeat barrel detection <span class="tag low">Low</span></h3>
+    <p class="loc"><code>src/extract.ts:236-242</code></p>
+    <p>
+      <code>isBarrel</code> requires <em>every</em> non-comment line to start with <code>export </code>. A barrel
+      written as <code>export {\n  a,\n  b\n} from "./x";</code> fails the check because the member lines do not
+      start with <code>export</code>, so it is not classified as a barrel and escapes
+      <code>barrel_fanout</code> scoring in dependency health.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> classify barrels from the AST (you already parse it) — a module
+      whose statements are all <code>ImportDeclaration</code>/<code>ExportDeclaration</code> re-exports — instead
+      of line-prefix matching.</p>
+  </div>
+
+  <div class="finding">
+    <h3>4.5 <code>package_manager_detected</code> confidence is effectively always true <span class="tag low">Low</span></h3>
+    <p class="loc"><code>src/config.ts:43</code> (rule list includes <code>package.json</code>), <code>src/config.ts:96</code></p>
+    <p>
+      The npm rule matches on the presence of <code>package.json</code>, which exists in essentially every
+      project. So <code>detectPackageManager</code> almost never returns <code>"unknown"</code>, and the
+      <code>package_manager_detected</code> confidence flag is true even when the real package manager could not
+      be determined (e.g. a project with no lockfile at all). The signal is not telling consumers what it claims.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> treat a lockfile as the detection signal and <code>package.json</code>
+      alone as "npm assumed, low confidence", so the flag distinguishes a real detection from a default.</p>
+  </div>
+
+  <h2>5. Performance &amp; scalability</h2>
+
+  <div class="finding">
+    <h3>5.1 Cycle detection is exponential <span class="tag high">High</span></h3>
+    <p class="loc"><code>src/graph.ts:51-75</code> (<code>findCycles</code>)</p>
+    <p>
+      The DFS starts a fresh traversal from every node, and on each step it clones the visited set
+      (<code>new Set(seen)</code>) and the path array, exploring all distinct paths rather than all edges. On a
+      densely connected internal import graph this is worst-case exponential in the number of paths, not linear
+      in edges. For a small example app it is invisible; on a real monorepo it can hang. (And when
+      dependency-cruiser is available its cycles are preferred anyway, so this expensive fallback may run only to
+      be deduped away.)
+    </p>
+    <p class="rec"><strong>Recommend:</strong> replace with Tarjan's strongly-connected-components (linear time)
+      to enumerate cycles, or guard the existing DFS with a path-length/visited-node budget. At minimum, skip the
+      built-in cycle search entirely when <code>dependency-cruiser</code> ran successfully.</p>
+  </div>
+
+  <div class="finding">
+    <h3>5.2 Redundant clone engines and re-derivations <span class="tag low">Low</span></h3>
+    <p class="loc"><code>src/measures/clones.ts:13-42</code>, <code>src/graph.ts:17-31</code></p>
+    <p>
+      The built-in line-window clone scan always runs, even when jscpd succeeded; the results are then merged and
+      de-duped (<code>dedupeCloneRegions</code>). That is double work on every file. Separately,
+      <code>mapNode</code> recomputes <code>correctnessMap(artifacts.correctness)</code> once per node
+      (<code>src/graph.ts:27</code>), rebuilding the same map N times.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> skip the heuristic clone pass when <code>jscpd.ran</code> is true
+      (it is a fallback, not an ensemble), and hoist <code>correctnessMap</code> out of the per-node loop in
+      <code>measureArchitectureMap</code>.</p>
+  </div>
+
+  <div class="finding">
+    <h3>5.3 Whole-project in-memory model with no caching <span class="tag info">Info</span></h3>
+    <p class="loc"><code>src/analysis-context.ts:12-20</code></p>
+    <p>
+      <code>analyzeProject</code> reads every source file's full text, splits it into a <code>lines</code> array,
+      <em>and</em> builds a TS <code>Program</code> with full <code>getPreEmitDiagnostics</code> — all held in
+      memory at once. This is fine for the example app and is correctly memoized within a single
+      <code>measure all</code> run, but there is no cross-run incremental cache, so re-measuring a large repo
+      re-parses everything from scratch each time.
+    </p>
+    <p class="rec"><strong>Recommend (later):</strong> for the "monorepos from the start" goal in the plan,
+      consider a content-hash cache keyed on file mtime/hash so unchanged files skip re-analysis between runs.</p>
+  </div>
+
+  <h2>6. Build, tooling &amp; DX <span class="tag med">Medium</span></h2>
+
+  <div class="finding">
+    <h3>6.1 <code>npm run ci</code> rebuilds the project four times</h3>
+    <p class="loc"><code>package.json:12-15</code></p>
+    <pre><code>"ci":           "npm run lint && npm run build && npm run format:check && npm run test"
+"lint":         "tsc -p tsconfig.json --noEmit"   // a build (type check)
+"build":        "tsc -p tsconfig.json"
+"format:check": "npm run build && node dist/scripts/format-check.js"
+"test":         "npm run build && node --test dist/test/cli.test.js"</code></pre>
+    <p>
+      <code>lint</code> type-checks (a full compile), <code>build</code> compiles again, then
+      <code>format:check</code> and <code>test</code> each run <code>build</code> a third and fourth time. CI does
+      roughly 4× the compiler work it needs to.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> build once, then run the downstream steps against that output —
+      e.g. <code>"ci": "npm run lint &amp;&amp; npm run build &amp;&amp; node dist/scripts/format-check.js &amp;&amp; node --test dist/test/cli.test.js"</code>,
+      and drop the inner <code>npm run build</code> from <code>format:check</code>/<code>test</code> (or keep
+      thin standalone variants for local use).</p>
+  </div>
+
+  <div class="finding">
+    <h3>6.2 "lint" is a misnomer — there is no linter for this repo</h3>
+    <p class="loc"><code>package.json:13</code>, unused <code>scripts/lint.ts</code></p>
+    <p>
+      The <code>lint</code> script is <code>tsc --noEmit</code>; it does no linting. There is a separate
+      <code>scripts/lint.ts</code> that runs <code>node --check</code> on emitted JS, but it is wired into nothing.
+      The package depends on <code>eslint</code> and <code>@typescript-eslint/parser</code>, yet ships no ESLint
+      config for its own sources — so the tool that lints other people's React code does not lint itself.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> rename the type-check script to <code>typecheck</code>, and add a
+      real <code>lint</code> backed by a flat ESLint config (you already have the dependencies). This also lets
+      you dogfood <code>eslint-plugin-react-hooks</code>-style rules on the codebase.</p>
+  </div>
+
+  <div class="finding">
+    <h3>6.3 Per-run temp directories are never cleaned <span class="tag med">Medium</span></h3>
+    <p class="loc"><code>src/integrations.ts:124</code> (jscpd), <code>src/integrations.ts:164</code> (eslint config)</p>
+    <p>
+      Both jscpd output and the generated eslint flat-config are written to
+      <code>output_dir/.tooling/&lt;tool&gt;-&lt;pid&gt;-&lt;timestamp&gt;</code> and never removed. Every
+      <code>measure</code> invocation leaves a new directory behind, so <code>.tooling</code> grows without bound.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> write these under the OS temp dir
+      (<code>fs.mkdtempSync(path.join(os.tmpdir(), ...))</code>) and remove them in a <code>finally</code> block,
+      or sweep <code>output_dir/.tooling</code> at the start of a run.</p>
+  </div>
+
+  <h2>7. Robustness &amp; contract</h2>
+
+  <div class="finding">
+    <h3>7.1 The config schema exists but is never enforced <span class="tag med">Medium</span></h3>
+    <p class="loc"><code>ts-react-quality-lens.schema.json</code> (shipped), <code>src/config.ts:46-89</code> (<code>loadConfig</code>)</p>
+    <p>
+      A JSON Schema for the config is authored and published in the package's <code>files</code> list, but
+      <code>loadConfig</code> just <code>JSON.parse</code>s the file and reads fields with <code>??</code>
+      defaults. A typo like <code>"source_root"</code> (singular) or a wrong type for <code>exclude</code> is
+      silently ignored — the user gets empty/odd results with no error. The schema is documentation that the code
+      does not honor.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> validate the parsed config against the schema (e.g. a tiny
+      hand-rolled check or a dependency-free validator) and emit a clear error listing unknown/invalid keys.
+      Failing loudly on a misconfigured run is friendlier than silently measuring nothing.</p>
+  </div>
+
+  <div class="finding">
+    <h3>7.2 Argument parsing is permissive and silent <span class="tag low">Low</span></h3>
+    <p class="loc"><code>src/cli.ts:74-89</code> (<code>parseArgs</code>)</p>
+    <p>
+      <code>--config</code> with no following value yields <code>undefined</code> (then falls back to the default
+      path); unknown flags are pushed into <code>positionals</code> and may be mistaken for a task id. There is no
+      "unknown task" hint that lists valid ids — the error is thrown from deep in <code>runMeasure</code>.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> validate that <code>--config</code> has a value, reject unknown
+      flags, and on an unknown task id print the available ids (you already have <code>TASKS</code>).</p>
+  </div>
+
+  <div class="finding">
+    <h3>7.3 Schema version is hardcoded equal to the package version <span class="tag low">Low</span></h3>
+    <p class="loc"><code>src/tasks.ts:2</code> (<code>SCHEMA_VERSION = "0.1.0"</code>), <code>package.json:3</code></p>
+    <p>
+      The artifact <code>schema_version</code> is a literal that happens to equal the package version. These
+      will drift: a routine package bump that does not change the artifact shape will nonetheless advance the
+      "schema version" consumers key off, and vice-versa.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> version the artifact schema independently of the npm package, and
+      bump it only when the artifact contract actually changes.</p>
+  </div>
+
+  <h2>8. Testing <span class="tag low">Low</span></h2>
+  <div class="finding">
+    <h3>8.1 One integration test, environment-dependent</h3>
+    <p class="loc"><code>test/cli.test.ts</code></p>
+    <p>
+      The suite is essentially one end-to-end <code>measure all</code> test plus two targeted cases. It asserts
+      that jscpd, dependency-cruiser, and eslint-react-hooks <em>ran</em>
+      (<code>test/cli.test.ts:66-74</code>) — which couples the test to those binaries being installed and
+      behaving identically across OSes. The pure, high-value logic — <code>riskForScore</code> thresholds,
+      <code>normalizeCloneLine</code>, <code>canonicalCycle</code> rotation, the complexity counters in
+      <code>ast-metrics.ts</code>, <code>findCycles</code> — has no direct unit coverage. CI also runs only on
+      <code>ubuntu-latest</code>, so the Windows-specific <code>cmd.exe</code> quoting path is never exercised.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> add focused unit tests for the pure scoring/AST helpers (fast,
+      deterministic, no external tools), and gate the "tool ran" assertions behind a capability check so the
+      core suite passes without optional binaries. Consider adding a Windows job to the CI matrix given the
+      platform-specific code.</p>
+  </div>
+
+  <h2>9. Security <span class="tag low">Low</span></h2>
+  <div class="finding">
+    <h3>9.1 Config-supplied test command runs through a shell</h3>
+    <p class="loc"><code>src/correctness.ts:28</code> (<code>execSync(config.testCommand, …)</code>)</p>
+    <p>
+      <code>correctness.all</code> executes <code>test_command</code> from the config file via
+      <code>execSync</code> (full shell interpretation). For the intended use — a developer measuring their own
+      repo — this is fine. But if a config ever arrives from an untrusted source (CI artifact, third-party repo,
+      a dashboard that ingests external configs), arbitrary command execution follows. The other tool runners
+      correctly use <code>execFileSync</code> with arg arrays; this one is the outlier.
+    </p>
+    <p class="rec"><strong>Recommend:</strong> document the trust boundary ("the config is trusted input"), and
+      make <code>correctness.all</code> opt-in/explicit so test execution never happens implicitly on an
+      unfamiliar config. If feasible, run the command via <code>execFileSync</code> with a parsed argv instead of
+      a shell string.</p>
+  </div>
+
+  <h2>10. Minor polish</h2>
+  <ul>
+    <li><code>type_information_available</code> is set to <code>false</code> in <code>createConfidence</code>
+      (<code>src/config.ts:101</code>) and then overwritten in <code>analysisConfidence</code>
+      (<code>src/analysis-context.ts:46</code>) — harmless duplication, but the default is dead.</li>
+    <li><code>existingAbsoluteRoots</code> (<code>src/integrations.ts:405</code>) exists only to be wrapped by
+      <code>existingRelativeRoots</code>; could be inlined.</li>
+    <li><code>measure-support.ts</code> is a large re-export barrel — the very pattern the dependency-health
+      measure flags as <code>barrel_fanout</code>. Worth a knowing comment, or splitting, for dogfooding's sake.</li>
+    <li><code>analyze.ts</code> (<code>src/analyze.ts</code>) is a two-line re-export; confirm it is a real public
+      entry point and not a leftover, since <code>package.json main</code> points at <code>cli.js</code>.</li>
+    <li>Both <code>examples/basic/src/format.test.js</code> and <code>format.test.ts</code> exist — intentional
+      fixture duplication, but worth a one-line note so it is not mistaken for an accident.</li>
+  </ul>
+
+  <h2>11. Suggested order of attack</h2>
+  <table>
+    <thead><tr><th class="center">Step</th><th>Change</th><th>Why first / why later</th></tr></thead>
+    <tbody>
+      <tr><td class="center">1</td><td>Enable <code>strict</code>; type core shapes (#3.1, #3.2)</td><td>Surfaces other bugs for free; makes the shipped contract real.</td></tr>
+      <tr><td class="center">2</td><td>Fix <code>findCycles</code> / skip it when depcruise ran (#5.1)</td><td>Removes the one true scalability cliff.</td></tr>
+      <tr><td class="center">3</td><td>Validate config against the schema; tighten arg parsing (#7.1, #7.2)</td><td>Turns silent mis-measurement into clear errors.</td></tr>
+      <tr><td class="center">4</td><td>Drive <code>weak_surface</code> from AST, not regex (#4.1); honest test status (#4.2)</td><td>Improves the accuracy of the headline metrics.</td></tr>
+      <tr><td class="center">5</td><td>De-duplicate the build pipeline; rename lint; clean temp dirs (#6.1–6.3)</td><td>Cheap DX/hygiene wins.</td></tr>
+      <tr><td class="center">6</td><td>Add unit tests for pure helpers; consider a Windows CI job (#8.1)</td><td>Locks in the above and de-flakes CI.</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    Review of <code>ts-react-quality-lens</code> @ <code>672b921</code>. Findings are opportunities, not defects
+    requiring immediate action; severity reflects impact on correctness, scale, and the project's own stated
+    goals (explainable, contract-stable, monorepo-ready). No source code was modified in producing this document.
+  </footer>
+</main>
+</body>
+</html>

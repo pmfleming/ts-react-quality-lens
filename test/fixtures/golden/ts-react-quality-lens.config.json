@@ -1,0 +1,18 @@
+{
+  "project_name": "golden-fixture",
+  "project_root": ".",
+  "source_roots": ["src"],
+  "test_roots": ["src"],
+  "output_dir": "target/analysis",
+  "tsconfig": "tsconfig.json",
+  "framework": "next",
+  "test_runner": "node",
+  "layer_rules": [
+    { "layer": "route", "patterns": ["src/app/**"] },
+    { "layer": "feature", "patterns": ["src/features/**"] },
+    { "layer": "ui", "patterns": ["src/components/**", "**/*.tsx"] },
+    { "layer": "server", "patterns": ["src/server/**"] },
+    { "layer": "lib", "patterns": ["src/lib/**", "src/utils/**"] },
+    { "layer": "core", "patterns": ["src/**"] }
+  ]
+}

@@ -1,3 +1,5 @@
+import type { Config } from "./types.js";
+
 export const LENS_NAME = "ts-react-quality-lens";
 export const SCHEMA_VERSION = "0.1.0";
 
@@ -16,7 +18,7 @@ export const TASKS = [
     title: "Clone pressure",
     artifact: "clones.json",
     description:
-      "Finds repeated TypeScript, JSX, component, hook, style, and test structures.",
+      "Finds repeated TypeScript, JSX, component, hook, style, test, and AST structures.",
   },
   {
     id: "quality.escape_hatches",
@@ -32,7 +34,7 @@ export const TASKS = [
     title: "Type health",
     artifact: "type_health.json",
     description:
-      "Measures interfaces, type aliases, component props, generics, exports, and public APIs.",
+      "Measures interfaces, type aliases, compiler strictness posture, generics, exports, and public APIs.",
   },
   {
     id: "quality.locality_dynamic",
@@ -40,7 +42,7 @@ export const TASKS = [
     title: "Dynamic locality",
     artifact: "locality_metrics.json",
     description:
-      "Measures dependency distance, hidden coupling, test locality, churn, contributors, and ownership spread.",
+      "Measures dependency distance, hidden coupling, test locality, churn, defect-keyword commits, and co-change.",
   },
   {
     id: "quality.locality_leverage",
@@ -48,7 +50,7 @@ export const TASKS = [
     title: "Architecture leverage",
     artifact: "leverage_metrics.json",
     description:
-      "Measures architectural leverage, reach, abstraction value, divergence pressure, and co-change ripple.",
+      "Measures architectural leverage, inbound reach, public surface, dead export surface, weak surface, and hub pressure.",
   },
   {
     id: "quality.react_health",
@@ -56,7 +58,7 @@ export const TASKS = [
     title: "React health",
     artifact: "react_health.json",
     description:
-      "Measures component size, props, hooks, effects, render risk, context coupling, and state complexity.",
+      "Measures component size, props, hooks, effects, render risk, context coupling, a11y heuristics, and state complexity.",
   },
   {
     id: "quality.dependency_health",
@@ -64,7 +66,7 @@ export const TASKS = [
     title: "Dependency health",
     artifact: "dependency_health.json",
     description:
-      "Measures import cycles, layer violations, package boundaries, barrels, deep imports, and dependency pressure.",
+      "Measures import cycles, layer violations, unsupported patterns, barrels, deep imports, and dependency pressure.",
   },
   {
     id: "correctness.catalog",
@@ -93,11 +95,11 @@ export const TASKS = [
   },
 ];
 
-export function findTask(taskId) {
+export function findTask(taskId: string) {
   return TASKS.find((task) => task.id === taskId);
 }
 
-export function catalogForConfig(config) {
+export function catalogForConfig(config: Config) {
   return {
     schema_version: SCHEMA_VERSION,
     lens: LENS_NAME,

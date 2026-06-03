@@ -9,10 +9,10 @@
     "outDir": "dist",
     "declaration": true,
     "sourceMap": true,
-    "strict": false,
+    "strict": true,
     "noEmitOnError": true,
     "skipLibCheck": true
   },
   "include": ["bin/**/*.ts", "scripts/**/*.ts", "src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules", "test/fixtures"]
 }

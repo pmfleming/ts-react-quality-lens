@@ -9,9 +9,9 @@ for (const file of files) {
   childProcess.execFileSync(process.execPath, ["--check", file], { stdio: "inherit" });
 }
 
-function collect(root) {
+function collect(root: string): string[] {
   if (!fs.existsSync(root)) return [];
-  const result = [];
+  const result: string[] = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     const fullPath = path.join(root, entry.name);
     if (entry.isDirectory()) result.push(...collect(fullPath));

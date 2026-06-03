@@ -1,17 +1,16 @@
-import { createAnalysisContext, analysisConfidence, fileHotspotRecord, functionHotspotRecord } from "../measure-support.js";
-import { artifactBase } from "../provenance.js";
-import { writeArtifact } from "../writer.js";
+import { analysisConfidence, artifactBase, createAnalysisContext, fileHotspotRecord, functionHotspotRecord, sourceSetHash, writeArtifact } from "../measure-shared.js";
+import type { AnalysisContext, Artifact, Config, ScoredRecord } from "../types.js";
 
-export function measureHotspots(config, command, context = createAnalysisContext(config)) {
+export function measureHotspots(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)): Artifact {
   const project = context.project();
-  const records = [];
+  const records: ScoredRecord[] = [];
   for (const module of project.modules) {
     records.push(fileHotspotRecord(module));
     for (const fn of module.functions) records.push(functionHotspotRecord(module, fn));
   }
-  records.sort((left, right) => right.score - left.score || left.id.localeCompare(right.id));
+  records.sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || left.id.localeCompare(right.id));
   const artifact = {
-    ...artifactBase(config, "quality.hotspots", command, analysisConfidence(config, project)),
+    ...artifactBase(config, "quality.hotspots", command, analysisConfidence(config, project), sourceSetHash(project)),
     summary: {
       source_files: project.sourceFiles.length,
       records: records.length,

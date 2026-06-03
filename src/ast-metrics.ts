@@ -29,13 +29,13 @@ const NESTING_CHECKS = [
 
 const JSX_CONDITIONAL_CHECKS = [isConditionalJsx, isLogicalJsx, isMapJsx];
 
-export function complexityForNode(node) {
+export function complexityForNode(node: ts.Node): number {
   return 1 + countMatchingNodes(node, (current) => COMPLEXITY_CHECKS.some((check) => check(current)));
 }
 
-export function maxNestingDepthForNode(node) {
+export function maxNestingDepthForNode(node: ts.Node): number {
   let max = 0;
-  function visit(current, depth) {
+  function visit(current: ts.Node, depth: number): void {
     const nested = NESTING_CHECKS.some((check) => check(current));
     const nextDepth = nested ? depth + 1 : depth;
     max = Math.max(max, nextDepth);
@@ -45,11 +45,11 @@ export function maxNestingDepthForNode(node) {
   return max;
 }
 
-export function countJsxConditionals(node) {
+export function countJsxConditionals(node: ts.Node): number {
   return countMatchingNodes(node, (current) => JSX_CONDITIONAL_CHECKS.some((check) => check(current)));
 }
 
-export function countTypeFieldsForNode(node) {
+export function countTypeFieldsForNode(node: ts.Node): number {
   if (ts.isInterfaceDeclaration(node) || ts.isClassDeclaration(node) || ts.isTypeLiteralNode(node)) {
     return node.members.filter((member) => ts.isPropertySignature(member) || ts.isPropertyDeclaration(member)).length;
   }
@@ -57,9 +57,9 @@ export function countTypeFieldsForNode(node) {
   return 0;
 }
 
-export function countOptionalTypeFields(node) {
+export function countOptionalTypeFields(node: ts.Node): number {
   let count = 0;
-  function visit(current) {
+  function visit(current: ts.Node): void {
     if ((ts.isPropertySignature(current) || ts.isPropertyDeclaration(current) || ts.isParameter(current)) && current.questionToken) {
       count += 1;
     }
@@ -69,9 +69,9 @@ export function countOptionalTypeFields(node) {
   return count;
 }
 
-export function countUnionMembers(node) {
+export function countUnionMembers(node: ts.Node): number {
   let count = 0;
-  function visit(current) {
+  function visit(current: ts.Node): void {
     if (ts.isUnionTypeNode(current)) count += current.types.length;
     ts.forEachChild(current, visit);
   }
@@ -79,9 +79,9 @@ export function countUnionMembers(node) {
   return count;
 }
 
-function countMatchingNodes(node, predicate) {
+function countMatchingNodes(node: ts.Node, predicate: (node: ts.Node) => boolean): number {
   let count = 0;
-  function visit(current) {
+  function visit(current: ts.Node): void {
     if (predicate(current)) count += 1;
     ts.forEachChild(current, visit);
   }
@@ -89,9 +89,9 @@ function countMatchingNodes(node, predicate) {
   return count;
 }
 
-function hasJsx(node) {
+function hasJsx(node: ts.Node): boolean {
   let found = false;
-  function visit(current) {
+  function visit(current: ts.Node): void {
     if (found) return;
     if (ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current) || ts.isJsxFragment(current)) {
       found = true;
@@ -103,7 +103,7 @@ function hasJsx(node) {
   return found;
 }
 
-function isLogicalExpression(node) {
+function isLogicalExpression(node: ts.Node): boolean {
   return (
     ts.isBinaryExpression(node) &&
     (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
@@ -111,15 +111,15 @@ function isLogicalExpression(node) {
   );
 }
 
-function isConditionalJsx(node) {
+function isConditionalJsx(node: ts.Node): boolean {
   return ts.isConditionalExpression(node) && hasJsx(node);
 }
 
-function isLogicalJsx(node) {
+function isLogicalJsx(node: ts.Node): boolean {
   return ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && hasJsx(node.right);
 }
 
-function isMapJsx(node) {
+function isMapJsx(node: ts.Node): boolean {
   return (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&

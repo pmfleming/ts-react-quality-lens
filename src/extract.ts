@@ -1,30 +1,24 @@
 import * as ts from "typescript";
 import { normalizeImportPath, relativeModuleId } from "./files.js";
-import {
-  complexityForNode,
-  countJsxConditionals,
-  countOptionalTypeFields,
-  countTypeFieldsForNode,
-  countUnionMembers,
-  maxNestingDepthForNode,
-} from "./ast-metrics.js";
+import { complexityForNode, countJsxConditionals, countOptionalTypeFields, countTypeFieldsForNode, countUnionMembers, maxNestingDepthForNode } from "./ast-metrics.js";
 import { countMatches, dedupeBy } from "./collections.js";
 import { callExpressionName, lineForNode } from "./ts-ast.js";
+import type { Config, ConfidenceSignal, ExportRecord, FunctionRecord, ImportKind, ImportRecord, SourceFileRecord, TypeRecord, TypeScriptProject } from "./types.js";
 
-export function analyzeModule(config, file, tsProject) {
+type ImportExtraction = { imports: ImportRecord[]; unsupportedPatterns: ConfidenceSignal[] };
+
+type ImportCandidate = { specifier: string; node: ts.Node; importKind: ImportKind; wildcardReExport?: boolean };
+
+export function analyzeModule(config: Config, file: SourceFileRecord, tsProject: TypeScriptProject) {
   const id = relativeModuleId(config.projectRoot, file.path);
   const typed = tsProject.modules.get(id) ?? null;
   const sourceFile = typed?.sourceFile ?? parseSourceFile(file);
-  const imports = extractImports(config, file, id, sourceFile);
+  const { imports, unsupportedPatterns } = extractImports(config, file, id, sourceFile);
   const functions = extractFunctions(file, sourceFile);
   const types = extractTypes(file, sourceFile);
-  const exports = extractExports(file, sourceFile);
+  const exports = extractExports(sourceFile);
   const components = functions.filter((fn) => fn.kind === "component");
-  const escapeCounts = {
-    any: countMatches(file.text, /\bany\b/g),
-    assertions: countMatches(file.text, /\bas\s+(?:any|never|unknown|[A-Z_a-z])/g) + countMatches(file.text, /!\./g),
-    suppressions: countMatches(file.text, /@ts-(?:ignore|expect-error|nocheck)|eslint-disable/g),
-  };
+  const escapeCounts = countAstEscapeHatches(file, sourceFile);
   const record = {
     id,
     file: file.relativePath,
@@ -36,10 +30,11 @@ export function analyzeModule(config, file, tsProject) {
     types,
     exports,
     escapeCounts,
-    isBarrel: isBarrel(file),
+    isBarrel: isBarrel(sourceFile),
     typed,
     text: file.text,
     sourceFile: file,
+    unsupportedPatterns,
   };
   Object.defineProperty(record, "astSourceFile", {
     value: sourceFile,
@@ -48,47 +43,114 @@ export function analyzeModule(config, file, tsProject) {
   return record;
 }
 
-function extractImports(config, file, fromId, sourceFile) {
-  const imports = [];
+function extractImports(
+  config: Config,
+  file: SourceFileRecord,
+  fromId: string,
+  sourceFile: ts.SourceFile,
+): ImportExtraction {
+  const result: ImportExtraction = { imports: [], unsupportedPatterns: [] };
 
-  function addImport(specifier, node, importKind) {
-    const normalized = normalizeImportPath(file.path, specifier, config);
-    imports.push({
-      from: fromId,
-      to: normalized.id,
-      to_kind: normalized.kind === "external" ? "external" : normalized.kind === "relative" ? "relative" : "unresolved",
-      resolved: normalized.resolved,
-      specifier,
-      import_kind: importKind,
-      line: lineForNode(sourceFile, node),
-      source: node.getText(sourceFile).replace(/\s+/g, " ").slice(0, 180),
-    });
-  }
-
-  function visit(node) {
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-      addImport(node.moduleSpecifier.text, node, node.importClause?.isTypeOnly ? "type" : "static");
-    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      addImport(node.moduleSpecifier.text, node, node.isTypeOnly ? "type" : "static");
-    } else if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-      node.arguments[0] &&
-      ts.isStringLiteralLike(node.arguments[0])
-    ) {
-      addImport(node.arguments[0].text, node, "dynamic");
+  function visit(node: ts.Node): void {
+    const candidate = importCandidate(node);
+    if (candidate) addImportCandidate(config, file, fromId, sourceFile, result, candidate);
+    else if (isNonLiteralDynamicImport(node)) {
+      result.unsupportedPatterns.push(
+        unsupportedPattern(file, sourceFile, node, "dynamic_non_literal_import", "Dynamic import uses a non-literal specifier."),
+      );
     }
     ts.forEachChild(node, visit);
   }
 
   visit(sourceFile);
-  return imports;
+  return result;
 }
 
-function extractFunctions(file, sourceFile) {
-  const records = [];
+function importCandidate(node: ts.Node): ImportCandidate | null {
+  if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+    return {
+      specifier: node.moduleSpecifier.text,
+      node,
+      importKind: node.importClause?.isTypeOnly ? "type" : "static",
+    };
+  }
+  if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    return {
+      specifier: node.moduleSpecifier.text,
+      node,
+      importKind: node.isTypeOnly ? "type" : "static",
+      wildcardReExport: !node.exportClause,
+    };
+  }
+  if (isLiteralDynamicImport(node)) return { specifier: node.arguments[0].text, node, importKind: "dynamic" };
+  return null;
+}
 
-  function addFunction(name, node, bodyNode = node.body ?? node) {
+function isLiteralDynamicImport(node: ts.Node): node is ts.CallExpression & { arguments: [ts.StringLiteralLike, ...ts.Expression[]] } {
+  return isDynamicImport(node) && Boolean(node.arguments[0]) && ts.isStringLiteralLike(node.arguments[0]);
+}
+
+function isNonLiteralDynamicImport(node: ts.Node): boolean {
+  return isDynamicImport(node) && (!node.arguments[0] || !ts.isStringLiteralLike(node.arguments[0]));
+}
+
+function isDynamicImport(node: ts.Node): node is ts.CallExpression {
+  return ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword;
+}
+
+function addImportCandidate(
+  config: Config,
+  file: SourceFileRecord,
+  fromId: string,
+  sourceFile: ts.SourceFile,
+  result: ImportExtraction,
+  candidate: ImportCandidate,
+): void {
+  const addUnsupported = (kind: string, message: string) =>
+    result.unsupportedPatterns.push(unsupportedPattern(file, sourceFile, candidate.node, kind, message));
+  if (candidate.wildcardReExport) {
+    addUnsupported("wildcard_re_export", `Wildcard re-export from "${candidate.specifier}" can hide dependency fan-out.`);
+  }
+  const normalized = normalizeImportPath(file.path, candidate.specifier, config);
+  if (normalized.kind === "external" && isAliasSpecifier(config, candidate.specifier)) {
+    addUnsupported("unresolved_path_alias", `Could not resolve aliased import "${candidate.specifier}".`);
+  }
+  result.imports.push({
+    from: fromId,
+    to: normalized.id,
+    to_kind: normalized.kind === "external" ? "external" : normalized.kind === "relative" ? "relative" : "unresolved",
+    resolved: normalized.resolved,
+    specifier: candidate.specifier,
+    import_kind: candidate.importKind,
+    line: lineForNode(sourceFile, candidate.node),
+    source: candidate.node.getText(sourceFile).replace(/\s+/g, " ").slice(0, 180),
+  });
+}
+
+function unsupportedPattern(
+  file: SourceFileRecord,
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+  kind: ConfidenceSignal["kind"],
+  message: string,
+): ConfidenceSignal {
+  return { kind, file: file.relativePath, line: lineForNode(sourceFile, node), message };
+}
+
+function isAliasSpecifier(config: Config, specifier: string): boolean {
+  return config.pathAliases.some((alias) => aliasPatternMatches(specifier, alias.pattern));
+}
+
+function aliasPatternMatches(specifier: string, pattern: string): boolean {
+  if (!pattern.includes("*")) return specifier === pattern;
+  const [prefix, suffix = ""] = pattern.split("*");
+  return specifier.startsWith(prefix) && specifier.endsWith(suffix);
+}
+
+function extractFunctions(file: SourceFileRecord, sourceFile: ts.SourceFile): FunctionRecord[] {
+  const records: FunctionRecord[] = [];
+
+  function addFunction(name: string, node: ts.Node, bodyNode: ts.Node): void {
     const body = bodyNode.getText(sourceFile);
     const line = lineForNode(sourceFile, node);
     const lines = lineSpanForNode(sourceFile, bodyNode);
@@ -112,7 +174,7 @@ function extractFunctions(file, sourceFile) {
     });
   }
 
-  function visit(node) {
+  function visit(node: ts.Node): void {
     if (ts.isFunctionDeclaration(node) && node.body) {
       addFunction(node.name?.text ?? "default", node, node.body);
     } else if (
@@ -130,10 +192,15 @@ function extractFunctions(file, sourceFile) {
   return dedupeBy(records, (record) => record.id);
 }
 
-function extractTypes(file, sourceFile) {
-  const records = [];
+function extractTypes(file: SourceFileRecord, sourceFile: ts.SourceFile): TypeRecord[] {
+  const records: TypeRecord[] = [];
 
-  function addType(node, kind, name, typeBody) {
+  function addType(
+    node: ts.InterfaceDeclaration | ts.TypeAliasDeclaration | ts.ClassDeclaration,
+    kind: TypeRecord["kind"],
+    name: string,
+    typeBody: ts.Node,
+  ): void {
     const body = typeBody.getText(sourceFile);
     records.push({
       name,
@@ -148,7 +215,7 @@ function extractTypes(file, sourceFile) {
     });
   }
 
-  function visit(node) {
+  function visit(node: ts.Node): void {
     if (ts.isInterfaceDeclaration(node)) {
       addType(node, "interface", node.name.text, node);
     } else if (ts.isTypeAliasDeclaration(node)) {
@@ -163,45 +230,44 @@ function extractTypes(file, sourceFile) {
   return records;
 }
 
-function extractExports(file, sourceFile) {
-  const records = [];
-
-  function addNamedExport(name, node) {
-    records.push({ name, line: lineForNode(sourceFile, node) });
-  }
-
-  function visit(node) {
-    if (
-      (ts.isFunctionDeclaration(node) ||
-        ts.isClassDeclaration(node) ||
-        ts.isInterfaceDeclaration(node) ||
-        ts.isTypeAliasDeclaration(node) ||
-        ts.isEnumDeclaration(node)) &&
-      hasExportModifier(node) &&
-      node.name
-    ) {
-      addNamedExport(node.name.text, node);
-    } else if (ts.isVariableStatement(node) && hasExportModifier(node)) {
-      for (const declaration of node.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name)) addNamedExport(declaration.name.text, declaration);
-      }
-    } else if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause)) {
-      for (const element of node.exportClause.elements) {
-        addNamedExport(element.name.text, element);
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-  return records;
+function extractExports(sourceFile: ts.SourceFile): ExportRecord[] {
+  return sourceFile.statements.flatMap((statement) => exportRecordsForStatement(sourceFile, statement));
 }
 
-function parseSourceFile(file) {
+function exportRecordsForStatement(sourceFile: ts.SourceFile, statement: ts.Statement): ExportRecord[] {
+  const name = exportedDeclarationName(statement);
+  if (name) return [{ name, line: lineForNode(sourceFile, statement) }];
+  if (ts.isVariableStatement(statement) && hasExportModifier(statement)) return variableExportRecords(sourceFile, statement);
+  if (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+    return statement.exportClause.elements.map((element) => ({ name: element.name.text, line: lineForNode(sourceFile, element) }));
+  }
+  return [];
+}
+
+function exportedDeclarationName(node: ts.Statement): string | null {
+  if (
+    ts.isFunctionDeclaration(node) ||
+    ts.isClassDeclaration(node) ||
+    ts.isInterfaceDeclaration(node) ||
+    ts.isTypeAliasDeclaration(node) ||
+    ts.isEnumDeclaration(node)
+  ) {
+    return hasExportModifier(node) ? node.name?.text ?? null : null;
+  }
+  return null;
+}
+
+function variableExportRecords(sourceFile: ts.SourceFile, statement: ts.VariableStatement): ExportRecord[] {
+  return statement.declarationList.declarations
+    .filter((declaration) => ts.isIdentifier(declaration.name))
+    .map((declaration) => ({ name: declaration.name.getText(sourceFile), line: lineForNode(sourceFile, declaration) }));
+}
+
+function parseSourceFile(file: SourceFileRecord): ts.SourceFile {
   return ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true, scriptKindForExtension(file.extension));
 }
 
-function scriptKindForExtension(extension) {
+function scriptKindForExtension(extension: string): ts.ScriptKind {
   switch (extension) {
     case ".tsx":
       return ts.ScriptKind.TSX;
@@ -216,34 +282,50 @@ function scriptKindForExtension(extension) {
   }
 }
 
-function lineSpanForNode(sourceFile, node) {
+function lineSpanForNode(sourceFile: ts.SourceFile, node: ts.Node): number {
   const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line;
   const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line;
   return end - start + 1;
 }
 
-function hasExportModifier(node) {
+function hasExportModifier(node: ts.HasModifiers): boolean {
   return Boolean(ts.getModifiers?.(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
 }
 
-function classifyFunction(name, body, jsxDensity) {
+function classifyFunction(name: string, body: string, jsxDensity: number): FunctionRecord["kind"] {
   if (/^use[A-Z]/.test(name)) return "hook";
   if (/^[A-Z]/.test(name) && (jsxDensity > 0 || /\bReact\./.test(body))) return "component";
   if (/\bswitch\s*\([^)]*(?:state|action)/.test(body) || /\bcase\s+["']/.test(body)) return "reducer";
   return "function";
 }
 
-function isBarrel(file) {
-  const statements = file.text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("//"));
-  return statements.length > 1 && statements.every((line) => line.startsWith("export "));
+function isBarrel(sourceFile: ts.SourceFile): boolean {
+  const statements = sourceFile.statements.filter((statement) => statement.kind !== ts.SyntaxKind.NotEmittedStatement);
+  return (
+    statements.length > 1 &&
+    statements.some((statement) => ts.isExportDeclaration(statement)) &&
+    statements.every((statement) => ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement))
+  );
 }
 
-function countJsxElements(node) {
+function countAstEscapeHatches(file: SourceFileRecord, sourceFile: ts.SourceFile) {
+  const counts = {
+    any: 0,
+    assertions: 0,
+    suppressions: countMatches(file.text, /@ts-(?:ignore|expect-error|nocheck)|eslint-disable/g),
+  };
+  function visit(node: ts.Node): void {
+    if (node.kind === ts.SyntaxKind.AnyKeyword) counts.any += 1;
+    if (ts.isNonNullExpression(node) || ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) counts.assertions += 1;
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return counts;
+}
+
+function countJsxElements(node: ts.Node): number {
   let count = 0;
-  function visit(current) {
+  function visit(current: ts.Node): void {
     if (ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current) || ts.isJsxFragment(current)) count += 1;
     ts.forEachChild(current, visit);
   }
@@ -251,9 +333,9 @@ function countJsxElements(node) {
   return count;
 }
 
-function countCallsMatching(node, namePattern) {
+function countCallsMatching(node: ts.Node, namePattern: RegExp): number {
   let count = 0;
-  function visit(current) {
+  function visit(current: ts.Node): void {
     if (ts.isCallExpression(current)) {
       const name = callExpressionName(current);
       if (name && namePattern.test(name)) count += 1;

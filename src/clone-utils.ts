@@ -1,8 +1,11 @@
 import path from "node:path";
 import { toPosix } from "./files.js";
 import { riskForScore } from "./scoring.js";
+import type { CloneBlock, CloneGroup, Config, JscpdDuplicate, Signal } from "./types.js";
 
-export function normalizeCloneLine(line) {
+type CloneScoreWeights = { block: number; file: number; source: number };
+
+export function normalizeCloneLine(line: string): string {
   return line
     .replace(/(["'`])(?:\\.|(?!\1).)*\1/g, "STRING")
     .replace(/\b\d+(?:\.\d+)?\b/g, "NUMBER")
@@ -13,7 +16,7 @@ export function normalizeCloneLine(line) {
     );
 }
 
-export function stableHash(text) {
+export function stableHash(text: string): string {
   let hash = 2166136261;
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index);
@@ -22,14 +25,35 @@ export function stableHash(text) {
   return (hash >>> 0).toString(16);
 }
 
-export function cloneGroup(group) {
+export function cloneGroup(group: CloneBlock[]): CloneGroup {
+  return cloneGroupFromBlocks(group, {
+    idPrefix: "clone",
+    engine: "line-window-normalized",
+    weights: { block: 10, file: 16, source: 10 },
+  });
+}
+
+export function cloneGroupFromBlocks(
+  group: CloneBlock[],
+  options: {
+    idPrefix: string;
+    engine: string;
+    extraSignals?: Signal[];
+    weights: CloneScoreWeights;
+  },
+): CloneGroup {
+  const first = group[0];
+  if (!first) throw new Error("Cannot create a clone group from an empty block list.");
   const files = new Set(group.map((block) => block.file));
   const testCode = group.every((block) => block.test_code);
-  const score = Math.min(100, group.length * 10 + files.size * 16 + (testCode ? 0 : 10));
+  const score = Math.min(
+    100,
+    group.length * options.weights.block + files.size * options.weights.file + (testCode ? 0 : options.weights.source),
+  );
   return {
-    id: `clone:${group[0].hash}`,
-    engine: "line-window-normalized",
-    hash: group[0].hash,
+    id: `${options.idPrefix}:${first.hash}`,
+    engine: options.engine,
+    hash: first.hash,
     classification: testCode ? "test_clone" : "source_clone",
     test_code: testCode,
     score,
@@ -37,6 +61,7 @@ export function cloneGroup(group) {
     signals: [
       { kind: "instance_count", value: group.length },
       { kind: "file_count", value: files.size },
+      ...(options.extraSignals ?? []),
     ],
     instances: group.map((block) => ({
       file: block.file,
@@ -46,11 +71,11 @@ export function cloneGroup(group) {
   };
 }
 
-export function jscpdCloneGroup(config, duplicate, index) {
+export function jscpdCloneGroup(config: Config, duplicate: JscpdDuplicate, index: number): CloneGroup {
   const first = duplicate.firstFile ?? {};
   const second = duplicate.secondFile ?? {};
   const instances = [first, second]
-    .filter((item) => item.name)
+    .filter((item): item is typeof item & { name: string } => typeof item.name === "string")
     .map((item) => ({
       file: toPosix(path.relative(config.projectRoot, path.resolve(item.name))),
       start_line: item.start ?? item.startLoc?.line ?? null,

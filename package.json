@@ -9,8 +9,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "ci": "npm run lint && npm run build && npm run format:check && npm run test",
-    "lint": "tsc -p tsconfig.json --noEmit",
+    "ci": "npm run typecheck && npm run build && node dist/scripts/format-check.js && node --test dist/test/cli.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "npm run typecheck",
     "format:check": "npm run build && node dist/scripts/format-check.js",
     "test": "npm run build && node --test dist/test/cli.test.js",
     "catalog": "npm run build && node ./dist/bin/ts-react-quality-lens.js catalog --config ./examples/basic/ts-react-quality-lens.config.json",

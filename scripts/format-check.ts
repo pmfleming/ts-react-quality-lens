@@ -3,7 +3,7 @@ import path from "node:path";
 
 const checkedExtensions = new Set([".js", ".jsx", ".js", ".ts", ".tsx", ".json", ".md", ".html", ".yml", ".yaml"]);
 const ignored = new Set(["node_modules", ".git", "target", "coverage", "dist", "build"]);
-const failures = [];
+const failures: string[] = [];
 
 for (const file of collect(".")) {
   const extension = path.extname(file);
@@ -19,7 +19,7 @@ for (const file of collect(".")) {
     try {
       JSON.parse(text);
     } catch (error) {
-      failures.push(`${file}: invalid JSON: ${error.message}`);
+      failures.push(`${file}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }
@@ -29,8 +29,8 @@ if (failures.length) {
   process.exitCode = 1;
 }
 
-function collect(root) {
-  const result = [];
+function collect(root: string): string[] {
+  const result: string[] = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (ignored.has(entry.name)) continue;
     const fullPath = path.join(root, entry.name);

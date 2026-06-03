@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ts-react-quality-lens — Improvement Plan vs rust-quality-lens</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #161b22;
+      --panel-2: #1c2330;
+      --ink: #e6edf3;
+      --muted: #9aa7b4;
+      --line: #2b323c;
+      --accent: #4ea1ff;
+      --code: #79c0ff;
+      --high: #ff6b6b;
+      --med: #ffb454;
+      --low: #5ec8a0;
+      --info: #8a9bb0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    main { max-width: 1040px; margin: 0 auto; padding: 48px 24px 96px; }
+    header.doc { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 32px; }
+    h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: -0.5px; }
+    h2 { font-size: 22px; margin: 52px 0 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+    h3 { font-size: 17px; margin: 28px 0 8px; }
+    p { margin: 12px 0; }
+    a { color: var(--accent); }
+    .lede { color: var(--muted); font-size: 17px; }
+    .meta { color: var(--info); font-size: 13px; margin-top: 12px; }
+    code, kbd { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; font-size: 13px; }
+    code { color: var(--code); background: rgba(110,170,255,.10); padding: 1px 5px; border-radius: 4px; }
+    pre {
+      background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+      padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.5;
+    }
+    pre code { background: none; padding: 0; color: #c9d4e0; }
+    .tag {
+      display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle;
+    }
+    .tag.high { background: rgba(255,107,107,.16); color: var(--high); border: 1px solid rgba(255,107,107,.35); }
+    .tag.med  { background: rgba(255,180,84,.14); color: var(--med); border: 1px solid rgba(255,180,84,.3); }
+    .tag.low  { background: rgba(94,200,160,.14); color: var(--low); border: 1px solid rgba(94,200,160,.3); }
+    .tag.info { background: rgba(138,155,176,.14); color: var(--info); border: 1px solid rgba(138,155,176,.3); }
+    .gap {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 18px 20px; margin: 18px 0;
+    }
+    .gap h3 { margin-top: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .gap .id { color: var(--muted); font-weight: 700; font-size: 13px; }
+    .rec { border-left: 3px solid var(--accent); padding: 2px 0 2px 14px; margin: 12px 0 0; color: #d6e2ee; }
+    .rec strong { color: var(--accent); }
+    .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0; }
+    .twocol > div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+    .twocol h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    @media (max-width: 720px) { .twocol { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    td.center, th.center { text-align: center; white-space: nowrap; }
+    .yes { color: var(--low); font-weight: 700; }
+    .no { color: var(--high); font-weight: 700; }
+    .partial { color: var(--med); font-weight: 700; }
+    ul { margin: 10px 0; padding-left: 22px; }
+    li { margin: 5px 0; }
+    ol.phase { margin: 10px 0; padding-left: 22px; }
+    ol.phase li { margin: 8px 0; }
+    .strength { color: var(--low); font-weight: 600; }
+    .callout {
+      background: linear-gradient(180deg, rgba(78,161,255,.08), rgba(78,161,255,.02));
+      border: 1px solid rgba(78,161,255,.25); border-radius: 10px; padding: 16px 20px; margin: 20px 0;
+    }
+    .toc { columns: 2; column-gap: 32px; font-size: 14px; }
+    .toc a { display: block; margin: 4px 0; }
+    @media (max-width: 720px) { .toc { columns: 1; } }
+    footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--info); font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header class="doc">
+    <h1>ts-react-quality-lens — Improvement Plan</h1>
+    <p class="lede">
+      A gap analysis benchmarking <code>ts-react-quality-lens</code> against its sibling
+      <code>rust-quality-lens</code>, plus TypeScript/React-specific opportunities the Rust lens does not
+      need. The goal: bring the two lenses to <strong>contract and rigor parity</strong> so a single dashboard
+      can consume both, then push the TS lens further where its richer toolchain allows.
+    </p>
+    <p class="meta">
+      Compared against <code>rust-quality-lens</code> @ <code>master</code> (README, <code>docs/risk-model-v1.md</code>,
+      <code>docs/measurement-upgrades.md</code>, <code>docs/extraction-notes.md</code>, <code>src/*.rs</code>).
+      TS side reviewed across all of <code>src/</code> (27 modules). Date: 2026-06-03.
+    </p>
+  </header>
+
+  <div class="callout">
+    <strong>Headline:</strong> the TS lens already <em>matches or exceeds</em> the Rust lens on extraction
+    (real TS compiler API, framework adapters, hooks linting). It <em>lags significantly</em> on the parts that
+    make a lens trustworthy and portable: a <strong>versioned, externalized risk model</strong>, a
+    <strong>real architecture risk map with category scores</strong>, <strong>missing-vs-stale confidence
+    discipline</strong>, and <strong>git-history change risk</strong>. Several catalog descriptions also
+    <strong>over-promise</strong> capabilities the code does not yet implement.
+  </div>
+
+  <h2 id="toc">Contents</h2>
+  <nav class="toc">
+    <a href="#parity">1. Feature parity matrix</a>
+    <a href="#g1">G1 — Versioned risk model</a>
+    <a href="#g2">G2 — Architecture risk map</a>
+    <a href="#g3">G3 — Confidence: missing vs stale</a>
+    <a href="#g4">G4 — Git history / change risk</a>
+    <a href="#g5">G5 — AST structural clones</a>
+    <a href="#g6">G6 — Layer classification</a>
+    <a href="#g7">G7 — Catalog vs implementation</a>
+    <a href="#g8">G8 — Unsupported-pattern surfacing</a>
+    <a href="#g9">G9 — Golden fixtures</a>
+    <a href="#g10">G10 — Performance input contract</a>
+    <a href="#ts">2. TS/React-only opportunities</a>
+    <a href="#internal">3. Internal cleanups</a>
+    <a href="#keep">4. Strengths to preserve</a>
+    <a href="#roadmap">5. Phased roadmap</a>
+  </nav>
+
+  <h2 id="parity">1. Feature parity matrix</h2>
+  <p>How each lens stands on the capabilities that define a portable measurement engine.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Capability</th>
+        <th class="center">rust-quality-lens</th>
+        <th class="center">ts-react-quality-lens</th>
+        <th>Gap</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Syntax-aware extraction</td><td class="center yes">syn helpers</td><td class="center yes">TS compiler API</td><td>—</td></tr>
+      <tr><td>Hotspots / complexity</td><td class="center yes">yes</td><td class="center yes">yes</td><td>—</td></tr>
+      <tr><td>Escape hatches</td><td class="center yes">yes</td><td class="center yes">yes</td><td>—</td></tr>
+      <tr><td>Type health</td><td class="center yes">yes</td><td class="center yes">yes (+checker)</td><td>—</td></tr>
+      <tr><td>Token clones</td><td class="center yes">yes</td><td class="center yes">jscpd + fallback</td><td>—</td></tr>
+      <tr><td><strong>AST / structural clones</strong></td><td class="center yes">yes (hasher)</td><td class="center no">no</td><td><a href="#g5">G5</a></td></tr>
+      <tr><td>Dependency graph + cycles</td><td class="center yes">yes</td><td class="center yes">depcruise + Tarjan</td><td>—</td></tr>
+      <tr><td><strong>Layer violations</strong></td><td class="center yes">yes</td><td class="center no">claimed, not built</td><td><a href="#g6">G6</a>, <a href="#g7">G7</a></td></tr>
+      <tr><td>Locality / hidden coupling</td><td class="center yes">yes</td><td class="center yes">yes</td><td>—</td></tr>
+      <tr><td>Leverage / reach</td><td class="center yes">yes</td><td class="center yes">yes</td><td>—</td></tr>
+      <tr><td>Correctness catalog + run</td><td class="center yes">yes</td><td class="center yes">yes</td><td>—</td></tr>
+      <tr><td>Framework adapters</td><td class="center no">n/a</td><td class="center yes">Next/Remix/Vite/SB</td><td><span class="tag low">TS lead</span></td></tr>
+      <tr><td>Hooks / lint integration</td><td class="center no">n/a</td><td class="center yes">react-hooks</td><td><span class="tag low">TS lead</span></td></tr>
+      <tr><td><strong>Versioned risk model (externalized)</strong></td><td class="center yes">risk_model.rs + doc</td><td class="center no">inline magic numbers</td><td><a href="#g1">G1</a></td></tr>
+      <tr><td><strong>Architecture map category scores</strong></td><td class="center yes">6 categories + total</td><td class="center partial">pass-through only</td><td><a href="#g2">G2</a></td></tr>
+      <tr><td><strong>Change risk from git history</strong></td><td class="center yes">churn+defect+co-change</td><td class="center partial">churn only, not scored</td><td><a href="#g4">G4</a></td></tr>
+      <tr><td><strong>Missing vs stale inputs</strong></td><td class="center yes">null + unknown_metrics</td><td class="center no">available/missing only</td><td><a href="#g3">G3</a></td></tr>
+      <tr><td><strong>Confidence granularity</strong></td><td class="center yes">required/observed/scope</td><td class="center partial">flat booleans</td><td><a href="#g3">G3</a></td></tr>
+      <tr><td><strong>Unsupported-pattern surfacing</strong></td><td class="center yes">explicit signals</td><td class="center no">silent drop</td><td><a href="#g8">G8</a></td></tr>
+      <tr><td><strong>Golden edge-case fixtures</strong></td><td class="center yes">assertion-backed</td><td class="center partial">demo example only</td><td><a href="#g9">G9</a></td></tr>
+      <tr><td>Performance input contract</td><td class="center partial">optional slowspots</td><td class="center no">none</td><td><a href="#g10">G10</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Gap analysis</h2>
+
+  <div class="gap" id="g1">
+    <h3><span class="id">G1</span> Externalize and version the risk model <span class="tag high">High</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p>Weights, caps, and classification thresholds live in <code>src/risk_model.rs</code>, documented in
+        <code>docs/risk-model-v1.md</code> under model id <code>rqlens.architecture_risk</code> v1. Raw facts
+        are kept separate from derived scores. Every scored record carries
+        <code>risk_model_id</code>, <code>risk_model_version</code>, <code>risk_calibration</code>, and the map
+        emits <code>meta.risk_model_weights</code> + <code>meta.risk_model_tool_scores</code>.</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p>Weights are <strong>hardcoded magic numbers</strong> scattered across <code>scoring.ts</code>
+        (<code>fn.complexity * 8 + nesting * 5 …</code>), <code>graph.ts</code>, <code>dependency.ts</code>, and
+        <code>quality.ts</code>. Thresholds (<code>70</code>/<code>35</code>) live in <code>riskForScore</code>.
+        No version, no document, no calibration metadata in artifacts, no raw/derived separation.</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> create <code>src/risk-model.ts</code> exporting a frozen
+    <code>RISK_MODEL</code> object (<code>id: "tsrqlens.architecture_risk"</code>, <code>version: 1</code>) holding
+    all weights/caps/thresholds and per-tool calibration tables. Replace inline constants in
+    <code>scoring.ts</code>/<code>graph.ts</code>/<code>quality.ts</code>/<code>dependency.ts</code> with lookups.
+    Attach <code>risk_model_id</code>/<code>risk_model_version</code>/<code>risk_calibration</code> to scored
+    records and <code>meta.risk_model_*</code> to <code>map.json</code>. Document it in
+    <code>docs/risk-model-v1.md</code> mirroring the Rust doc. This is the foundation the rest of the gaps build on.</p>
+  </div>
+
+  <div class="gap" id="g2">
+    <h3><span class="id">G2</span> Turn the architecture map into a real risk model <span class="tag high">High</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p>Per-module derived categories: <code>maintainability_risk</code>, <code>change_risk</code>,
+        <code>performance_risk</code>, <code>correctness_risk</code>, <code>architectural_risk</code>,
+        <code>quality_risk</code>, and a <code>total_score</code> that is <code>null</code> if any required
+        category is unknown. Architectural risk folds in cycle-membership penalty, layer violations, and a
+        large-module penalty. Classification thresholds map score → warning/bad.</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p><code>mapNode</code> just copies <code>maxScoreFor(...)</code> out of other artifacts into
+        <code>category_scores</code>. <code>correctness</code> is a binary <code>0</code>/<code>40</code> hack;
+        there is no <code>change</code> from git, no cycle/layer penalty feeding the node, no
+        <code>total_score</code>, and missing inputs silently collapse to <code>0</code> (because
+        <code>maxScoreFor</code> returns <code>0</code>), inflating apparent health.</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> add <code>architectureRiskScores(module, facts)</code> in the new risk-model
+    module producing the six categories + <code>total_score</code>, with <code>null</code> (not <code>0</code>)
+    for unavailable inputs and an <code>unknown_metrics</code> array explaining why. Fold cycle membership, layer
+    violations (<a href="#g6">G6</a>), and a large-module penalty into <code>architectural_risk</code>; fold
+    git change facts (<a href="#g4">G4</a>) into <code>change_risk</code>; derive <code>correctness_risk</code>
+    from real test status rather than 0/40. Add a classification (<code>ok</code>/<code>warning</code>/<code>bad</code>)
+    and surface unknown-module counts in <code>map.json.summary</code>.</p>
+  </div>
+
+  <div class="gap" id="g3">
+    <h3><span class="id">G3</span> Distinguish missing from stale, and deepen confidence <span class="tag high">High</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p>Confidence carries <code>complete</code>, <code>partial</code>, <code>confidence_scope</code>,
+        <code>required_inputs</code>, <code>observed_inputs</code>, <code>missing_input</code>,
+        <code>stale_input</code>, <code>unsupported_pattern</code>. The map never substitutes <code>0</code> for a
+        required missing/stale input — it marks the field unknown and records it in
+        <code>meta.summary.artifact_status</code>.</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p><code>createConfidence</code> is a <strong>flat boolean bag</strong> (<code>tsconfig_found</code>,
+        <code>git_history_available</code>, …). The map's <code>artifact_status</code> only reports
+        <code>"available"</code>/<code>"missing"</code> — <strong>no staleness detection at all</strong>: a
+        <code>map.architecture</code> run will happily consume a <code>hotspots.json</code> written before the
+        source changed.</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> extend the <code>Confidence</code> type with
+    <code>required_inputs</code>/<code>observed_inputs</code>/<code>confidence_scope</code> and a
+    <code>complete|partial</code> flag. Stamp each artifact with a content hash + <code>measured_at</code> (already
+    present) and the source-set hash it was computed from; in <code>measureArchitectureMap</code>, compare each
+    input artifact's source hash against the current project to mark <code>stale</code> vs <code>available</code>
+    vs <code>missing</code>, and propagate <code>null</code> for derived fields (depends on <a href="#g2">G2</a>).</p>
+  </div>
+
+  <div class="gap" id="g4">
+    <h3><span class="id">G4</span> Git history: defect-keyword + co-change → change risk <span class="tag med">Medium</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p><code>change_risk</code> is built from churn, commit count, contributor count,
+        <strong>defect-keyword commits</strong> (fix/bug/revert signals), and <strong>co-change</strong>
+        (files that change together), with a missing-test-evidence penalty.</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p><code>history.ts</code> computes only churn (commits + contributors) and it is used <em>only</em> as a
+        small capped term inside locality. There is no defect-keyword mining, no co-change graph, and no
+        <code>change_risk</code> category anywhere.</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> extend <code>gitChurn</code> into a <code>gitHistory</code> producer that also
+    returns defect-keyword commit counts (regex over commit subjects: <code>fix|bug|revert|hotfix|regression</code>)
+    and a co-change map (files appearing in the same commit). Feed these into <code>change_risk</code> in the map
+    (<a href="#g2">G2</a>) using calibrated weights from the risk model (<a href="#g1">G1</a>). Keep raw counts in
+    the artifact separate from the derived score.</p>
+  </div>
+
+  <div class="gap" id="g5">
+    <h3><span class="id">G5</span> Add an AST/structural clone layer <span class="tag med">Medium</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p>Two clone engines: <code>token</code> (normalized windows) and <code>ast</code> (a helper hashes
+        functions/methods, normalizing local names and literals while keeping operator/call/type structure,
+        skipping trivial functions below a node threshold, with a cross-file factor).</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p>Only token-level: jscpd plus a normalized line-window fallback. No structural layer — even though the
+        TS compiler AST is <strong>already loaded</strong> for every module, so the data needed for structural
+        hashing is sitting unused.</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> add an <code>engine: "ast"</code> layer to <code>clones.json</code>. Walk
+    each module's <code>astSourceFile</code>, hash function/method bodies after normalizing identifiers and
+    literals (reuse <code>stableHash</code> from <code>clone-utils</code>), drop bodies under a min-node threshold,
+    and emit groups where ≥2 non-trivial functions share a hash. Tag token rows
+    <code>confidence_scope: "source_scan"</code> and AST rows <code>"syntax_facts"</code>, matching the Rust split.</p>
+  </div>
+
+  <div class="gap" id="g6">
+    <h3><span class="id">G6</span> Layer classification &amp; layer-violation detection <span class="tag med">Medium</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p>A generic layer classifier assigns each module a layer; cross-layer edges that violate the intended
+        direction become <strong>layer violations</strong> that feed <code>architectural_risk</code>.</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p>No layer concept exists. <code>dependency.ts</code> detects cycles, deep relative imports, and barrels,
+        but the catalog text for <code>dependency_health</code> and <code>leverage</code> already
+        <em>claims</em> "layer violations" and "package boundaries" (see <a href="#g7">G7</a>).</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> add a lightweight, config-driven layer classifier (e.g. ordered globs:
+    <code>app/route → feature → ui → hooks → lib/util</code>, plus a generic fallback by directory depth/role).
+    Flag edges that import "upward" (util → feature, ui → route) as <code>layer_violation</code> records in
+    <code>dependency_health.json</code> and feed them into <code>architectural_risk</code>. Make the layer map an
+    optional config field so it stays portable.</p>
+  </div>
+
+  <div class="gap" id="g7">
+    <h3><span class="id">G7</span> Reconcile catalog promises with implementation <span class="tag med">Medium</span></h3>
+    <p>The Rust lens keeps its catalog descriptions tightly aligned to what producers actually emit. The TS
+    catalog (<code>src/tasks.ts</code>) advertises capabilities the code does not implement:</p>
+    <ul>
+      <li><code>locality_dynamic</code> claims "<em>contributors, and ownership spread</em>" — only churn
+        commits/contributors are computed; no ownership-spread metric.</li>
+      <li><code>locality_leverage</code> claims "<em>co-change ripple</em>" — no co-change is computed
+        (<a href="#g4">G4</a>).</li>
+      <li><code>dependency_health</code> claims "<em>layer violations, package boundaries</em>" — neither exists
+        yet (<a href="#g6">G6</a>).</li>
+    </ul>
+    <p class="rec"><strong>Plan:</strong> for each claim, either implement it (folded into G4/G6) or trim the
+    description so consumers and the dashboard are not misled. A catalog that over-promises silently degrades
+    trust in every other number the lens reports. Add a test asserting each catalog capability keyword maps to a
+    field actually present in that task's artifact.</p>
+  </div>
+
+  <div class="gap" id="g8">
+    <h3><span class="id">G8</span> Surface unsupported patterns instead of dropping them <span class="tag med">Medium</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p>Macro-generated modules/tests and other unparseable constructs are reported as explicit
+        <code>unsupported_pattern</code> confidence signals — "unsupported is not the same as absent."</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p>The import/extract fallback silently skips what it cannot resolve: <strong>tsconfig <code>paths</code>
+        aliases</strong>, <strong>re-export chains</strong> (<code>export * from</code>), <strong>dynamic/
+        non-literal specifiers</strong>, and barrel indirection. These vanish from the dependency graph with no
+        signal, quietly understating coupling and cycles.</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> when the built-in parser hits a path alias, computed specifier, or
+    re-export it cannot resolve, push an <code>unsupported_pattern</code> entry into confidence
+    (kind + file + line) rather than dropping it. Resolve tsconfig <code>paths</code> where the compiler program
+    is loaded so aliased imports become real edges; otherwise mark them unresolved-but-known.</p>
+  </div>
+
+  <div class="gap" id="g9">
+    <h3><span class="id">G9</span> Assertion-backed golden fixtures <span class="tag med">Medium</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p>A golden fixture crate deliberately exercises edge cases (grouped imports, duplicate test names,
+        same-named types in different modules, <code>pub use</code>, macro tests, suppression de-dup, attribute
+        module wiring) so the upgraded behavior is executable and regression-proof.</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p><code>examples/basic</code> is a <em>demonstration</em> app, not a golden fixture with pinned expected
+        outputs. <code>test/cli.test.ts</code> exercises the CLI but the corpus doesn't cover the hard cases the
+        TS lens will meet in real repos.</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> build a <code>test/fixtures/golden</code> project covering: path aliases,
+    barrel re-exports, <code>export * from</code>, dynamic imports, import cycles, duplicate component names across
+    files, colocated vs external tests, <code>"use client"</code>/server-only boundary, and a deliberate
+    structural clone pair. Snapshot the produced artifacts (with volatile fields like <code>measured_at</code>/
+    <code>host</code> normalized) and assert on them, so every gap fixed above is locked in.</p>
+  </div>
+
+  <div class="gap" id="g10">
+    <h3><span class="id">G10</span> Optional performance input contract <span class="tag low">Low</span></h3>
+    <div class="twocol">
+      <div>
+        <h4>rust-quality-lens</h4>
+        <p><code>performance_risk</code> is derived from an optional <code>slowspots.json</code> (bench mean/
+        variance). Absent ⇒ category stays unknown, rest of the map remains usable.</p>
+      </div>
+      <div>
+        <h4>ts-react-quality-lens</h4>
+        <p>No runtime/bundle performance input. <code>react_health</code> has a "render_performance" heuristic but
+        nothing measures actual cost.</p>
+      </div>
+    </div>
+    <p class="rec"><strong>Plan:</strong> define an optional input artifact (e.g. <code>bundle_stats.json</code> /
+    <code>render_costs.json</code>) the lens reads if present — per-module bundle bytes from a stats file, or
+    render timings — feeding a <code>performance_risk</code> category that is <code>null</code> when absent. Keep
+    it strictly optional and project-supplied, exactly like the Rust slowspots model.</p>
+  </div>
+
+  <h2 id="ts">2. TypeScript/React-only opportunities</h2>
+  <p>Areas with no Rust analogue where the TS lens can lead, leveraging the compiler API and JS ecosystem it
+  already depends on.</p>
+  <ul>
+    <li><strong>tsconfig strictness scoring.</strong> <code>compilerOptionSummary</code> already captures
+      <code>strict</code>, <code>noUncheckedIndexedAccess</code>, <code>exactOptionalPropertyTypes</code>, etc.,
+      but nothing <em>scores</em> them. Emit a project-level "type-safety posture" score so a non-strict project
+      is visibly penalized. <span class="tag low">High value, low cost</span></li>
+    <li><strong>Dead/unused exports.</strong> The compiler program + import graph already know every export and
+      every consumer — flag exported symbols with zero internal importers (likely dead code or untested public
+      surface).</li>
+    <li><strong>Accessibility heuristics.</strong> Optionally integrate <code>eslint-plugin-jsx-a11y</code> the
+      same way <code>eslint-plugin-react-hooks</code> is wired, adding an a11y dimension to
+      <code>react_health</code>.</li>
+    <li><strong>Prop-drilling / context overuse depth.</strong> Extend <code>hiddenCouplingSignals</code> (already
+      detecting <code>createContext</code>/<code>useContext</code>) into a measured prop-drilling depth signal.</li>
+    <li><strong>Import cost / barrel fan-out impact.</strong> Barrels are detected; quantify the transitive
+      fan-out they introduce to estimate bundle/tree-shaking risk.</li>
+    <li><strong>Server/client boundary depth.</strong> The boundary check exists; extend it to flag client
+      components transitively importing server-only modules, not just direct co-occurrence.</li>
+  </ul>
+
+  <h2 id="internal">3. Internal code-quality cleanups</h2>
+  <ul>
+    <li><strong>Centralize magic numbers</strong> (subsumed by <a href="#g1">G1</a>) — every <code>* 8</code>,
+      <code>* 12</code>, <code>Math.min(100, …)</code>, and <code>70/35</code> threshold should resolve through
+      the risk model so calibration is one file, not nine.</li>
+    <li><strong>Confidence as a typed shape</strong>, not <code>Record&lt;string, boolean&gt;</code> — gives
+      consumers a stable contract and makes G3 enforceable by the type checker.</li>
+    <li><strong>Separate raw-fact extraction from scoring</strong> in the producers, mirroring the Rust
+      <code>facts.rs</code> / <code>risk_model.rs</code> split, so future model versions rescore without
+      re-extracting.</li>
+    <li><strong>Schema/version discipline:</strong> bump <code>SCHEMA_VERSION</code> deliberately when artifact
+      shapes change (the above changes will), and document the contract the dashboard relies on.</li>
+  </ul>
+
+  <h2 id="keep">4. Strengths to preserve</h2>
+  <ul>
+    <li><span class="strength">Real TypeScript compiler API integration</span> — type health, diagnostics, and
+      inferred export types go beyond what regex/syn extraction gives the Rust lens.</li>
+    <li><span class="strength">Framework adapters</span> (Next app/pages, Remix, Vite, Storybook, client/server
+      directives) — genuinely portable React awareness.</li>
+    <li><span class="strength">Graceful tool degradation</span> — jscpd, dependency-cruiser, and
+      eslint-react-hooks all have explainable fallbacks with <code>tool_status</code> recorded. Keep this as the
+      new confidence work lands.</li>
+    <li><span class="strength">Cached <code>AnalysisContext</code></span> — the project is parsed once and shared,
+      analogous to the Rust <code>RunContext</code>. Extend it to also cache git history and the new facts.</li>
+  </ul>
+
+  <h2 id="roadmap">5. Phased roadmap</h2>
+  <p>Ordered so each phase unblocks the next. Phase 1 is the trust foundation; nothing downstream is reliable
+  without it.</p>
+
+  <h3>Phase 1 — Trust foundation <span class="tag high">do first</span></h3>
+  <ol class="phase">
+    <li><a href="#g1">G1</a> Externalize the risk model into <code>src/risk-model.ts</code> + <code>docs/risk-model-v1.md</code>; attach model id/version/calibration to records and map meta.</li>
+    <li><a href="#g3">G3</a> Typed confidence with <code>required/observed inputs</code> + <code>complete/partial</code>; artifact source-hash stamping.</li>
+    <li><a href="#g2">G2</a> Real category scores + <code>total_score</code> with <code>null</code>/<code>unknown_metrics</code> discipline (replaces the 0-substitution and 0/40 correctness hack).</li>
+    <li><a href="#g3">G3</a> Staleness detection in <code>map.architecture</code> (missing vs stale vs available).</li>
+  </ol>
+
+  <h3>Phase 2 — Close the measurement gaps <span class="tag med">next</span></h3>
+  <ol class="phase">
+    <li><a href="#g4">G4</a> Git history: defect-keyword + co-change → <code>change_risk</code>.</li>
+    <li><a href="#g6">G6</a> Layer classifier + layer violations → <code>architectural_risk</code>.</li>
+    <li><a href="#g5">G5</a> AST structural clone layer.</li>
+    <li><a href="#g8">G8</a> Unsupported-pattern signals + tsconfig <code>paths</code> resolution.</li>
+    <li><a href="#g7">G7</a> Reconcile catalog descriptions with implemented fields (+ guard test).</li>
+  </ol>
+
+  <h3>Phase 3 — Hardening &amp; TS-native leadership <span class="tag low">then</span></h3>
+  <ol class="phase">
+    <li><a href="#g9">G9</a> Golden fixture project + normalized artifact snapshots.</li>
+    <li>tsconfig strictness posture score &amp; dead-export detection (Section 2).</li>
+    <li>Optional a11y integration; prop-drilling depth; import-cost/fan-out.</li>
+    <li><a href="#g10">G10</a> Optional performance input contract.</li>
+  </ol>
+
+  <footer>
+    Plan generated for <code>ts-react-quality-lens</code>, benchmarked against
+    <code>pmfleming/rust-quality-lens</code>. Findings are an inventory of opportunities — no source code was
+    changed in producing this document. Effort tags (<span class="tag high">High</span>/<span class="tag med">Medium</span>/<span class="tag low">Low</span>)
+    reflect impact on lens trustworthiness and portability, not implementation hours.
+  </footer>
+</main>
+</body>
+</html>

@@ -1,2 +1,10 @@
-export * from "./measure-support.js";
+export * from "./analysis-context.js";
+export * from "./clone-utils.js";
+export * from "./collections.js";
+export * from "./correctness.js";
+export * from "./graph.js";
+export * from "./history.js";
+export * from "./risk-model.js";
+export * from "./scoring.js";
 export { analyzeModule } from "./extract.js";
+export type * from "./types.js";
