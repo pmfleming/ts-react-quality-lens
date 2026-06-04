@@ -9,14 +9,10 @@ type HistoryAccumulator = ChurnAccumulator & {
   defect_commits: number;
   cochange_partners: Map<string, number>;
 };
-export type GitHistoryRecord = ChurnRecord & {
+type GitHistoryRecord = ChurnRecord & {
   defect_commits: number;
   cochange_partners: Array<{ file: string; commits: number }>;
 };
-
-export function gitChurn(config: Config): Map<string, ChurnRecord> {
-  return new Map([...gitHistory(config)].map(([file, record]) => [file, { commits: record.commits, contributors: record.contributors }]));
-}
 
 export function gitHistory(config: Config): Map<string, GitHistoryRecord> {
   const result = new Map<string, HistoryAccumulator>();

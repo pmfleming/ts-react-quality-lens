@@ -3,9 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { createRequire } from "node:module";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import type * as tsTypes from "typescript";
 import { relativeModuleId, toPosix } from "./files.js";
+import { packageJsonUrl, packageRootFrom } from "./package-root.js";
 import type {
   Config,
   DependencyCruiserResult,
@@ -254,41 +254,6 @@ function runToolAdapter<T extends Record<string, unknown>>(
   }
 }
 
-export function detectFrameworkDetails(
-  config: Config,
-  project: { sourceFiles: SourceFileRecord[]; testFiles: SourceFileRecord[]; modules: Array<{ file: string }>; imports: unknown[] },
-) {
-  const files = new Set<string>(project.sourceFiles.map((file) => file.relativePath));
-  const appRoutes = [...files].filter((file) => /(?:^|\/)app\/.*(?:page|layout|route|loading|error)\.[jt]sx?$/.test(file));
-  const pagesRoutes = [...files].filter((file) => /(?:^|\/)pages\/.*\.[jt]sx?$/.test(file));
-  const remixRoutes = [...files].filter((file) => /(?:^|\/)routes\/.*\.[jt]sx?$/.test(file));
-  const stories = [...files].filter((file) => /\.stories\.[jt]sx?$/.test(file));
-  const clientComponents = project.sourceFiles
-    .filter((file) => file.text.trimStart().startsWith('"use client"') || file.text.trimStart().startsWith("'use client'"))
-    .map((file) => file.relativePath);
-  const serverOnlySignals = project.sourceFiles
-    .filter((file) => /\b(?:fs|node:fs|process\.env)\b/.test(file.text))
-    .map((file) => file.relativePath);
-  const routeRecords = [
-    ...appRoutes.map((file) => ({ kind: "next_app_route", file })),
-    ...pagesRoutes.map((file) => ({ kind: "next_pages_route", file })),
-    ...remixRoutes.map((file) => ({ kind: "remix_route", file })),
-  ];
-  return {
-    framework: config.framework,
-    routes: routeRecords,
-    stories,
-    client_components: clientComponents,
-    server_only_signals: serverOnlySignals,
-    conventions: {
-      next_app_router: appRoutes.length > 0,
-      next_pages_router: pagesRoutes.length > 0,
-      remix_routes: remixRoutes.length > 0,
-      storybook: stories.length > 0,
-    },
-  };
-}
-
 function typedModuleRecord(
   ts: typeof tsTypes,
   checker: tsTypes.TypeChecker,
@@ -418,12 +383,8 @@ function localBin(projectRoot: string, name: string): string | null {
   return null;
 }
 
-function packageJsonUrl(root: string): string {
-  return pathToFileURL(path.join(root, "package.json")).href;
-}
-
 function repoRoot() {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  return packageRootFrom(import.meta.url);
 }
 
 function existingAbsoluteRoots(config: Config): string[] {

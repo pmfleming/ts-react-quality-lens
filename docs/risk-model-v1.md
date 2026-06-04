@@ -20,7 +20,7 @@ Per-module architecture map nodes expose these derived scores:
 
 | Field | Inputs | Unknown when |
 | --- | --- | --- |
-| `maintainability_risk` | `hotspots.json` | Hotspot artifact is missing or stale. |
+| `maintainability_risk` | `hotspots.json`, clone-derived duplication pressure from `clones.json` | Hotspot or clone artifact is missing or stale. |
 | `correctness_risk` | `correctness_review.json` test mapping and execution status | Correctness artifact is missing or stale. |
 | `architectural_risk` | `dependency_health.json`, `leverage_metrics.json`, large-module penalty | Dependency artifact is missing or stale. |
 | `change_risk` | `locality_metrics.json` with churn, defect-keyword commits, and co-change | Locality artifact is missing or stale. |
@@ -73,6 +73,6 @@ Missing or stale inputs are recorded in `summary.artifact_status`, `confidence.m
 
 `locality_metrics.json` keeps raw change facts alongside the derived score: commit count, contributor count, defect-keyword commit count, and top co-change partners.
 
-`clones.json` includes both token-based groups and `engine: "ast"` structural clone groups built from normalized TypeScript AST function bodies.
+`clones.json` includes both token-based groups and `engine: "ast"` structural clone groups built from normalized TypeScript AST function bodies. It also emits `duplication_pressure` records that aggregate clone density, duplicated line coverage, cross-file clone groups, and structural clone participation per source module. Same-purpose export/component/hook records use name-token and type-shape evidence to flag likely duplicated responsibilities even when bodies are not clone-like.
 
 `map.architecture` accepts optional project-supplied performance inputs through `performance_inputs.bundle_stats` and `performance_inputs.render_costs`. Missing performance input files are optional and do not make the map incomplete.

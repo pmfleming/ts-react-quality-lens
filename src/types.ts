@@ -1,15 +1,15 @@
 import type * as ts from "typescript";
 
-export type JsonPrimitive = string | number | boolean | null;
+type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-export type JsonObject = { [key: string]: JsonValue };
 
 export type RiskLevel = "low" | "medium" | "high";
 export type Severity = RiskLevel;
 export type ImportKind = "static" | "dynamic" | "type";
-export type ImportTargetKind = "external" | "relative" | "unresolved";
+type ImportTargetKind = "external" | "relative" | "unresolved";
 
 export type RawConfig = {
+  $schema?: string;
   project_name?: string;
   project_root?: string;
   source_roots?: string[];
@@ -23,6 +23,33 @@ export type RawConfig = {
   exclude?: string[];
   layer_rules?: LayerRule[];
   performance_inputs?: PerformanceInputConfig;
+  public_api?: PublicApiConfig;
+  cache?: CacheConfig;
+  suppressions?: SuppressionConfig[];
+  audit?: AuditConfig;
+};
+
+export type PublicApiConfig = {
+  entry?: string[];
+  exports?: Array<{ file: string; names: string[] }>;
+};
+
+type CacheConfig = {
+  enabled?: boolean;
+};
+
+export type SuppressionConfig = {
+  id?: string;
+  file?: string;
+  kind?: string;
+  reason?: string;
+};
+
+export type AuditConfig = {
+  base?: string;
+  changed_since?: string;
+  gate?: "new-only" | "all";
+  baseline?: string;
 };
 
 export type LayerRule = {
@@ -42,11 +69,32 @@ export type PathAliasRule = {
 
 export type PackageJson = {
   name?: string;
+  main?: string;
+  module?: string;
+  types?: string;
+  typings?: string;
+  exports?: unknown;
+  bin?: string | Record<string, string>;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+};
+
+export type EntryPointRole =
+  | "cli_bin"
+  | "npm_script"
+  | "package_export"
+  | "package_main"
+  | "package_module"
+  | "package_types"
+  | "configured_public_api";
+
+export type EntryPointReference = {
+  file: string;
+  role: EntryPointRole;
+  source: string;
 };
 
 export type PackageManagerDetection = {
@@ -73,6 +121,21 @@ export type Config = {
   performanceInputs: {
     bundleStats: string | null;
     renderCosts: string | null;
+  };
+  publicApi: {
+    entry: string[];
+    exports: Array<{ file: string; names: string[] }>;
+  };
+  cache: {
+    enabled: boolean;
+    dir: string;
+  };
+  suppressions: SuppressionConfig[];
+  audit: {
+    base: string | null;
+    changedSince: string | null;
+    gate: "new-only" | "all";
+    baseline: string | null;
   };
   pathAliases: PathAliasRule[];
   raw: RawConfig;
@@ -112,6 +175,9 @@ export type ImportRecord = {
   resolved: string | null;
   specifier: string;
   import_kind: ImportKind;
+  imported_names?: string[];
+  namespace_import?: boolean;
+  side_effect_import?: boolean;
   line: number;
   source: string;
 };
@@ -147,7 +213,7 @@ export type ExportRecord = {
   line: number;
 };
 
-export type EscapeCounts = {
+type EscapeCounts = {
   any: number;
   assertions: number;
   suppressions: number;
@@ -197,6 +263,7 @@ export type ModuleRecord = {
   typed: TypedModuleRecord | null;
   text: string;
   sourceFile: SourceFileRecord;
+  entrypointRoles: EntryPointRole[];
   unsupportedPatterns: ConfidenceSignal[];
   astSourceFile?: ts.SourceFile;
 };
@@ -218,6 +285,12 @@ export type ProjectAnalysis = {
   tsProject: TypeScriptProject;
   frameworkDetails: FrameworkDetails;
   unsupportedPatterns: ConfidenceSignal[];
+  cache: {
+    enabled: boolean;
+    status: "hit" | "miss" | "disabled";
+    file: string | null;
+    previous_source_set_hash: string | null;
+  };
 };
 
 export type AnalysisContext = {
@@ -235,6 +308,34 @@ export type Signal = {
   message?: string;
 };
 
+export type IssueAction =
+  | {
+      type: "fix";
+      auto_fixable: boolean;
+      description: string;
+      fix: string;
+      note?: string;
+    }
+  | {
+      type: "suppress-line";
+      auto_fixable: false;
+      description: string;
+      comment: string;
+    }
+  | {
+      type: "suppress-file";
+      auto_fixable: false;
+      description: string;
+      comment: string;
+    }
+  | {
+      type: "add-to-config";
+      auto_fixable: boolean;
+      description: string;
+      config_key: string;
+      value: JsonValue;
+    };
+
 export type ScoredRecord = {
   id: string;
   file?: string;
@@ -243,6 +344,9 @@ export type ScoredRecord = {
   severity?: string;
   risk?: string;
   signals?: Signal[];
+  actions?: IssueAction[];
+  suppressed?: boolean;
+  suppression_reason?: string;
   [key: string]: unknown;
 };
 
@@ -264,6 +368,34 @@ export type Artifact = {
   tool_status?: Record<string, { available?: boolean; ran?: boolean; [key: string]: unknown }>;
   graph?: { edges?: Array<Record<string, unknown>>; [key: string]: unknown };
   [key: string]: unknown;
+};
+
+export type AuditVerdict = "pass" | "warn" | "fail";
+
+export type AuditFinding = ScoredRecord & {
+  task_id: string;
+  introduced: boolean;
+};
+
+export type AuditArtifact = Artifact & {
+  task_id: "audit";
+  summary: {
+    verdict: AuditVerdict;
+    gate: "new-only" | "all";
+    base: string | null;
+    changed_files: number;
+    changed_hunks: number;
+    base_snapshot_available: boolean;
+    findings: number;
+    active_findings: number;
+    introduced_findings: number;
+    inherited_findings: number;
+    high_risk_findings: number;
+    baseline_suppressed: number;
+    config_suppressed: number;
+    stale_suppressions: number;
+  };
+  findings: AuditFinding[];
 };
 
 export type TestRecord = {
@@ -311,7 +443,7 @@ export type CloneGroup = {
   instances: CloneInstance[];
 };
 
-export type JscpdDuplicateFile = {
+type JscpdDuplicateFile = {
   name?: string;
   start?: number;
   end?: number;
@@ -328,7 +460,7 @@ export type JscpdDuplicate = {
   hash?: string;
 };
 
-export type ToolResult = {
+type ToolResult = {
   available: boolean;
   ran: boolean;
   reason: string | null;

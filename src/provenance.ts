@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { LENS_NAME, SCHEMA_VERSION } from "./tasks.js";
 import type { Confidence, Config, ProjectAnalysis } from "./types.js";
 
-export function provenance(command: string, sourceType = "static") {
+function provenance(command: string, sourceType = "static") {
   return {
     lens: LENS_NAME,
     schema_version: SCHEMA_VERSION,

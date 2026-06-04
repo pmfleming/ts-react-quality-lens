@@ -1,6 +1,19 @@
-import { analysisConfidence, artifactBase, cloneGroup, cloneGroupFromBlocks, createAnalysisContext, groupBy, jscpdCloneGroup, normalizeCloneLine, sourceSetHash, stableHash, writeArtifact } from "../measure-shared.js";
+import { analysisConfidence, artifactBase, cloneGroup, cloneGroupFromBlocks, createAnalysisContext, groupBy, jscpdCloneGroup, normalizeCloneLine, riskForScore, sourceSetHash, stableHash, writeArtifact } from "../measure-shared.js";
 import * as ts from "typescript";
-import type { AnalysisContext, CloneBlock, CloneGroup, CloneInstance, Config, ProjectAnalysis } from "../types.js";
+import type { AnalysisContext, CloneBlock, CloneGroup, CloneInstance, Config, EntryPointRole, ModuleRecord, ProjectAnalysis, ScoredRecord } from "../types.js";
+
+type PurposeCandidate = {
+  category: "export" | "component" | "hook";
+  purposeKey: string;
+  purposeTerms: string[];
+  moduleId: string;
+  file: string;
+  name: string;
+  line: number | null;
+  signature: string | null;
+  exported: boolean;
+  entrypointRoles: EntryPointRole[];
+};
 
 export function measureClones(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
@@ -10,6 +23,9 @@ export function measureClones(config: Config, command: string, context: Analysis
   const heuristicGroups = dedupeCloneRegions(rawHeuristicGroups);
   const astGroups = structuralCloneGroups(project);
   const groups = dedupeCloneRegions([...jscpdGroups, ...heuristicGroups, ...astGroups]).sort((left, right) => right.score - left.score);
+  const duplicationPressure = duplicationPressureRecords(project, groups);
+  const samePurpose = samePurposeRecords(project);
+  const records = [...duplicationPressure, ...samePurpose].sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || left.id.localeCompare(right.id));
   const artifact = {
     ...artifactBase(
       config,
@@ -28,6 +44,10 @@ export function measureClones(config: Config, command: string, context: Analysis
       ast_clone_groups: astGroups.length,
       source_clone_groups: groups.filter((group) => !group.test_code).length,
       test_clone_groups: groups.filter((group) => group.test_code).length,
+      duplication_records: records.length,
+      high_duplication_records: records.filter((record) => record.risk === "high").length,
+      clone_pressure_records: duplicationPressure.length,
+      same_purpose_records: samePurpose.length,
     },
     tool_status: {
       jscpd: {
@@ -38,9 +58,225 @@ export function measureClones(config: Config, command: string, context: Analysis
       },
     },
     groups,
+    records,
   };
   writeArtifact(config, "clones.json", artifact);
   return artifact;
+}
+
+function samePurposeRecords(project: ProjectAnalysis): ScoredRecord[] {
+  const candidates = project.modules.flatMap((module) => purposeCandidatesForModule(module));
+  return [...groupBy(candidates, (candidate) => `${candidate.category}:${candidate.purposeKey}`).values()]
+    .filter((group) => group.length > 1)
+    .filter((group) => new Set(group.map((candidate) => candidate.file)).size > 1)
+    .filter((group) => group[0]?.category !== "export" || new Set(group.map((candidate) => candidate.name)).size > 1)
+    .map(samePurposeRecord)
+    .filter((record): record is ScoredRecord => Boolean(record))
+    .sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || left.id.localeCompare(right.id));
+}
+
+function purposeCandidatesForModule(module: ModuleRecord): PurposeCandidate[] {
+  const functionByName = new Map(module.functions.map((fn) => [fn.name, fn]));
+  const exportCandidates = module.exports.flatMap((exportRecord) => {
+    const fn = functionByName.get(exportRecord.name);
+    const category = fn?.kind === "hook" ? "hook" : fn?.kind === "component" ? "component" : "export";
+    return purposeCandidate(module, {
+      category,
+      name: exportRecord.name,
+      line: exportRecord.line,
+      signature: typedExportType(module, exportRecord.name),
+      exported: true,
+    });
+  });
+  const exportedKeys = new Set(exportCandidates.map((candidate) => `${candidate.category}:${candidate.name}:${candidate.line ?? 0}`));
+  const functionCandidates = module.functions
+    .filter((fn) => fn.kind === "component" || fn.kind === "hook")
+    .flatMap((fn) => {
+      const category = fn.kind === "component" ? "component" : "hook";
+      if (exportedKeys.has(`${category}:${fn.name}:${fn.line}`)) return [];
+      return purposeCandidate(module, {
+        category,
+        name: fn.name,
+        line: fn.line,
+        signature: typedDeclarationType(module, fn.name, fn.line),
+        exported: false,
+      });
+    });
+  return [...exportCandidates, ...functionCandidates];
+}
+
+function purposeCandidate(
+  module: ModuleRecord,
+  input: Pick<PurposeCandidate, "category" | "name" | "line" | "signature" | "exported">,
+): PurposeCandidate[] {
+  const purposeTerms = purposeTermsForName(input.name, input.category);
+  if (purposeTerms.length < 2) return [];
+  return [{
+    ...input,
+    purposeKey: purposeTerms.join(":"),
+    purposeTerms,
+    moduleId: module.id,
+    file: module.file,
+    entrypointRoles: module.entrypointRoles,
+  }];
+}
+
+function samePurposeRecord(group: PurposeCandidate[]): ScoredRecord | null {
+  const first = group[0];
+  if (!first) return null;
+  const files = [...new Set(group.map((candidate) => candidate.file))].sort();
+  const names = [...new Set(group.map((candidate) => candidate.name))].sort();
+  const exportedCount = group.filter((candidate) => candidate.exported).length;
+  const typedCount = group.filter((candidate) => Boolean(candidate.signature)).length;
+  const entrypointCount = group.filter((candidate) => candidate.entrypointRoles.length > 0).length;
+  const categoryWeight = first.category === "export" ? 8 : first.category === "hook" ? 12 : 10;
+  const score = Math.min(100, Math.round(22 + group.length * 6 + files.length * 10 + names.length * 4 + exportedCount * 5 + typedCount * 3 + categoryWeight));
+  return {
+    id: `same-purpose:${first.category}:${stableHash(`${first.purposeKey}:${files.join(",")}:${names.join(",")}`)}`,
+    kind: `same_purpose_${first.category}`,
+    file: files[0],
+    files,
+    line: group.find((candidate) => candidate.file === files[0])?.line ?? null,
+    score,
+    risk: riskForScore(score),
+    purpose_key: first.purposeKey,
+    purpose_terms: first.purposeTerms,
+    candidates: group.map((candidate) => ({
+      module_id: candidate.moduleId,
+      file: candidate.file,
+      name: candidate.name,
+      line: candidate.line,
+      exported: candidate.exported,
+      signature: candidate.signature,
+      entrypoint_roles: candidate.entrypointRoles,
+    })),
+    signals: [
+      { kind: "same_purpose_name_heuristic", value: first.purposeKey },
+      { kind: "candidate_count", value: group.length },
+      { kind: "file_count", value: files.length },
+      { kind: "distinct_name_count", value: names.length },
+      { kind: "exported_candidate_count", value: exportedCount },
+      { kind: "typed_candidate_count", value: typedCount },
+      ...(entrypointCount ? [{ kind: "entrypoint_candidate_count", value: entrypointCount }] : []),
+    ],
+  };
+}
+
+function purposeTermsForName(name: string, category: PurposeCandidate["category"]): string[] {
+  const tokens = splitNameTokens(name)
+    .map((token) => normalizePurposeToken(token, category))
+    .filter((token) => token && !ignoredPurposeToken(token, category));
+  return [...new Set(tokens)].sort();
+}
+
+function splitNameTokens(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/[_\-\s]+/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean);
+}
+
+function normalizePurposeToken(token: string, category: PurposeCandidate["category"]): string {
+  const normalized = token
+    .replace(/ies$/, "y")
+    .replace(/s$/, "")
+    .replace(/formatter$/, "format")
+    .replace(/formatted$/, "format")
+    .replace(/validator$/, "validate")
+    .replace(/validated$/, "validate")
+    .replace(/loader$/, "load")
+    .replace(/loaded$/, "load")
+    .replace(/fetcher$/, "fetch")
+    .replace(/selector$/, "select")
+    .replace(/renderer$/, "render")
+    .replace(/provider$/, "provide")
+    .replace(/builder$/, "build")
+    .replace(/creator$/, "create")
+    .replace(/calculator$/, "calculate")
+    .replace(/computer$/, "compute");
+  if (category === "hook" && normalized === "use") return "";
+  return normalized;
+}
+
+function ignoredPurposeToken(token: string, category: PurposeCandidate["category"]): boolean {
+  const common = new Set(["the", "a", "an", "to", "from", "by", "for", "with", "and", "or", "of", "helper", "util", "utils", "service"]);
+  const component = new Set(["component", "view", "container", "panel", "section"]);
+  const hook = new Set(["hook"]);
+  return common.has(token) || (category === "component" && component.has(token)) || (category === "hook" && hook.has(token));
+}
+
+function typedExportType(module: ModuleRecord, name: string): string | null {
+  return module.typed?.exports.find((item) => item.name === name)?.type ?? typedDeclarationType(module, name, null);
+}
+
+function typedDeclarationType(module: ModuleRecord, name: string, line: number | null): string | null {
+  const declarations = module.typed?.declarations ?? [];
+  return declarations.find((item) => item.name === name && (line === null || item.line === line))?.type ??
+    declarations.find((item) => item.name === name)?.type ??
+    null;
+}
+
+function duplicationPressureRecords(project: ProjectAnalysis, groups: CloneGroup[]): ScoredRecord[] {
+  return project.modules
+    .flatMap((module) => {
+      const sourceGroups = groups.filter((group) => !group.test_code && group.instances.some((instance) => instance.file === module.file));
+      if (!sourceGroups.length) return [];
+      const duplicatedLines = duplicatedLineCount(sourceGroups.flatMap((group) => group.instances.filter((instance) => instance.file === module.file)));
+      const crossFileGroups = sourceGroups.filter((group) => new Set(group.instances.map((instance) => instance.file)).size > 1).length;
+      const astGroups = sourceGroups.filter((group) => group.engine === "ast").length;
+      const engines = new Set(sourceGroups.map((group) => group.engine));
+      const score = Math.min(100, Math.round(sourceGroups.length * 9 + crossFileGroups * 12 + astGroups * 8 + duplicatedLines * 0.75));
+      if (score < 20) return [];
+      return [{
+        id: `duplication-pressure:${module.id}`,
+        kind: "duplication_pressure",
+        module_id: module.id,
+        file: module.file,
+        line: 1,
+        score,
+        risk: riskForScore(score),
+        duplicated_lines: duplicatedLines,
+        clone_group_ids: sourceGroups.map((group) => group.id),
+        entrypoint_roles: module.entrypointRoles,
+        signals: [
+          { kind: "clone_group_count", value: sourceGroups.length },
+          { kind: "cross_file_clone_groups", value: crossFileGroups },
+          { kind: "ast_clone_groups", value: astGroups },
+          { kind: "duplicated_line_count", value: duplicatedLines },
+          { kind: "clone_engine_count", value: engines.size },
+          ...module.entrypointRoles.map((role) => ({ kind: "entrypoint_role", value: role })),
+        ],
+      }];
+    })
+    .sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || left.id.localeCompare(right.id));
+}
+
+function duplicatedLineCount(instances: CloneInstance[]): number {
+  const ranges = instances
+    .filter((instance): instance is CloneInstance & { start_line: number; end_line: number } =>
+      typeof instance.start_line === "number" && typeof instance.end_line === "number",
+    )
+    .map((instance) => ({ start: instance.start_line, end: instance.end_line }))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  let total = 0;
+  let current: { start: number; end: number } | null = null;
+  for (const range of ranges) {
+    if (!current) {
+      current = { ...range };
+      continue;
+    }
+    if (range.start <= current.end + 1) {
+      current.end = Math.max(current.end, range.end);
+      continue;
+    }
+    total += current.end - current.start + 1;
+    current = { ...range };
+  }
+  if (current) total += current.end - current.start + 1;
+  return total;
 }
 
 function structuralCloneGroups(project: ProjectAnalysis): CloneGroup[] {

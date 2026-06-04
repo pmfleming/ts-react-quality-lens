@@ -14,6 +14,7 @@ export function measureArchitectureMap(config: Config, command: string, context:
   const currentSourceHash = sourceSetHash(project);
   const artifacts: Record<string, MapInputArtifact | null> = {
     hotspots: readArtifact(config, "hotspots.json"),
+    clones: readArtifact(config, "clones.json"),
     escape_hatches: readArtifact(config, "ts_escape_hatches.json"),
     type_health: readArtifact(config, "type_health.json"),
     dependency_health: readArtifact(config, "dependency_health.json"),
@@ -57,6 +58,7 @@ export function measureArchitectureMap(config: Config, command: string, context:
     summary: {
       nodes: nodes.length,
       edges: edges.length,
+      entrypoint_nodes: nodes.filter((node) => node.entrypoint_roles.length > 0).length,
       high_risk_nodes: nodes.filter((node) => node.risk === "high").length,
       unknown_metric_nodes: nodes.filter((node) => node.unknown_metrics.length > 0).length,
       missing_inputs: requiredMissingInputs.length,

@@ -1,5 +1,6 @@
 import { measureArchitectureMap } from "./architecture.js";
 import { measureClones } from "./clones.js";
+import { measureCleanup } from "./cleanup.js";
 import { measureCorrectnessCatalog } from "./correctness.js";
 import { measureDependencyHealth } from "./dependency.js";
 import { measureHotspots } from "./hotspots.js";
@@ -27,6 +28,7 @@ export const MEASURE_ORDER = [
   "quality.locality_dynamic",
   "quality.locality_leverage",
   "quality.react_health",
+  "quality.cleanup",
   "correctness.all",
   "map.architecture",
 ] as const;
@@ -38,6 +40,7 @@ export const MEASURE_TASKS = new Map<string, MeasureTask>(
     ["quality.escape_hatches", { handler: measureEscapeHatches }],
     ["quality.type_health", { handler: measureTypeHealth }],
     ["quality.dependency_health", { handler: measureDependencyHealth }],
+    ["quality.cleanup", { handler: measureCleanup }],
     ["correctness.catalog", { handler: (config, command, context) => measureCorrectnessCatalog(config, command, false, context) }],
     ["quality.locality_dynamic", { handler: measureLocality, prerequisites: ["correctness.catalog"] }],
     ["quality.locality_leverage", { handler: measureLeverage }],
@@ -56,6 +59,7 @@ export const MEASURE_TASKS = new Map<string, MeasureTask>(
           "quality.locality_dynamic",
           "quality.locality_leverage",
           "quality.react_health",
+          "quality.cleanup",
         ],
       },
     ],

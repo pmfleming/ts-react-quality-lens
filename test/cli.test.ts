@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../src/config.js";
-import { runMeasure } from "../src/cli.js";
+import { runCli, runMeasure } from "../src/cli.js";
+import { auditMarkdown, runAudit } from "../src/audit.js";
+import { projectContext } from "../src/context.js";
 import { catalogForConfig } from "../src/tasks.js";
 import type { AnalysisContext, Artifact, ProjectAnalysis, ScoredRecord } from "../src/types.js";
 
@@ -18,8 +21,9 @@ test("catalog exposes stable board task metadata", () => {
   const config = loadConfig(fixtureConfig);
   const catalog = catalogForConfig(config);
   assert.equal(catalog.lens, "ts-react-quality-lens");
-  assert.equal(catalog.tasks.length, 11);
+  assert.equal(catalog.tasks.length, 12);
   assert.ok(catalog.tasks.some((task) => task.id === "quality.hotspots"));
+  assert.ok(catalog.tasks.some((task) => task.id === "quality.cleanup"));
   assert.ok(catalog.tasks.some((task) => task.id === "map.architecture"));
 });
 
@@ -41,6 +45,7 @@ test("measure all writes MVP artifacts", () => {
     "ts_escape_hatches.json",
     "type_health.json",
     "dependency_health.json",
+    "cleanup.json",
     "correctness_review.json",
     "test_catalog.json",
     "locality_metrics.json",
@@ -87,10 +92,12 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(dependencyEdges.some((edge) => edge.source === "dependency-cruiser" && edge.line !== null));
 
   const clones = JSON.parse(fs.readFileSync(path.join(config.outputDir, "clones.json"), "utf8")) as ToolArtifact &
-    SummaryArtifact<{ jscpd_clone_groups: number }>;
+    SummaryArtifact<{ jscpd_clone_groups: number; duplication_records: number }>;
   assert.equal(clones.tool_status.jscpd.available, true);
   assert.equal(clones.tool_status.jscpd.ran, true);
   assert.ok(clones.summary.jscpd_clone_groups > 0);
+  assert.ok(clones.summary.duplication_records > 0);
+  assert.ok(clones.records?.some((record) => record.kind === "duplication_pressure"));
 
   const reactHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "react_health.json"), "utf8")) as ToolArtifact &
     SummaryArtifact<{ hook_lint_findings: number }>;
@@ -101,6 +108,302 @@ test("measure all writes MVP artifacts", () => {
 
   const correctness = JSON.parse(fs.readFileSync(path.join(config.outputDir, "correctness_review.json"), "utf8"));
   assert.equal(correctness.summary.execution_status, "passed");
+
+  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  assert.ok(cleanup.records?.some((record) => Array.isArray(record.actions) && record.actions.length > 0));
+
+  assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "analysis.json")));
+});
+
+test("config accepts JSONC comments and rejects unknown keys through schema-backed validation", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-config-`));
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.jsonc");
+  fs.writeFileSync(
+    configPath,
+    `{
+      // JSONC comments are accepted for user configs.
+      "project_name": "jsonc-fixture",
+      "project_root": ${JSON.stringify(repoRoot)},
+      "source_roots": ["src"],
+      "output_dir": "target/jsonc-analysis"
+    }`,
+    "utf8",
+  );
+  assert.equal(loadConfig(configPath).projectName, "jsonc-fixture");
+
+  const badConfigPath = path.join(tempDir, "bad.config.json");
+  fs.writeFileSync(badConfigPath, `{"project_name": "bad", "surprise": true}`, "utf8");
+  assert.throws(() => loadConfig(badConfigPath), /Unknown config key "surprise"/);
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("init writes a starter schema-backed config", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-init-`));
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
+  await withSilencedConsole(() => runCli(["init", "--config", configPath]));
+
+  const raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  assert.equal(raw.$schema, "./ts-react-quality-lens.config.schema.json");
+  assert.equal(raw.audit.gate, "new-only");
+  await assert.rejects(() => runCli(["init", "--config", configPath]), /Config already exists/);
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("audit writes changed-code verdict artifact with actions", () => {
+  const config = loadConfig(fixtureConfig);
+  config.outputDir = path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-audit`);
+  fs.rmSync(config.outputDir, { recursive: true, force: true });
+
+  const audit = runAudit(config, "test audit", { base: "__missing_base__", gate: "new-only" });
+
+  assert.equal(audit.task_id, "audit");
+  assert.ok(["pass", "warn", "fail"].includes(audit.summary.verdict));
+  assert.ok(fs.existsSync(path.join(config.outputDir, "audit.json")));
+  assert.ok(audit.findings.some((finding) => Array.isArray(finding.actions) && finding.actions.length > 0));
+  assert.match(auditMarkdown(audit), /# ts-react-quality-lens audit:/);
+  fs.rmSync(config.outputDir, { recursive: true, force: true });
+});
+
+test("audit reports stale configured suppressions", () => {
+  const config = loadConfig(fixtureConfig);
+  config.outputDir = path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-stale-suppression`);
+  config.suppressions = [{ id: "missing:finding", reason: "used to be noisy" }];
+  fs.rmSync(config.outputDir, { recursive: true, force: true });
+
+  const audit = runAudit(config, "test audit stale suppression", { base: "__missing_base__", gate: "new-only" });
+
+  assert.equal(audit.summary.stale_suppressions, 1);
+  assert.ok(audit.findings.some((finding) => finding.kind === "stale_suppression"));
+  fs.rmSync(config.outputDir, { recursive: true, force: true });
+});
+
+test("audit marks unchanged-line findings as inherited context", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-git-audit-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "git-audit-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" }, include: ["src"] }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "ts-react-quality-lens.config.json"),
+    JSON.stringify({
+      project_name: "git-audit-fixture",
+      project_root: ".",
+      source_roots: ["src"],
+      test_roots: ["src"],
+      output_dir: "target/analysis",
+      tsconfig: "tsconfig.json",
+      test_command: null,
+    }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "src", "lib.ts"),
+    [
+      "export function used(): number {",
+      "  return 1;",
+      "}",
+      "",
+      "export function oldUnused(): number {",
+      "  return 2;",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(tempDir, "src", "index.ts"), 'import { used } from "./lib.js";\nconsole.log(used());\n', "utf8");
+  git(tempDir, "init");
+  git(tempDir, "config", "user.email", "test@example.com");
+  git(tempDir, "config", "user.name", "Test User");
+  git(tempDir, "add", ".");
+  git(tempDir, "commit", "-m", "initial");
+  fs.writeFileSync(
+    path.join(tempDir, "src", "lib.ts"),
+    [
+      "export function used(): number {",
+      "  return 10;",
+      "}",
+      "",
+      "export function oldUnused(): number {",
+      "  return 2;",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
+  const audit = runAudit(config, "test audit changed lines", { base: "HEAD", gate: "new-only" });
+  const oldUnused = audit.findings.find((finding) => finding.id === "cleanup:unused-export:src/lib:oldUnused");
+
+  assert.ok(oldUnused, "old unused export should be included as changed-file context");
+  assert.equal(oldUnused.introduced, false);
+  assert.ok(audit.summary.changed_hunks > 0);
+  assert.equal(audit.summary.base_snapshot_available, true);
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("context command writes compact project context and cache can hit", () => {
+  const config = loadConfig(fixtureConfig);
+  config.outputDir = path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-context`);
+  config.cache.dir = path.join(config.outputDir, ".cache");
+  fs.rmSync(config.outputDir, { recursive: true, force: true });
+
+  const first = projectContext(config, "test context first");
+  const second = projectContext(config, "test context second");
+
+  assert.equal(first.task_id, "context.project");
+  assert.ok(fs.existsSync(path.join(config.outputDir, "context.json")));
+  assert.equal(second.summary.cache_status, "hit");
+  fs.rmSync(config.outputDir, { recursive: true, force: true });
+});
+
+test("project analysis marks package tool entrypoints", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-entrypoints-`));
+  fs.mkdirSync(path.join(tempDir, "bin"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "scripts"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempDir, "package.json"),
+    JSON.stringify({
+      name: "entrypoint-fixture",
+      type: "module",
+      main: "./dist/src/index.js",
+      bin: { fixture: "./dist/bin/tool.js" },
+      scripts: { smoke: "node ./scripts/smoke.ts" },
+    }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" }, include: ["bin", "src", "scripts"] }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(tempDir, "bin", "tool.ts"), "export function run(): void {}\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "src", "index.ts"), "export const api = 1;\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "scripts", "smoke.ts"), "export const smoke = true;\n", "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "ts-react-quality-lens.config.json"),
+    JSON.stringify({
+      project_name: "entrypoint-fixture",
+      project_root: ".",
+      source_roots: ["bin", "src", "scripts"],
+      output_dir: "target/analysis",
+      tsconfig: "tsconfig.json",
+    }),
+    "utf8",
+  );
+
+  const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
+  const context = projectContext(config, "test entrypoint context") as {
+    summary: { entrypoint_modules?: number };
+    modules: Array<{ file: string; entrypoint_roles: string[] }>;
+  };
+  assert.equal(context.summary.entrypoint_modules, 3);
+  assert.deepEqual(context.modules.find((module) => module.file === "bin/tool.ts")?.entrypoint_roles, ["cli_bin"]);
+  assert.deepEqual(context.modules.find((module) => module.file === "src/index.ts")?.entrypoint_roles, ["package_main"]);
+  assert.deepEqual(context.modules.find((module) => module.file === "scripts/smoke.ts")?.entrypoint_roles, ["npm_script"]);
+
+  runMeasure(config, "quality.cleanup", "test entrypoint cleanup");
+  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  assert.ok(!cleanup.records?.some((record) => record.kind === "unused_file"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("clone measure reports same-purpose exports and hooks without clone-like bodies", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-same-purpose-`));
+  fs.mkdirSync(path.join(tempDir, "src", "billing"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "src", "profile"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "same-purpose-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", jsx: "react-jsx" }, include: ["src"] }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "src", "billing", "format.ts"),
+    [
+      "export function formatCurrency(cents: number): string {",
+      "  const whole = Math.trunc(cents / 100);",
+      "  const fraction = String(Math.abs(cents % 100)).padStart(2, '0');",
+      "  return `USD ${whole}.${fraction}`;",
+      "}",
+      "",
+      "export function useUserState(id: string): { id: string; loading: boolean } {",
+      "  return { id, loading: false };",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "src", "profile", "money.ts"),
+    [
+      "export const currencyFormatter = (amount: number): string => {",
+      "  const value = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });",
+      "  return value.format(amount);",
+      "};",
+      "",
+      "export function useStateUser(userId: string): { userId: string; ready: boolean } {",
+      "  return { userId, ready: true };",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "ts-react-quality-lens.config.json"),
+    JSON.stringify({
+      project_name: "same-purpose-fixture",
+      project_root: ".",
+      source_roots: ["src"],
+      output_dir: "target/analysis",
+      tsconfig: "tsconfig.json",
+    }),
+    "utf8",
+  );
+
+  const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
+  runMeasure(config, "quality.clones", "test same purpose");
+  const clones = JSON.parse(fs.readFileSync(path.join(config.outputDir, "clones.json"), "utf8")) as Artifact &
+    SummaryArtifact<{ same_purpose_records: number }>;
+  assert.ok(clones.summary.same_purpose_records >= 2);
+  assert.ok(clones.records?.some((record) => record.kind === "same_purpose_export" && record.purpose_key === "currency:format"));
+  assert.ok(clones.records?.some((record) => record.kind === "same_purpose_hook" && record.purpose_key === "state:user"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("cleanup honors configured public API exports", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-public-api-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "public-api-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" }, include: ["src"] }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(tempDir, "src", "lib.ts"), "export const publicHelper = 1;\nexport const unusedHelper = 2;\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "src", "index.ts"), "export {};\n", "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "ts-react-quality-lens.config.json"),
+    JSON.stringify({
+      project_name: "public-api-fixture",
+      project_root: ".",
+      source_roots: ["src"],
+      output_dir: "target/analysis",
+      tsconfig: "tsconfig.json",
+      public_api: { exports: [{ file: "src/lib.ts", names: ["publicHelper"] }] },
+    }),
+    "utf8",
+  );
+  const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
+  runMeasure(config, "quality.cleanup", "test public api cleanup");
+  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
+  assert.ok(cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/lib:unusedHelper"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 test("react hooks lint resolves dependencies when output dir is outside the project", () => {
@@ -190,3 +493,21 @@ test("golden fixture exercises edge-case artifact signals", () => {
   };
   assert.ok(map.meta?.performance_inputs);
 });
+
+function git(cwd: string, ...args: string[]): string {
+  return childProcess.execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+async function withSilencedConsole<T>(run: () => Promise<T>): Promise<T> {
+  const originalLog = console.log;
+  console.log = () => undefined;
+  try {
+    return await run();
+  } finally {
+    console.log = originalLog;
+  }
+}

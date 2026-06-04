@@ -9,9 +9,13 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "ci": "npm run typecheck && npm run build && node dist/scripts/format-check.js && node --test dist/test/cli.test.js",
+    "ci": "npm run typecheck && npm run build && node dist/scripts/schema-check.js && node dist/scripts/format-check.js && node --test dist/test/cli.test.js && node dist/scripts/perf-smoke.js && node dist/scripts/package-smoke.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "npm run typecheck",
+    "schema:check": "npm run build && node dist/scripts/schema-check.js",
+    "perf:smoke": "npm run build && node dist/scripts/perf-smoke.js",
+    "bench": "npm run build && node dist/scripts/bench.js",
+    "package:smoke": "npm run build && node dist/scripts/package-smoke.js",
     "format:check": "npm run build && node dist/scripts/format-check.js",
     "test": "npm run build && node --test dist/test/cli.test.js",
     "catalog": "npm run build && node ./dist/bin/ts-react-quality-lens.js catalog --config ./examples/basic/ts-react-quality-lens.config.json",
@@ -27,7 +31,8 @@
     "bin/",
     "README.md",
     "tsconfig.json",
-    "ts-react-quality-lens.schema.json"
+    "ts-react-quality-lens.schema.json",
+    "ts-react-quality-lens.config.schema.json"
   ],
   "license": "MIT",
   "devDependencies": {

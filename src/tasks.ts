@@ -69,6 +69,14 @@ export const TASKS = [
       "Measures import cycles, layer violations, unsupported patterns, barrels, deep imports, and dependency pressure.",
   },
   {
+    id: "quality.cleanup",
+    category: "quality",
+    title: "Cleanup opportunities",
+    artifact: "cleanup.json",
+    description:
+      "Finds unused files, unused exports, dependency hygiene issues, duplicate exports, and staged cleanup candidates.",
+  },
+  {
     id: "correctness.catalog",
     category: "correctness",
     title: "Correctness catalog",

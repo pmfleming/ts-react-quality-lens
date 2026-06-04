@@ -3,13 +3,22 @@ import { normalizeImportPath, relativeModuleId } from "./files.js";
 import { complexityForNode, countJsxConditionals, countOptionalTypeFields, countTypeFieldsForNode, countUnionMembers, maxNestingDepthForNode } from "./ast-metrics.js";
 import { countMatches, dedupeBy } from "./collections.js";
 import { callExpressionName, lineForNode } from "./ts-ast.js";
-import type { Config, ConfidenceSignal, ExportRecord, FunctionRecord, ImportKind, ImportRecord, SourceFileRecord, TypeRecord, TypeScriptProject } from "./types.js";
+import type { Config, ConfidenceSignal, ExportRecord, FunctionRecord, ImportKind, ImportRecord, ModuleRecord, SourceFileRecord, TypeRecord, TypeScriptProject } from "./types.js";
 
 type ImportExtraction = { imports: ImportRecord[]; unsupportedPatterns: ConfidenceSignal[] };
 
-type ImportCandidate = { specifier: string; node: ts.Node; importKind: ImportKind; wildcardReExport?: boolean };
+type ImportCandidate = {
+  specifier: string;
+  node: ts.Node;
+  importKind: ImportKind;
+  importedNames: string[];
+  namespaceImport: boolean;
+  sideEffectImport: boolean;
+  wildcardReExport?: boolean;
+};
+type BindingEvidence = Pick<ImportCandidate, "importedNames" | "namespaceImport" | "sideEffectImport">;
 
-export function analyzeModule(config: Config, file: SourceFileRecord, tsProject: TypeScriptProject) {
+export function analyzeModule(config: Config, file: SourceFileRecord, tsProject: TypeScriptProject): ModuleRecord {
   const id = relativeModuleId(config.projectRoot, file.path);
   const typed = tsProject.modules.get(id) ?? null;
   const sourceFile = typed?.sourceFile ?? parseSourceFile(file);
@@ -19,7 +28,7 @@ export function analyzeModule(config: Config, file: SourceFileRecord, tsProject:
   const exports = extractExports(sourceFile);
   const components = functions.filter((fn) => fn.kind === "component");
   const escapeCounts = countAstEscapeHatches(file, sourceFile);
-  const record = {
+  const record: ModuleRecord = {
     id,
     file: file.relativePath,
     absolutePath: file.path,
@@ -34,6 +43,7 @@ export function analyzeModule(config: Config, file: SourceFileRecord, tsProject:
     typed,
     text: file.text,
     sourceFile: file,
+    entrypointRoles: [],
     unsupportedPatterns,
   };
   Object.defineProperty(record, "astSourceFile", {
@@ -72,6 +82,7 @@ function importCandidate(node: ts.Node): ImportCandidate | null {
       specifier: node.moduleSpecifier.text,
       node,
       importKind: node.importClause?.isTypeOnly ? "type" : "static",
+      ...importBindingEvidence(node.importClause),
     };
   }
   if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
@@ -79,11 +90,49 @@ function importCandidate(node: ts.Node): ImportCandidate | null {
       specifier: node.moduleSpecifier.text,
       node,
       importKind: node.isTypeOnly ? "type" : "static",
+      ...exportBindingEvidence(node.exportClause),
       wildcardReExport: !node.exportClause,
     };
   }
-  if (isLiteralDynamicImport(node)) return { specifier: node.arguments[0].text, node, importKind: "dynamic" };
+  if (isLiteralDynamicImport(node)) {
+    return {
+      specifier: node.arguments[0].text,
+      node,
+      importKind: "dynamic",
+      importedNames: [],
+      namespaceImport: true,
+      sideEffectImport: false,
+    };
+  }
   return null;
+}
+
+function importBindingEvidence(importClause: ts.ImportClause | undefined): BindingEvidence {
+  if (!importClause) return bindingEvidence([], false, true);
+  const importedNames = importClause.name ? ["default"] : [];
+  return namedBindingEvidence(importClause.namedBindings, importedNames);
+}
+
+function exportBindingEvidence(exportClause: ts.ExportDeclaration["exportClause"]): BindingEvidence {
+  if (!exportClause || ts.isNamespaceExport(exportClause)) return bindingEvidence([], true, false);
+  return namedBindingEvidence(exportClause, []);
+}
+
+function namedBindingEvidence(
+  bindings: ts.NamedImportBindings | ts.NamedExportBindings | undefined,
+  importedNames: string[],
+): BindingEvidence {
+  if (!bindings) return bindingEvidence(importedNames, false, false);
+  if (ts.isNamespaceImport(bindings) || ts.isNamespaceExport(bindings)) return bindingEvidence(importedNames, true, false);
+  return bindingEvidence([...importedNames, ...bindings.elements.map(importedBindingName)], false, false);
+}
+
+function importedBindingName(element: ts.ImportSpecifier | ts.ExportSpecifier): string {
+  return element.propertyName?.text ?? element.name.text;
+}
+
+function bindingEvidence(importedNames: string[], namespaceImport: boolean, sideEffectImport: boolean): BindingEvidence {
+  return { importedNames, namespaceImport, sideEffectImport };
 }
 
 function isLiteralDynamicImport(node: ts.Node): node is ts.CallExpression & { arguments: [ts.StringLiteralLike, ...ts.Expression[]] } {
@@ -122,6 +171,9 @@ function addImportCandidate(
     resolved: normalized.resolved,
     specifier: candidate.specifier,
     import_kind: candidate.importKind,
+    imported_names: candidate.importedNames,
+    namespace_import: candidate.namespaceImport,
+    side_effect_import: candidate.sideEffectImport,
     line: lineForNode(sourceFile, candidate.node),
     source: candidate.node.getText(sourceFile).replace(/\s+/g, " ").slice(0, 180),
   });

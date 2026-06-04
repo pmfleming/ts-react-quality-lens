@@ -10,10 +10,10 @@ export type RiskArtifact = {
 
 export type RiskArtifactLookup = Record<string, RiskArtifact>;
 export type ArtifactFreshnessLookup = Record<string, ArtifactFreshness>;
-export type RiskClassification = "ok" | "warning" | "bad" | "unknown";
-export type RiskScore = number | null;
+type RiskClassification = "ok" | "warning" | "bad" | "unknown";
+type RiskScore = number | null;
 
-export type CategoryRiskScores = {
+type CategoryRiskScores = {
   maintainability: RiskScore;
   correctness: RiskScore;
   architecture: RiskScore;
@@ -24,7 +24,7 @@ export type CategoryRiskScores = {
   total: RiskScore;
 };
 
-export type NamedRiskScores = {
+type NamedRiskScores = {
   maintainability_risk: RiskScore;
   change_risk: RiskScore;
   performance_risk: RiskScore;
@@ -34,7 +34,7 @@ export type NamedRiskScores = {
   total_score: RiskScore;
 };
 
-export type ArchitectureRiskScores = NamedRiskScores & {
+type ArchitectureRiskScores = NamedRiskScores & {
   category_scores: CategoryRiskScores;
   risk_score: number;
   classification: RiskClassification;
@@ -85,7 +85,7 @@ export function riskForScore(score: number): RiskLevel {
   return "low";
 }
 
-export function classifyRiskScore(score: number | null): RiskClassification {
+function classifyRiskScore(score: number | null): RiskClassification {
   if (score === null) return "unknown";
   if (score >= RISK_MODEL.thresholds.bad) return "bad";
   if (score >= RISK_MODEL.thresholds.warning) return "warning";
@@ -107,8 +107,11 @@ export function architectureRiskScores(
   correctnessFiles: Set<string>,
 ): ArchitectureRiskScores {
   const unknownMetrics: string[] = [];
-  const maintainability = availableScore("hotspots", unknownMetrics, artifactStatus, () =>
-    maxScoreFor(artifacts.hotspots?.records, module.file),
+  const maintainability = compositeScore(
+    ["hotspots", "clones"],
+    unknownMetrics,
+    artifactStatus,
+    (name) => maxScoreFor(artifacts[name]?.records, module.file),
   );
   const correctness = availableScore("correctness", unknownMetrics, artifactStatus, () =>
     correctnessScore(artifacts.correctness, module.file, correctnessFiles),

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pmfleming/ts-react-quality-lens/ts-react-quality-lens.config.schema.json",
+  "title": "ts-react-quality-lens config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "project_name": { "type": "string" },
+    "project_root": { "type": "string" },
+    "source_roots": { "type": "array", "items": { "type": "string" } },
+    "test_roots": { "type": "array", "items": { "type": "string" } },
+    "output_dir": { "type": "string" },
+    "tsconfig": { "type": "string" },
+    "package_manager": { "type": "string" },
+    "framework": { "type": "string" },
+    "test_runner": { "type": "string" },
+    "test_command": { "type": ["string", "null"] },
+    "exclude": { "type": "array", "items": { "type": "string" } },
+    "layer_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["layer", "patterns"],
+        "additionalProperties": false,
+        "properties": {
+          "layer": { "type": "string" },
+          "patterns": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "performance_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bundle_stats": { "type": "string" },
+        "render_costs": { "type": "string" }
+      }
+    },
+    "public_api": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entry": { "type": "array", "items": { "type": "string" } },
+        "exports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file", "names"],
+            "additionalProperties": false,
+            "properties": {
+              "file": { "type": "string" },
+              "names": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "suppressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "anyOf": [
+          { "required": ["id"] },
+          { "required": ["file"] },
+          { "required": ["kind"] }
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "file": { "type": "string" },
+          "kind": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": { "type": "string" },
+        "changed_since": { "type": "string" },
+        "gate": { "enum": ["new-only", "all"] },
+        "baseline": { "type": "string" }
+      }
+    }
+  }
+}

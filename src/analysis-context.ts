@@ -1,24 +1,30 @@
 import { createConfidence } from "./config.js";
 import { discoverSourceFiles, discoverTestFiles, readSourceFile } from "./files.js";
 import { analyzeModule } from "./extract.js";
+import { entrypointRolesForFile, projectEntrypoints } from "./entrypoints.js";
+import { updateAnalysisCache } from "./cache.js";
 import {
-  detectFrameworkDetails,
   loadTypeScriptProject,
   runDependencyCruiser,
   runJscpd,
   runReactHooksLint,
 } from "./integrations.js";
+import { detectFrameworkDetails } from "./framework-adapters.js";
 import type { AnalysisContext, Config, Confidence, ProjectAnalysis } from "./types.js";
 
-export function analyzeProject(config: Config): ProjectAnalysis {
+function analyzeProject(config: Config): ProjectAnalysis {
   const sourceFiles = discoverSourceFiles(config).map((file) => readSourceFile(file, config.projectRoot));
   const testFiles = discoverTestFiles(config).map((file) => readSourceFile(file, config.projectRoot));
   const tsProject = loadTypeScriptProject(config, sourceFiles);
+  const entrypoints = projectEntrypoints(config);
   const modules = sourceFiles.map((file) => analyzeModule(config, file, tsProject));
+  for (const module of modules) module.entrypointRoles = entrypointRolesForFile(entrypoints, module.file);
   const imports = modules.flatMap((module) => module.imports);
   const frameworkDetails = detectFrameworkDetails(config, { sourceFiles, testFiles, modules, imports });
   const unsupportedPatterns = modules.flatMap((module) => module.unsupportedPatterns);
-  return { sourceFiles, testFiles, modules, imports, tsProject, frameworkDetails, unsupportedPatterns };
+  const projectWithoutCache = { sourceFiles, testFiles, modules, imports, tsProject, frameworkDetails, unsupportedPatterns };
+  const cache = updateAnalysisCache(config, projectWithoutCache);
+  return { ...projectWithoutCache, cache };
 }
 
 export function createAnalysisContext(config: Config): AnalysisContext {
@@ -53,6 +59,8 @@ export function analysisConfidence(config: Config, project: ProjectAnalysis, ext
     typescript_program_reason: project.tsProject.reason,
     type_information_available: project.tsProject.loaded,
     framework_conventions_detected: Object.values(project.frameworkDetails.conventions).some(Boolean),
+    analysis_cache_enabled: project.cache?.enabled ?? false,
+    analysis_cache_status: project.cache?.status ?? "disabled",
     unsupported_pattern: project.unsupportedPatterns,
     ...extra,
   });

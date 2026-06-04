@@ -312,7 +312,7 @@ export function hiddenCouplingSignals(module: ModuleRecord): Array<{ kind: strin
   return records;
 }
 
-export function maxScoreFor(records: ScoredRecord[] = [], file: string, mode: "score" | "severity" = "score"): number {
+function maxScoreFor(records: ScoredRecord[] = [], file: string, mode: "score" | "severity" = "score"): number {
   const candidates = records.filter((record) => record.file === file || record.files?.includes(file));
   if (mode === "severity") {
     return Math.max(

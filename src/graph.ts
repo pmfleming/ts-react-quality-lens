@@ -25,6 +25,7 @@ export function mapNode(
     file: module.file,
     type: module.components.length ? "component" : module.file.includes("/hooks/") ? "hook" : "module",
     group: module.id.split("/").slice(0, -1).join("/") || ".",
+    entrypoint_roles: module.entrypointRoles,
     risk_score: scores.risk_score,
     risk: riskForScore(scores.risk_score),
     classification: scores.classification,
@@ -44,6 +45,7 @@ export function mapNode(
       functions: module.functions.length,
       components: module.components.length,
       types: module.types.length,
+      entrypoint_roles: module.entrypointRoles.length,
     },
   };
 }

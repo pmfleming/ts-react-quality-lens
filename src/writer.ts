@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { enrichArtifactFindings } from "./actions.js";
 import type { Config } from "./types.js";
 
 export function writeArtifact(config: Config, artifactName: string, value: unknown): string {
@@ -9,7 +10,7 @@ export function writeArtifact(config: Config, artifactName: string, value: unkno
     config.outputDir,
     `.${artifactName}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
   );
-  fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  fs.writeFileSync(temp, `${JSON.stringify(enrichArtifactFindings(config, value), null, 2)}\n`, "utf8");
   fs.renameSync(temp, target);
   return target;
 }

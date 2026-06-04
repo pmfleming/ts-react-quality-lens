@@ -3,7 +3,7 @@ export { cloneGroup, cloneGroupFromBlocks, jscpdCloneGroup, normalizeCloneLine, 
 export { countBy, groupBy } from "./collections.js";
 export { runTestCommand, testRecord } from "./correctness.js";
 export { dependencyCruiserCycles, dependencyCruiserEdges, findCycles, groupMapNodes, mapNode, uniqueCycleCount } from "./graph.js";
-export { gitChurn, gitHistory } from "./history.js";
+export { gitHistory } from "./history.js";
 export { riskForScore } from "./risk-model.js";
 export { escapeRecords, fileHotspotRecord, frameworkRiskRecords, functionHotspotRecord, hiddenCouplingSignals, typeHealthRecords } from "./scoring.js";
 export { artifactBase, sourceSetHash } from "./provenance.js";

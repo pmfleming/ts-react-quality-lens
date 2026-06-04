@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { packageRootFrom } from "./package-root.js";
 import type {
+  AuditConfig,
   Config,
   Confidence,
   ConfidenceSignal,
@@ -10,8 +12,17 @@ import type {
   PackageManagerDetection,
   PathAliasRule,
   PerformanceInputConfig,
+  PublicApiConfig,
   RawConfig,
+  SuppressionConfig,
 } from "./types.js";
+
+type JsonCommentScanner = {
+  text: string;
+  index: number;
+  inString: boolean;
+  escaped: boolean;
+};
 
 const DEFAULT_EXCLUDES = [
   "node_modules",
@@ -56,6 +67,7 @@ const PACKAGE_MANAGER_RULES = [
 ];
 
 const CONFIG_KEYS = new Set([
+  "$schema",
   "project_name",
   "project_root",
   "source_roots",
@@ -69,12 +81,16 @@ const CONFIG_KEYS = new Set([
   "exclude",
   "layer_rules",
   "performance_inputs",
+  "public_api",
+  "cache",
+  "suppressions",
+  "audit",
 ]);
 
 export function loadConfig(configArg?: string | null): Config {
   const configPath = path.resolve(configArg ?? "ts-react-quality-lens.config.json");
   const configDir = path.dirname(configPath);
-  const rawConfig = fs.existsSync(configPath) ? validateRawConfig(JSON.parse(fs.readFileSync(configPath, "utf8"))) : {};
+  const rawConfig = fs.existsSync(configPath) ? validateRawConfig(parseJsonConfig(fs.readFileSync(configPath, "utf8"))) : {};
   const root = resolveFromConfig(configDir, rawConfig.project_root ?? ".");
   const sourceRoots = normalizeRoots(configDir, root, rawConfig.source_roots, [
     "src",
@@ -117,6 +133,10 @@ export function loadConfig(configArg?: string | null): Config {
     exclude: [...DEFAULT_EXCLUDES, ...(rawConfig.exclude ?? [])],
     layerRules: normalizeLayerRules(rawConfig.layer_rules),
     performanceInputs: normalizePerformanceInputs(configDir, rawConfig.performance_inputs),
+    publicApi: normalizePublicApi(rawConfig.public_api),
+    cache: normalizeCache(outputDir, rawConfig.cache),
+    suppressions: normalizeSuppressions(rawConfig.suppressions),
+    audit: normalizeAuditConfig(configDir, rawConfig.audit),
     pathAliases: tsconfig ? readPathAliases(tsconfig) : [],
     raw: rawConfig,
   };
@@ -174,8 +194,9 @@ function confidenceSignals(value: JsonValue | undefined): ConfidenceSignal[] {
 function validateRawConfig(value: unknown): RawConfig {
   if (!isRecord(value)) throw new Error("Config must be a JSON object.");
   const errors: string[] = [];
+  const schemaKeys = configSchemaKeys();
   for (const key of Object.keys(value)) {
-    if (!CONFIG_KEYS.has(key)) errors.push(`Unknown config key "${key}".`);
+    if (!schemaKeys.has(key)) errors.push(`Unknown config key "${key}".`);
   }
   validateString(value, "project_name", errors);
   validateString(value, "project_root", errors);
@@ -190,8 +211,88 @@ function validateRawConfig(value: unknown): RawConfig {
   validateStringArray(value, "exclude", errors);
   validateLayerRules(value, "layer_rules", errors);
   validatePerformanceInputs(value, "performance_inputs", errors);
+  validatePublicApi(value, "public_api", errors);
+  validateCache(value, "cache", errors);
+  validateSuppressions(value, "suppressions", errors);
+  validateAudit(value, "audit", errors);
   if (errors.length) throw new Error(`Invalid config:\n${errors.map((error) => `- ${error}`).join("\n")}`);
   return value as RawConfig;
+}
+
+function parseJsonConfig(text: string): unknown {
+  return JSON.parse(stripJsonComments(text));
+}
+
+function stripJsonComments(text: string): string {
+  const scanner: JsonCommentScanner = { text, index: 0, inString: false, escaped: false };
+  const chunks: string[] = [];
+  while (scanner.index < scanner.text.length) chunks.push(readJsoncChunk(scanner));
+  return chunks.join("");
+}
+
+function readJsoncChunk(scanner: JsonCommentScanner): string {
+  const char = scanner.text[scanner.index];
+  const next = scanner.text[scanner.index + 1];
+  scanner.index += 1;
+  if (scanner.inString) return readStringChunk(scanner, char);
+  if (char === "\"") return enterString(scanner, char);
+  if (char === "/" && next === "/") return skipJsoncLineComment(scanner);
+  if (char === "/" && next === "*") return skipJsoncBlockComment(scanner);
+  return char;
+}
+
+function readStringChunk(scanner: JsonCommentScanner, char: string): string {
+  const state = nextStringState(char, scanner.escaped, scanner.inString);
+  scanner.escaped = state.escaped;
+  scanner.inString = state.inString;
+  return char;
+}
+
+function enterString(scanner: JsonCommentScanner, char: string): string {
+  scanner.inString = true;
+  return char;
+}
+
+function nextStringState(char: string, escaped: boolean, inString: boolean): Pick<JsonCommentScanner, "escaped" | "inString"> {
+  const nextEscaped = char === "\\" && !escaped;
+  return {
+    escaped: char === "\\" ? nextEscaped : false,
+    inString: char === "\"" && !escaped ? false : inString,
+  };
+}
+
+function skipJsoncLineComment(scanner: JsonCommentScanner): string {
+  scanner.index = skipLineComment(scanner.text, scanner.index - 1) + 1;
+  return "\n";
+}
+
+function skipJsoncBlockComment(scanner: JsonCommentScanner): string {
+  scanner.index = skipBlockComment(scanner.text, scanner.index - 1) + 1;
+  return " ";
+}
+
+function skipLineComment(text: string, index: number): number {
+  let cursor = index;
+  while (cursor < text.length && text[cursor] !== "\n") cursor += 1;
+  return cursor;
+}
+
+function skipBlockComment(text: string, index: number): number {
+  let cursor = index + 2;
+  while (cursor < text.length && !(text[cursor] === "*" && text[cursor + 1] === "/")) cursor += 1;
+  return cursor + 1;
+}
+
+function configSchemaKeys(): Set<string> {
+  const schemaPath = path.join(packageRoot(), "ts-react-quality-lens.config.schema.json");
+  if (!fs.existsSync(schemaPath)) return CONFIG_KEYS;
+  try {
+    const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+    if (!isRecord(schema.properties)) return CONFIG_KEYS;
+    return new Set(Object.keys(schema.properties));
+  } catch {
+    return CONFIG_KEYS;
+  }
 }
 
 function validateString(record: Record<string, unknown>, key: string, errors: string[]): void {
@@ -229,13 +330,84 @@ function validateLayerRules(record: Record<string, unknown>, key: string, errors
 
 function validatePerformanceInputs(record: Record<string, unknown>, key: string, errors: string[]): void {
   const value = record[key];
+  if (validateOptionalObject(value, key, errors)) validateStringFields(value, ["bundle_stats", "render_costs"], errors);
+}
+
+function validatePublicApi(record: Record<string, unknown>, key: string, errors: string[]): void {
+  const value = record[key];
+  if (!validateOptionalObject(value, key, errors)) return;
+  validateStringArray(value, "entry", errors);
+  validateObjectArray(value.exports, `${key}.exports`, errors, (item, itemKey) =>
+    validatePublicApiExportRule(item, itemKey, errors),
+  );
+}
+
+function validatePublicApiExportRule(item: Record<string, unknown>, itemKey: string, errors: string[]): void {
+  if (typeof item.file !== "string" || !Array.isArray(item.names)) {
+    errors.push(`"${itemKey}" must include "file" and string array "names".`);
+  } else if (!item.names.every((name) => typeof name === "string")) {
+    errors.push(`"${itemKey}.names" must be an array of strings.`);
+  }
+}
+
+function validateCache(record: Record<string, unknown>, key: string, errors: string[]): void {
+  const value = record[key];
+  if (validateOptionalObject(value, key, errors) && value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    errors.push(`"${key}.enabled" must be a boolean.`);
+  }
+}
+
+function validateSuppressions(record: Record<string, unknown>, key: string, errors: string[]): void {
+  validateObjectArray(record[key], key, errors, (item, itemKey) => {
+    validateString(item, "id", errors);
+    validateString(item, "file", errors);
+    validateString(item, "kind", errors);
+    validateString(item, "reason", errors);
+    if (!item.id && !item.file && !item.kind) {
+      errors.push(`"${itemKey}" must include at least one of "id", "file", or "kind".`);
+    }
+  });
+}
+
+function validateAudit(record: Record<string, unknown>, key: string, errors: string[]): void {
+  const value = record[key];
+  if (!validateOptionalObject(value, key, errors)) return;
+  validateStringFields(value, ["base", "changed_since", "baseline"], errors);
+  if (!isOptionalOneOf(value.gate, ["new-only", "all"])) {
+    errors.push(`"${key}.gate" must be "new-only" or "all".`);
+  }
+}
+
+function validateStringFields(record: Record<string, unknown>, keys: string[], errors: string[]): void {
+  for (const key of keys) validateString(record, key, errors);
+}
+
+function validateOptionalObject(value: unknown, key: string, errors: string[]): value is Record<string, unknown> {
+  if (value === undefined) return false;
+  if (isRecord(value)) return true;
+  errors.push(`"${key}" must be an object.`);
+  return false;
+}
+
+function validateObjectArray(
+  value: unknown,
+  key: string,
+  errors: string[],
+  validateItem: (item: Record<string, unknown>, key: string) => void,
+): void {
   if (value === undefined) return;
-  if (!isRecord(value)) {
-    errors.push(`"${key}" must be an object.`);
+  if (!Array.isArray(value)) {
+    errors.push(`"${key}" must be an array.`);
     return;
   }
-  validateString(value, "bundle_stats", errors);
-  validateString(value, "render_costs", errors);
+  for (const [index, item] of value.entries()) {
+    if (isRecord(item)) validateItem(item, `${key}[${index}]`);
+    else errors.push(`"${key}[${index}]" must be an object.`);
+  }
+}
+
+function isOptionalOneOf(value: unknown, allowed: string[]): boolean {
+  return value === undefined || (typeof value === "string" && allowed.includes(value));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -340,6 +512,33 @@ function normalizePerformanceInputs(configDir: string, value: PerformanceInputCo
   };
 }
 
+function normalizePublicApi(value: PublicApiConfig | undefined): Config["publicApi"] {
+  return {
+    entry: value?.entry ?? [],
+    exports: value?.exports ?? [],
+  };
+}
+
+function normalizeCache(outputDir: string, value: RawConfig["cache"] | undefined): Config["cache"] {
+  return {
+    enabled: value?.enabled !== false,
+    dir: path.join(outputDir, ".cache"),
+  };
+}
+
+function normalizeSuppressions(value: SuppressionConfig[] | undefined): SuppressionConfig[] {
+  return value ?? [];
+}
+
+function normalizeAuditConfig(configDir: string, value: AuditConfig | undefined): Config["audit"] {
+  return {
+    base: value?.base ?? null,
+    changedSince: value?.changed_since ?? null,
+    gate: value?.gate ?? "new-only",
+    baseline: value?.baseline ? path.resolve(configDir, value.baseline) : null,
+  };
+}
+
 function readPathAliases(tsconfig: string): PathAliasRule[] {
   try {
     const parsed = JSON.parse(fs.readFileSync(tsconfig, "utf8"));
@@ -356,4 +555,8 @@ function readPathAliases(tsconfig: string): PathAliasRule[] {
   } catch {
     return [];
   }
+}
+
+function packageRoot(): string {
+  return packageRootFrom(import.meta.url);
 }
