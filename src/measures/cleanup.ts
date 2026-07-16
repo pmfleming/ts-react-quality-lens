@@ -192,6 +192,7 @@ function duplicateExportRecords(modules: Array<{ id: string; file: string; expor
   const byName = new Map<string, Array<{ id: string; file: string; line: number }>>();
   for (const moduleRecord of modules) {
     for (const exportRecord of moduleRecord.exports) {
+      if (exportRecord.name === "default" || exportRecord.name === "export=") continue;
       const group = byName.get(exportRecord.name) ?? [];
       group.push({ id: moduleRecord.id, file: moduleRecord.file, line: exportRecord.line });
       byName.set(exportRecord.name, group);

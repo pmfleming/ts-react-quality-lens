@@ -541,8 +541,9 @@ function normalizeAuditConfig(configDir: string, value: AuditConfig | undefined)
 
 function readPathAliases(tsconfig: string): PathAliasRule[] {
   try {
-    const parsed = JSON.parse(fs.readFileSync(tsconfig, "utf8"));
-    const compilerOptions = isRecord(parsed.compilerOptions) ? parsed.compilerOptions : {};
+    const parsed = parseJsonConfig(fs.readFileSync(tsconfig, "utf8"));
+    const root = isRecord(parsed) ? parsed : {};
+    const compilerOptions = isRecord(root.compilerOptions) ? root.compilerOptions : {};
     const paths = isRecord(compilerOptions.paths) ? compilerOptions.paths : {};
     const baseUrl = typeof compilerOptions.baseUrl === "string" ? compilerOptions.baseUrl : ".";
     const baseDir = path.resolve(path.dirname(tsconfig), baseUrl);

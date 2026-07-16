@@ -16,7 +16,9 @@ type ImportCandidate = {
   sideEffectImport: boolean;
   wildcardReExport?: boolean;
 };
-type BindingEvidence = Pick<ImportCandidate, "importedNames" | "namespaceImport" | "sideEffectImport">;
+type BindingEvidence = Pick<ImportCandidate, "importedNames" | "namespaceImport" | "sideEffectImport"> & {
+  allSpecifiersTypeOnly: boolean;
+};
 
 export function analyzeModule(config: Config, file: SourceFileRecord, tsProject: TypeScriptProject): ModuleRecord {
   const id = relativeModuleId(config.projectRoot, file.path);
@@ -78,19 +80,21 @@ function extractImports(
 
 function importCandidate(node: ts.Node): ImportCandidate | null {
   if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+    const evidence = importBindingEvidence(node.importClause);
     return {
       specifier: node.moduleSpecifier.text,
       node,
-      importKind: node.importClause?.isTypeOnly ? "type" : "static",
-      ...importBindingEvidence(node.importClause),
+      importKind: node.importClause?.isTypeOnly || evidence.allSpecifiersTypeOnly ? "type" : "static",
+      ...evidence,
     };
   }
   if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    const evidence = exportBindingEvidence(node.exportClause);
     return {
       specifier: node.moduleSpecifier.text,
       node,
-      importKind: node.isTypeOnly ? "type" : "static",
-      ...exportBindingEvidence(node.exportClause),
+      importKind: node.isTypeOnly || evidence.allSpecifiersTypeOnly ? "type" : "static",
+      ...evidence,
       wildcardReExport: !node.exportClause,
     };
   }
@@ -108,13 +112,17 @@ function importCandidate(node: ts.Node): ImportCandidate | null {
 }
 
 function importBindingEvidence(importClause: ts.ImportClause | undefined): BindingEvidence {
-  if (!importClause) return bindingEvidence([], false, true);
+  if (!importClause) return bindingEvidence([], false, true, false);
   const importedNames = importClause.name ? ["default"] : [];
-  return namedBindingEvidence(importClause.namedBindings, importedNames);
+  const named = namedBindingEvidence(importClause.namedBindings, importedNames);
+  return {
+    ...named,
+    allSpecifiersTypeOnly: importClause.isTypeOnly || (!importClause.name && named.allSpecifiersTypeOnly),
+  };
 }
 
 function exportBindingEvidence(exportClause: ts.ExportDeclaration["exportClause"]): BindingEvidence {
-  if (!exportClause || ts.isNamespaceExport(exportClause)) return bindingEvidence([], true, false);
+  if (!exportClause || ts.isNamespaceExport(exportClause)) return bindingEvidence([], true, false, false);
   return namedBindingEvidence(exportClause, []);
 }
 
@@ -122,17 +130,23 @@ function namedBindingEvidence(
   bindings: ts.NamedImportBindings | ts.NamedExportBindings | undefined,
   importedNames: string[],
 ): BindingEvidence {
-  if (!bindings) return bindingEvidence(importedNames, false, false);
-  if (ts.isNamespaceImport(bindings) || ts.isNamespaceExport(bindings)) return bindingEvidence(importedNames, true, false);
-  return bindingEvidence([...importedNames, ...bindings.elements.map(importedBindingName)], false, false);
+  if (!bindings) return bindingEvidence(importedNames, false, false, false);
+  if (ts.isNamespaceImport(bindings) || ts.isNamespaceExport(bindings)) return bindingEvidence(importedNames, true, false, false);
+  const allSpecifiersTypeOnly = bindings.elements.length > 0 && bindings.elements.every((element) => element.isTypeOnly);
+  return bindingEvidence([...importedNames, ...bindings.elements.map(importedBindingName)], false, false, allSpecifiersTypeOnly);
 }
 
 function importedBindingName(element: ts.ImportSpecifier | ts.ExportSpecifier): string {
   return element.propertyName?.text ?? element.name.text;
 }
 
-function bindingEvidence(importedNames: string[], namespaceImport: boolean, sideEffectImport: boolean): BindingEvidence {
-  return { importedNames, namespaceImport, sideEffectImport };
+function bindingEvidence(
+  importedNames: string[],
+  namespaceImport: boolean,
+  sideEffectImport: boolean,
+  allSpecifiersTypeOnly: boolean,
+): BindingEvidence {
+  return { importedNames, namespaceImport, sideEffectImport, allSpecifiersTypeOnly };
 }
 
 function isLiteralDynamicImport(node: ts.Node): node is ts.CallExpression & { arguments: [ts.StringLiteralLike, ...ts.Expression[]] } {
@@ -293,6 +307,9 @@ function exportRecordsForStatement(sourceFile: ts.SourceFile, statement: ts.Stat
   if (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
     return statement.exportClause.elements.map((element) => ({ name: element.name.text, line: lineForNode(sourceFile, element) }));
   }
+  if (ts.isExportAssignment(statement)) {
+    return [{ name: statement.isExportEquals ? "export=" : "default", line: lineForNode(sourceFile, statement) }];
+  }
   return [];
 }
 
@@ -304,7 +321,8 @@ function exportedDeclarationName(node: ts.Statement): string | null {
     ts.isTypeAliasDeclaration(node) ||
     ts.isEnumDeclaration(node)
   ) {
-    return hasExportModifier(node) ? node.name?.text ?? null : null;
+    if (!hasExportModifier(node)) return null;
+    return hasDefaultModifier(node) ? "default" : node.name?.text ?? null;
   }
   return null;
 }
@@ -341,7 +359,15 @@ function lineSpanForNode(sourceFile: ts.SourceFile, node: ts.Node): number {
 }
 
 function hasExportModifier(node: ts.HasModifiers): boolean {
-  return Boolean(ts.getModifiers?.(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
+  return hasModifier(node, ts.SyntaxKind.ExportKeyword);
+}
+
+function hasDefaultModifier(node: ts.HasModifiers): boolean {
+  return hasModifier(node, ts.SyntaxKind.DefaultKeyword);
+}
+
+function hasModifier(node: ts.HasModifiers, kind: ts.SyntaxKind): boolean {
+  return Boolean(ts.getModifiers?.(node)?.some((modifier) => modifier.kind === kind));
 }
 
 function classifyFunction(name: string, body: string, jsxDensity: number): FunctionRecord["kind"] {

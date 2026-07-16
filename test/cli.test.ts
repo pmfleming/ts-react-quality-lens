@@ -4,9 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { loadConfig } from "../src/config.js";
 import { runCli, runMeasure } from "../src/cli.js";
 import { auditMarkdown, runAudit } from "../src/audit.js";
+import { createAnalysisContext } from "../src/analysis-context.js";
 import { projectContext } from "../src/context.js";
 import { catalogForConfig } from "../src/tasks.js";
 import type { AnalysisContext, Artifact, ProjectAnalysis, ScoredRecord } from "../src/types.js";
@@ -39,6 +41,7 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(taskIds.has("correctness.catalog"));
   assert.ok(taskIds.has("map.architecture"));
 
+  const validateArtifact = artifactValidator();
   for (const artifact of [
     "hotspots.json",
     "clones.json",
@@ -53,7 +56,13 @@ test("measure all writes MVP artifacts", () => {
     "react_health.json",
     "map.json",
   ]) {
-    assert.ok(fs.existsSync(path.join(config.outputDir, artifact)), `${artifact} should exist`);
+    const artifactPath = path.join(config.outputDir, artifact);
+    assert.ok(fs.existsSync(artifactPath), `${artifact} should exist`);
+    const value = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
+    assert.ok(
+      validateArtifact(value),
+      `${artifact} should satisfy artifact schema: ${validateArtifact.errors?.map((error: { message?: string }) => error.message).join(", ")}`,
+    );
   }
 
   const map = JSON.parse(fs.readFileSync(path.join(config.outputDir, "map.json"), "utf8")) as Artifact & {
@@ -134,6 +143,41 @@ test("config accepts JSONC comments and rejects unknown keys through schema-back
   const badConfigPath = path.join(tempDir, "bad.config.json");
   fs.writeFileSync(badConfigPath, `{"project_name": "bad", "surprise": true}`, "utf8");
   assert.throws(() => loadConfig(badConfigPath), /Unknown config key "surprise"/);
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("tsconfig JSONC path aliases are resolved", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-alias-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "alias-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    `{
+      // User tsconfigs commonly contain comments.
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "baseUrl": ".",
+        "paths": { "@/*": ["src/*"] }
+      },
+      "include": ["src"]
+    }`,
+    "utf8",
+  );
+  fs.writeFileSync(path.join(tempDir, "src", "util.ts"), "export const util = 1;\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "src", "index.ts"), 'import { util } from "@/util";\nconsole.log(util);\n', "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "ts-react-quality-lens.config.json"),
+    JSON.stringify({ project_name: "alias-fixture", project_root: ".", source_roots: ["src"], output_dir: "target/analysis", tsconfig: "tsconfig.json" }),
+    "utf8",
+  );
+
+  const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
+  const project = createAnalysisContext(config).project();
+  const index = project.modules.find((module) => module.file === "src/index.ts");
+
+  assert.ok(index?.imports.some((edge) => edge.to_kind === "relative" && edge.to === "src/util"));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -375,6 +419,45 @@ test("clone measure reports same-purpose exports and hooks without clone-like bo
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("analysis handles inline type imports and default export assignments", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-syntax-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempDir, "package.json"),
+    JSON.stringify({ name: "syntax-fixture", type: "module", dependencies: { react: "^19.0.0" } }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", jsx: "react-jsx" }, include: ["src"] }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(tempDir, "src", "component.ts"), "const Component = () => null;\nexport default Component;\n", "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "src", "index.ts"),
+    'import { type ReactNode } from "react";\nimport Component from "./component.js";\nexport const node: ReactNode = Component();\n',
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "ts-react-quality-lens.config.json"),
+    JSON.stringify({ project_name: "syntax-fixture", project_root: ".", source_roots: ["src"], output_dir: "target/analysis", tsconfig: "tsconfig.json" }),
+    "utf8",
+  );
+
+  const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
+  const project = createAnalysisContext(config).project();
+  const index = project.modules.find((module) => module.file === "src/index.ts");
+  const component = project.modules.find((module) => module.file === "src/component.ts");
+  assert.ok(index?.imports.some((edge) => edge.specifier === "react" && edge.import_kind === "type"));
+  assert.ok(component?.exports.some((exportRecord) => exportRecord.name === "default"));
+
+  runMeasure(config, "quality.cleanup", "test syntax cleanup");
+  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  assert.ok(cleanup.records?.some((record) => record.id === "cleanup:type-only-production-dependency:react"));
+  assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/component:default"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("cleanup honors configured public API exports", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-public-api-`));
   fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
@@ -500,6 +583,11 @@ function git(cwd: string, ...args: string[]): string {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
+}
+
+function artifactValidator() {
+  const schema = JSON.parse(fs.readFileSync(path.join(repoRoot, "ts-react-quality-lens.schema.json"), "utf8"));
+  return new Ajv2020({ allErrors: true, strict: false }).compile(schema);
 }
 
 async function withSilencedConsole<T>(run: () => Promise<T>): Promise<T> {

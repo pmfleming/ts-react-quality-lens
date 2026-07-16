@@ -54,9 +54,7 @@
     },
     "confidence": {
       "type": "object",
-      "additionalProperties": {
-        "type": ["boolean", "string", "number", "null"]
-      }
+      "additionalProperties": { "$ref": "#/$defs/jsonValue" }
     },
     "summary": {
       "type": "object",
@@ -84,6 +82,19 @@
     }
   },
   "$defs": {
+    "jsonValue": {
+      "anyOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+        }
+      ]
+    },
     "finding": {
       "type": "object",
       "required": ["id"],
