@@ -1,4 +1,13 @@
-import type { Config, IssueAction, JsonValue, ScoredRecord, SuppressionConfig } from "./types.js";
+import type {
+  Config,
+  EvidenceKind,
+  FindingConfidence,
+  FindingDisposition,
+  IssueAction,
+  JsonValue,
+  ScoredRecord,
+  SuppressionConfig,
+} from "./types.js";
 
 type ArtifactLike = {
   records?: unknown;
@@ -28,6 +37,11 @@ export function enrichFinding(config: Config, value: unknown): unknown {
   return {
     ...record,
     kind,
+    rule_id: record.rule_id ?? defaultRuleId(record, kind),
+    evidence_kind: record.evidence_kind ?? defaultEvidenceKind(record, kind),
+    disposition: record.disposition ?? defaultDisposition(kind),
+    finding_confidence: record.finding_confidence ?? defaultFindingConfidence(record),
+    message: record.message ?? defaultMessage(record, kind),
     actions,
     ...(suppression ? { suppressed: true, suppression_reason: suppression.reason ?? "Configured suppression." } : {}),
   };
@@ -41,6 +55,42 @@ export function findingKind(record: ScoredRecord): string {
   if (typeof record.kind === "string") return record.kind;
   const [prefix] = record.id.split(":");
   return prefix || "finding";
+}
+
+function defaultRuleId(record: ScoredRecord, kind: string): string {
+  if (typeof record.source === "string") return `${record.source}/${kind}`;
+  return `ts-react-quality-lens/${kind}`;
+}
+
+function defaultEvidenceKind(record: ScoredRecord, kind: string): EvidenceKind {
+  if (kind === "compiler_diagnostic") return "diagnostic";
+  if (kind === "test_execution_failed") return "test";
+  if (typeof record.source === "string" && record.source.includes("eslint")) return "tool-rule";
+  if (typeof record.source === "string" && record.source !== "structural-type-scan" && record.source !== "framework-adapter") {
+    return "tool-rule";
+  }
+  if (kind.includes("count") || kind.includes("coverage")) return "metric";
+  return "heuristic";
+}
+
+function defaultDisposition(kind: string): FindingDisposition {
+  if (kind === "compiler_diagnostic" || kind === "test_execution_failed") return "block";
+  if (["ts_ignore", "ts_nocheck", "stale_suppression", "layer_violation", "import_cycle"].includes(kind)) return "warn";
+  if (["ts_expect_error", "storybook_evidence"].includes(kind)) return "info";
+  return "review";
+}
+
+function defaultFindingConfidence(record: ScoredRecord): FindingConfidence {
+  if (record.evidence_kind === "diagnostic" || record.evidence_kind === "test" || record.evidence_kind === "tool-rule") return "high";
+  if (typeof record.source === "string" && !record.source.includes("heuristic")) return "high";
+  return "medium";
+}
+
+function defaultMessage(record: ScoredRecord, kind: string): string {
+  if (typeof record.evidence === "string" && record.evidence.trim()) return record.evidence;
+  const signalMessage = record.signals?.find((signal) => signal.message)?.message;
+  if (signalMessage) return signalMessage;
+  return kind.replace(/_/g, " ");
 }
 
 function matchingSuppression(suppressions: SuppressionConfig[], record: ScoredRecord): SuppressionConfig | null {

@@ -1,5 +1,5 @@
-import { analysisConfidence, artifactBase, countBy, createAnalysisContext, escapeRecords, frameworkRiskRecords, gitHistory, hiddenCouplingSignals, readArtifact, riskForScore, sourceSetHash, typeHealthRecords, writeArtifact } from "../measure-shared.js";
-import type { AnalysisContext, Artifact, Config, EslintMessage, FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, TestRecord } from "../types.js";
+import { analysisConfidence, artifactBase, countBy, createAnalysisContext, escapeRecords, frameworkRiskRecords, gitHistory, hiddenCouplingSignals, readArtifact, riskForScore, sourceSetHash, stableHash, typeHealthRecords, writeArtifact } from "../measure-shared.js";
+import type { AnalysisContext, Artifact, Config, DiagnosticRecord, EslintMessage, FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, TestRecord } from "../types.js";
 
 export function measureEscapeHatches(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
@@ -16,8 +16,12 @@ export function measureEscapeHatches(config: Config, command: string, context: A
 
 export function measureTypeHealth(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
-  const records = [...project.modules.flatMap((module) => typeHealthRecords(module)), ...typeSafetyPostureRecords(project)];
   const diagnostics = project.tsProject.diagnostics ?? [];
+  const records = [
+    ...project.modules.flatMap((module) => typeHealthRecords(module)),
+    ...typeSafetyPostureRecords(config, project),
+    ...diagnostics.map(compilerDiagnosticFinding),
+  ];
   return writeQualityArtifact(config, "type_health.json", "quality.type_health", command, project, {
     records: records.length,
     high_risk_records: records.filter((record) => record.risk === "high").length,
@@ -30,6 +34,45 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
       diagnostics,
     },
   );
+}
+
+export function measureLint(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
+  const project = context.project();
+  const lint = context.typedLint();
+  const records = lint.messages.map(typedLintRecord);
+  const artifact = {
+    ...artifactBase(
+      config,
+      "quality.lint",
+      command,
+      analysisConfidence(config, project, {
+        typed_eslint_available: lint.available,
+        typed_eslint_ran: lint.ran,
+        typed_eslint_complete: lint.complete,
+        typed_eslint_reason: lint.reason,
+      }),
+      sourceSetHash(project),
+    ),
+    summary: {
+      records: records.length,
+      blocking_findings: records.filter((record) => record.disposition === "block").length,
+      warning_findings: records.filter((record) => record.disposition === "warn").length,
+    },
+    tool_status: {
+      typed_eslint: {
+        available: lint.available,
+        ran: lint.ran,
+        complete: lint.complete,
+        reason: lint.reason,
+        version: lint.version,
+        duration_ms: lint.duration_ms ?? null,
+        ruleset: "tsrqlens-typescript-recommended-v1",
+      },
+    },
+    records,
+  };
+  writeArtifact(config, "lint_health.json", artifact);
+  return artifact;
 }
 
 export function measureLocality(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
@@ -96,7 +139,7 @@ export function measureLeverage(config: Config, command: string, context: Analys
     const publicSurface = module.exports.length + module.types.length;
     const deadExportSurface = inboundReach === 0 ? module.exports.length : 0;
     const weakSurface = escapeRecords(module).filter((record) =>
-      ["explicit_any", "type_assertion", "double_assertion", "non_null_assertion", "ts_suppression", "eslint_suppression"].includes(
+      ["explicit_any", "type_assertion", "double_assertion", "non_null_assertion", "ts_ignore", "ts_nocheck", "eslint_suppression"].includes(
         String(record.kind),
       ),
     ).length;
@@ -199,18 +242,27 @@ function componentHealthRecord(module: ModuleRecord, component: FunctionRecord):
 }
 
 function hookLintRecord(message: EslintMessage): ScoredRecord {
-  const score = message.severity === "error" ? 85 : 55;
+  const blocks = message.rule_id === "react-hooks/rules-of-hooks";
+  const score = blocks ? 85 : 55;
   return {
     id: `react-hooks:${message.file}:${message.line}:${message.rule_id}`,
+    rule_id: message.rule_id,
+    kind: blocks ? "rules_of_hooks_violation" : "exhaustive_deps_violation",
+    evidence_kind: "tool-rule",
+    disposition: blocks ? "block" : "warn",
+    finding_confidence: "high",
+    scope: "file",
     module_id: message.file.replace(/\.[cm]?[jt]sx?$/, ""),
     file: message.file,
     name: message.rule_id,
     line: message.line,
     score,
-    risk: message.severity === "error" ? "high" : "medium",
+    severity: blocks ? "high" : "medium",
+    risk: blocks ? "high" : "medium",
     source: "eslint-plugin-react-hooks",
+    message: message.message,
     signals: [{
-      kind: message.rule_id === "react-hooks/rules-of-hooks" ? "rules_of_hooks_violation" : "exhaustive_deps_violation",
+      kind: blocks ? "rules_of_hooks_violation" : "exhaustive_deps_violation",
       message: message.message,
     }],
   };
@@ -242,16 +294,83 @@ function a11yRecord(module: ModuleRecord, kind: string, index: number, score: nu
   };
 }
 
-function typeSafetyPostureRecords(project: ProjectAnalysis): ScoredRecord[] {
+function compilerDiagnosticFinding(diagnostic: DiagnosticRecord): ScoredRecord {
+  const error = diagnostic.category === "Error";
+  const location = `${diagnostic.file ?? "project"}:${diagnostic.code}:${diagnostic.message}`;
+  return {
+    id: `tsc:${diagnostic.code}:${stableHash(location)}`,
+    rule_id: `typescript/TS${diagnostic.code}`,
+    kind: "compiler_diagnostic",
+    evidence_kind: "diagnostic",
+    disposition: error ? "block" : "warn",
+    finding_confidence: "high",
+    scope: diagnostic.file ? "file" : "project",
+    file: diagnostic.file ?? undefined,
+    line: diagnostic.line,
+    severity: error ? "high" : "medium",
+    score: error ? 100 : 50,
+    risk: error ? "high" : "medium",
+    source: "typescript-compiler",
+    message: diagnostic.message,
+    diagnostic_code: diagnostic.code,
+    character: diagnostic.character,
+    signals: [{ kind: `TS${diagnostic.code}`, message: diagnostic.message }],
+  };
+}
+
+function typedLintRecord(message: EslintMessage): ScoredRecord {
+  const parserFailure = message.rule_id === "eslint/parser";
+  const advisory = [
+    "@typescript-eslint/no-unnecessary-type-assertion",
+    "@typescript-eslint/no-unsafe-type-assertion",
+  ].includes(message.rule_id);
+  const disposition = parserFailure ? "info" : advisory || message.severity === "warning" ? "warn" : "block";
+  return {
+    id: `typed-lint:${message.rule_id}:${message.file}:${message.line ?? 0}:${message.column ?? 0}`,
+    rule_id: message.rule_id,
+    kind: message.rule_id.replace(/^@typescript-eslint\//, "typed_").replace(/-/g, "_"),
+    evidence_kind: "tool-rule",
+    disposition,
+    finding_confidence: "high",
+    scope: "file",
+    module_id: message.file.replace(/\.[cm]?[jt]sx?$/, ""),
+    file: message.file,
+    line: message.line,
+    severity: disposition === "block" ? "high" : disposition === "info" ? "low" : "medium",
+    score: disposition === "block" ? 90 : disposition === "info" ? 0 : 50,
+    risk: disposition === "block" ? "high" : disposition === "info" ? "low" : "medium",
+    source: "typescript-eslint",
+    message: message.message,
+    column: message.column,
+    signals: [{ kind: message.rule_id, message: message.message }],
+  };
+}
+
+function typeSafetyPostureRecords(config: Config, project: ProjectAnalysis): ScoredRecord[] {
   const options = project.tsProject.compiler_options ?? {};
-  const missing = ["strict", "noImplicitAny", "strictNullChecks", "noUncheckedIndexedAccess", "exactOptionalPropertyTypes"].filter(
-    (key) => options[key] !== true,
-  );
+  const recommended = ["strict"];
+  const strict = [
+    ...recommended,
+    "noUncheckedIndexedAccess",
+    "exactOptionalPropertyTypes",
+    "noImplicitOverride",
+    "noImplicitReturns",
+    "noFallthroughCasesInSwitch",
+    "forceConsistentCasingInFileNames",
+  ];
+  const expected = config.policy.profile === "strict" ? strict : recommended;
+  const missing = expected.filter((key) => options[key] !== true);
   if (!missing.length) return [];
-  const score = Math.min(100, missing.length * 18);
+  const score = Math.min(69, missing.length * 12);
   return [{
     id: "project:type-safety-posture",
+    rule_id: `ts-react-quality-lens/tsconfig-${config.policy.profile}`,
     kind: "type_safety_posture",
+    evidence_kind: "diagnostic",
+    disposition: config.policy.profile === "baseline" ? "info" : "warn",
+    finding_confidence: "high",
+    scope: "project",
+    message: `Compiler options do not meet the ${config.policy.profile} profile: ${missing.join(", ")}.`,
     score,
     risk: riskForScore(score),
     source: "typescript-compiler-options",

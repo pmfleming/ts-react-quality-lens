@@ -4,7 +4,7 @@ Model id: `tsrqlens.architecture_risk`
 Version: `1`
 Calibration: `v1-static-analysis`
 
-This model separates raw measurement facts from derived risk scores. Producers keep emitting task-specific records such as hotspot, dependency, type-health, locality, and React findings. The architecture map combines those records into portable category scores and records the model id, version, and calibration that produced them.
+This model separates raw measurement facts from derived risk scores. Since artifact schema 0.2.0, audit gating is also separate from these scores: findings carry `block`, `warn`, `review`, or `info` dispositions, and raw scores alone cannot fail an audit. Producers keep emitting task-specific records such as hotspot, dependency, type-health, locality, and React findings. The architecture map combines those records into portable category scores and records the model id, version, and calibration that produced them.
 
 ## Thresholds
 

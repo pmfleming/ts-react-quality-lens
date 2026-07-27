@@ -5,6 +5,11 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 
 export type RiskLevel = "low" | "medium" | "high";
 export type Severity = RiskLevel;
+export type FindingDisposition = "block" | "warn" | "review" | "info";
+export type EvidenceKind = "diagnostic" | "tool-rule" | "test" | "metric" | "heuristic";
+export type FindingConfidence = "low" | "medium" | "high";
+export type PolicyProfile = "baseline" | "recommended" | "strict" | "react";
+export type PolicyCheck = "compiler" | "typed-lint" | "tests" | "react-hooks";
 export type ImportKind = "static" | "dynamic" | "type";
 type ImportTargetKind = "external" | "relative" | "unresolved";
 
@@ -25,8 +30,14 @@ export type RawConfig = {
   performance_inputs?: PerformanceInputConfig;
   public_api?: PublicApiConfig;
   cache?: CacheConfig;
+  policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
+};
+
+export type PolicyConfig = {
+  profile?: PolicyProfile;
+  required_checks?: PolicyCheck[];
 };
 
 export type PublicApiConfig = {
@@ -129,6 +140,10 @@ export type Config = {
   cache: {
     enabled: boolean;
     dir: string;
+  };
+  policy: {
+    profile: PolicyProfile;
+    requiredChecks: PolicyCheck[];
   };
   suppressions: SuppressionConfig[];
   audit: {
@@ -245,7 +260,7 @@ export type TypeScriptProject = {
   reason: string | null;
   diagnostics: DiagnosticRecord[];
   modules: Map<string, TypedModuleRecord>;
-  compiler_options?: Record<string, string | number | boolean | undefined>;
+  compiler_options?: Record<string, JsonValue | undefined>;
 };
 
 export type ModuleRecord = {
@@ -298,6 +313,7 @@ export type AnalysisContext = {
   jscpd: () => JscpdResult;
   dependencyCruiser: () => DependencyCruiserResult;
   reactHooksLint: () => EslintReactHooksResult;
+  typedLint: () => EslintTypeAwareResult;
 };
 
 export type Signal = {
@@ -338,6 +354,12 @@ export type IssueAction =
 
 export type ScoredRecord = {
   id: string;
+  rule_id?: string;
+  evidence_kind?: EvidenceKind;
+  disposition?: FindingDisposition;
+  finding_confidence?: FindingConfidence;
+  message?: string;
+  scope?: "file" | "project";
   file?: string;
   files?: string[];
   score?: number;
@@ -370,7 +392,7 @@ export type Artifact = {
   [key: string]: unknown;
 };
 
-export type AuditVerdict = "pass" | "warn" | "fail";
+export type AuditVerdict = "pass" | "warn" | "fail" | "incomplete";
 
 export type AuditFinding = ScoredRecord & {
   task_id: string;
@@ -381,6 +403,8 @@ export type AuditArtifact = Artifact & {
   task_id: "audit";
   summary: {
     verdict: AuditVerdict;
+    complete: boolean;
+    incomplete_reasons: string[];
     gate: "new-only" | "all";
     base: string | null;
     changed_files: number;
@@ -391,6 +415,8 @@ export type AuditArtifact = Artifact & {
     introduced_findings: number;
     inherited_findings: number;
     high_risk_findings: number;
+    blocking_findings: number;
+    warning_findings: number;
     baseline_suppressed: number;
     config_suppressed: number;
     stale_suppressions: number;
@@ -464,6 +490,7 @@ type ToolResult = {
   available: boolean;
   ran: boolean;
   reason: string | null;
+  duration_ms?: number;
 };
 
 export type JscpdResult = ToolResult & {
@@ -501,6 +528,12 @@ export type EslintMessage = {
 
 export type EslintReactHooksResult = ToolResult & {
   messages: EslintMessage[];
+};
+
+export type EslintTypeAwareResult = ToolResult & {
+  messages: EslintMessage[];
+  version: string | null;
+  complete: boolean;
 };
 
 export type DiagnosticRecord = {

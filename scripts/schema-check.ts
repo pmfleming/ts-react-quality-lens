@@ -36,6 +36,7 @@ for (const key of [
   "performance_inputs",
   "public_api",
   "cache",
+  "policy",
   "suppressions",
   "audit",
 ]) {
@@ -44,6 +45,17 @@ for (const key of [
 
 assert.ok(packageJson.files.includes("ts-react-quality-lens.schema.json"), "package files must include artifact schema");
 assert.ok(packageJson.files.includes("ts-react-quality-lens.config.schema.json"), "package files must include config schema");
+for (const runtimeDependency of [
+  "typescript",
+  "eslint",
+  "@typescript-eslint/parser",
+  "@typescript-eslint/eslint-plugin",
+  "eslint-plugin-react-hooks",
+  "jscpd",
+  "dependency-cruiser",
+]) {
+  assert.ok(packageJson.dependencies?.[runtimeDependency], `package dependencies must include ${runtimeDependency}`);
+}
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 assertValid(ajv, artifactSchema, representativeArtifact(), "artifact schema must accept generated artifact shape");
@@ -51,12 +63,12 @@ assertValid(ajv, configSchema, representativeConfig(), "config schema must accep
 
 function representativeArtifact() {
   return {
-    schema_version: "0.1.0",
+    schema_version: "0.2.0",
     task_id: "quality.hotspots",
     project: { name: "fixture", root: "/tmp/fixture", framework: "react", package_manager: "npm", test_runner: "node" },
     provenance: {
       lens: "ts-react-quality-lens",
-      schema_version: "0.1.0",
+      schema_version: "0.2.0",
       command: "schema-check",
       host: "schema-check",
       measured_at: new Date(0).toISOString(),
@@ -74,7 +86,19 @@ function representativeArtifact() {
       unsupported_pattern: [{ kind: "dynamic_non_literal_import", file: "src/index.ts", line: 1, message: "fixture" }],
     },
     summary: { records: 1 },
-    records: [{ id: "fixture:finding", kind: "fixture", file: "src/index.ts", line: 1, score: 10, risk: "low" }],
+    records: [{
+      id: "fixture:finding",
+      rule_id: "fixture/finding",
+      kind: "fixture",
+      evidence_kind: "heuristic",
+      disposition: "review",
+      finding_confidence: "medium",
+      message: "Fixture finding.",
+      file: "src/index.ts",
+      line: 1,
+      score: 10,
+      risk: "low",
+    }],
   };
 }
 
@@ -90,6 +114,7 @@ function representativeConfig() {
     test_command: null,
     public_api: { entry: ["src/index.ts"], exports: [{ file: "src/lib.ts", names: ["publicHelper"] }] },
     cache: { enabled: true },
+    policy: { profile: "recommended", required_checks: ["compiler", "typed-lint", "tests"] },
     suppressions: [{ id: "fixture:finding", reason: "schema fixture" }],
     audit: { base: "origin/main", gate: "new-only" },
   };

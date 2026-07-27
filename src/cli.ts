@@ -105,7 +105,7 @@ export async function runCli(argv: string[]): Promise<void> {
         ),
       );
     }
-    if (artifact.summary.verdict === "fail") process.exitCode = 1;
+    if (artifact.summary.verdict === "fail" || artifact.summary.verdict === "incomplete") process.exitCode = 1;
     return;
   }
 
@@ -230,6 +230,9 @@ function writeInitialConfig(config: Config, force: boolean): void {
     output_dir: "target/analysis",
     framework: "auto",
     test_runner: "auto",
+    policy: {
+      profile: "recommended",
+    },
     audit: {
       base: "origin/main",
       gate: "new-only",

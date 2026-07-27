@@ -1,27 +1,19 @@
-import { createAnalysisContext } from "./analysis-context.js";
+import { analysisConfidence, createAnalysisContext } from "./analysis-context.js";
+import { artifactBase, sourceSetHash } from "./provenance.js";
 import { catalogForConfig } from "./tasks.js";
-import { sourceSetHash } from "./provenance.js";
 import { writeArtifact } from "./writer.js";
 import type { Config } from "./types.js";
 
 export function projectContext(config: Config, command: string) {
   const analysis = createAnalysisContext(config).project();
   const context = {
-    schema_version: "0.1.0",
-    task_id: "context.project",
-    project: {
-      name: config.projectName,
-      root: config.projectRoot,
-      framework: config.framework,
-      package_manager: config.packageManager,
-      test_runner: config.testRunner,
-    },
-    provenance: {
-      lens: "ts-react-quality-lens",
+    ...artifactBase(
+      config,
+      "context.project",
       command,
-      source_set_hash: sourceSetHash(analysis),
-      measured_at: new Date().toISOString(),
-    },
+      analysisConfidence(config, analysis),
+      sourceSetHash(analysis),
+    ),
     summary: {
       source_files: analysis.sourceFiles.length,
       test_files: analysis.testFiles.length,
@@ -32,6 +24,8 @@ export function projectContext(config: Config, command: string) {
         .filter(([, enabled]) => enabled)
         .map(([name]) => name),
       cache_status: analysis.cache.status,
+      policy_profile: config.policy.profile,
+      required_checks: config.policy.requiredChecks,
     },
     tasks: catalogForConfig(config).tasks.map((task) => ({
       id: task.id,

@@ -63,6 +63,18 @@
         "enabled": { "type": "boolean" }
       }
     },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "enum": ["baseline", "recommended", "strict", "react"] },
+        "required_checks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["compiler", "typed-lint", "tests", "react-hooks"] }
+        }
+      }
+    },
     "suppressions": {
       "type": "array",
       "items": {

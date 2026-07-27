@@ -1,7 +1,7 @@
 import type { Config } from "./types.js";
 
 export const LENS_NAME = "ts-react-quality-lens";
-export const SCHEMA_VERSION = "0.1.0";
+export const SCHEMA_VERSION = "0.2.0";
 
 export const TASKS = [
   {
@@ -35,6 +35,14 @@ export const TASKS = [
     artifact: "type_health.json",
     description:
       "Measures interfaces, type aliases, compiler strictness posture, generics, exports, and public APIs.",
+  },
+  {
+    id: "quality.lint",
+    category: "quality",
+    title: "Type-aware lint health",
+    artifact: "lint_health.json",
+    description:
+      "Runs a versioned managed typescript-eslint ruleset for unsafe operations, promises, assertions, and TypeScript directives.",
   },
   {
     id: "quality.locality_dynamic",

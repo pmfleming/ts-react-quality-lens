@@ -1,6 +1,6 @@
 {
   "name": "ts-react-quality-lens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reusable TypeScript and React quality measurement artifacts for project-management-board.",
   "type": "module",
   "main": "./dist/src/cli.js",
@@ -38,12 +38,15 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
-    "@typescript-eslint/parser": "^8.60.0",
-    "ajv": "^8.20.0",
+    "ajv": "^8.20.0"
+  },
+  "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
     "dependency-cruiser": "^17.4.3",
-    "eslint": "^10.4.1",
+    "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "jscpd": "^4.2.4",
+    "jscpd": "^4.2.5",
     "typescript": "^6.0.3"
   }
 }

@@ -12,6 +12,9 @@ import type {
   PackageManagerDetection,
   PathAliasRule,
   PerformanceInputConfig,
+  PolicyCheck,
+  PolicyConfig,
+  PolicyProfile,
   PublicApiConfig,
   RawConfig,
   SuppressionConfig,
@@ -83,6 +86,7 @@ const CONFIG_KEYS = new Set([
   "performance_inputs",
   "public_api",
   "cache",
+  "policy",
   "suppressions",
   "audit",
 ]);
@@ -135,6 +139,7 @@ export function loadConfig(configArg?: string | null): Config {
     performanceInputs: normalizePerformanceInputs(configDir, rawConfig.performance_inputs),
     publicApi: normalizePublicApi(rawConfig.public_api),
     cache: normalizeCache(outputDir, rawConfig.cache),
+    policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
     pathAliases: tsconfig ? readPathAliases(tsconfig) : [],
@@ -213,6 +218,7 @@ function validateRawConfig(value: unknown): RawConfig {
   validatePerformanceInputs(value, "performance_inputs", errors);
   validatePublicApi(value, "public_api", errors);
   validateCache(value, "cache", errors);
+  validatePolicy(value, "policy", errors);
   validateSuppressions(value, "suppressions", errors);
   validateAudit(value, "audit", errors);
   if (errors.length) throw new Error(`Invalid config:\n${errors.map((error) => `- ${error}`).join("\n")}`);
@@ -354,6 +360,20 @@ function validateCache(record: Record<string, unknown>, key: string, errors: str
   const value = record[key];
   if (validateOptionalObject(value, key, errors) && value.enabled !== undefined && typeof value.enabled !== "boolean") {
     errors.push(`"${key}.enabled" must be a boolean.`);
+  }
+}
+
+function validatePolicy(record: Record<string, unknown>, key: string, errors: string[]): void {
+  const value = record[key];
+  if (!validateOptionalObject(value, key, errors)) return;
+  if (!isOptionalOneOf(value.profile, ["baseline", "recommended", "strict", "react"])) {
+    errors.push(`"${key}.profile" must be "baseline", "recommended", "strict", or "react".`);
+  }
+  if (value.required_checks !== undefined) {
+    const allowed = new Set(["compiler", "typed-lint", "tests", "react-hooks"]);
+    if (!Array.isArray(value.required_checks) || !value.required_checks.every((item) => typeof item === "string" && allowed.has(item))) {
+      errors.push(`"${key}.required_checks" contains an unsupported check.`);
+    }
   }
 }
 
@@ -523,6 +543,20 @@ function normalizeCache(outputDir: string, value: RawConfig["cache"] | undefined
   return {
     enabled: value?.enabled !== false,
     dir: path.join(outputDir, ".cache"),
+  };
+}
+
+function normalizePolicy(value: PolicyConfig | undefined, hasTsconfig: boolean, hasTestCommand: boolean): Config["policy"] {
+  const profile: PolicyProfile = value?.profile ?? "baseline";
+  const defaults: PolicyCheck[] = [
+    ...(hasTsconfig ? ["compiler" as const] : []),
+    ...(profile === "baseline" ? [] : ["compiler" as const, "typed-lint" as const]),
+    ...(hasTestCommand ? ["tests" as const] : []),
+    ...(profile === "react" ? ["react-hooks" as const] : []),
+  ];
+  return {
+    profile,
+    requiredChecks: [...new Set(value?.required_checks ?? defaults)],
   };
 }
 

@@ -23,7 +23,7 @@ test("catalog exposes stable board task metadata", () => {
   const config = loadConfig(fixtureConfig);
   const catalog = catalogForConfig(config);
   assert.equal(catalog.lens, "ts-react-quality-lens");
-  assert.equal(catalog.tasks.length, 12);
+  assert.equal(catalog.tasks.length, 13);
   assert.ok(catalog.tasks.some((task) => task.id === "quality.hotspots"));
   assert.ok(catalog.tasks.some((task) => task.id === "quality.cleanup"));
   assert.ok(catalog.tasks.some((task) => task.id === "map.architecture"));
@@ -47,6 +47,7 @@ test("measure all writes MVP artifacts", () => {
     "clones.json",
     "ts_escape_hatches.json",
     "type_health.json",
+    "lint_health.json",
     "dependency_health.json",
     "cleanup.json",
     "correctness_review.json",
@@ -90,6 +91,11 @@ test("measure all writes MVP artifacts", () => {
   assert.equal(typeHealth.confidence.typescript_compiler_api_available, true);
   assert.equal(typeHealth.confidence.typescript_program_loaded, true);
   assert.ok(typeHealth.records?.some((record: ScoredRecord) => record.source === "typescript-compiler-api"));
+
+  const lintHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "lint_health.json"), "utf8")) as ToolArtifact;
+  assert.equal(lintHealth.tool_status.typed_eslint.available, true);
+  assert.equal(lintHealth.tool_status.typed_eslint.ran, true);
+  assert.ok(lintHealth.records?.every((record) => record.source === "typescript-eslint"));
 
   const dependencyHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "dependency_health.json"), "utf8")) as ToolArtifact & {
     graph: { edges: Array<{ from: string; source?: unknown; line?: unknown }> };
@@ -181,6 +187,46 @@ test("tsconfig JSONC path aliases are resolved", () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("unknown is not treated as an escape hatch and TypeScript directives are distinguished", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-unknown-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "unknown-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { strict: true, module: "NodeNext", moduleResolution: "NodeNext" }, include: ["src"] }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "src", "index.ts"),
+    [
+      "export function narrow(value: unknown): string {",
+      '  return typeof value === "string" ? value : "";',
+      "}",
+      "// @ts-expect-error -- intentional negative type case",
+      'const expectedNumber: number = "not-a-number";',
+      "// @ts-ignore",
+      'const ignoredNumber: number = "not-a-number";',
+      "void expectedNumber;",
+      "void ignoredNumber;",
+    ].join("\n"),
+    "utf8",
+  );
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({ project_root: ".", source_roots: ["src"], output_dir: "target/analysis", tsconfig: "tsconfig.json" }),
+    "utf8",
+  );
+
+  const config = loadConfig(configPath);
+  runMeasure(config, "quality.escape_hatches", "test unknown semantics");
+  const artifact = JSON.parse(fs.readFileSync(path.join(config.outputDir, "ts_escape_hatches.json"), "utf8")) as Artifact;
+  assert.ok(!artifact.records?.some((record) => record.kind === "unknown_without_narrowing"));
+  assert.equal(artifact.records?.find((record) => record.kind === "ts_expect_error")?.disposition, "info");
+  assert.equal(artifact.records?.find((record) => record.kind === "ts_ignore")?.disposition, "warn");
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("init writes a starter schema-backed config", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-init-`));
   const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
@@ -188,6 +234,7 @@ test("init writes a starter schema-backed config", async () => {
 
   const raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
   assert.equal(raw.$schema, "./ts-react-quality-lens.config.schema.json");
+  assert.equal(raw.policy.profile, "recommended");
   assert.equal(raw.audit.gate, "new-only");
   await assert.rejects(() => runCli(["init", "--config", configPath]), /Config already exists/);
   fs.rmSync(tempDir, { recursive: true, force: true });
@@ -201,7 +248,7 @@ test("audit writes changed-code verdict artifact with actions", () => {
   const audit = runAudit(config, "test audit", { base: "__missing_base__", gate: "new-only" });
 
   assert.equal(audit.task_id, "audit");
-  assert.ok(["pass", "warn", "fail"].includes(audit.summary.verdict));
+  assert.ok(["pass", "warn", "fail", "incomplete"].includes(audit.summary.verdict));
   assert.ok(fs.existsSync(path.join(config.outputDir, "audit.json")));
   assert.ok(audit.findings.some((finding) => Array.isArray(finding.actions) && finding.actions.length > 0));
   assert.match(auditMarkdown(audit), /# ts-react-quality-lens audit:/);
@@ -531,6 +578,7 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
       summary: {},
     }),
     reactHooksLint: () => ({ available: false, ran: false, reason: "not used", messages: [] }),
+    typedLint: () => ({ available: false, ran: false, reason: "not used", messages: [], version: null, complete: false }),
   };
 
   const [dependencyHealth] = runMeasure(config, "quality.dependency_health", "test depcruise cycle shape", { context }) as [

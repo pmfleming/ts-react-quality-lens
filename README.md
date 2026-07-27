@@ -17,7 +17,8 @@ Create `ts-react-quality-lens.config.json` in the project you want to measure:
   "test_roots": ["src", "tests"],
   "output_dir": "target/analysis",
   "framework": "auto",
-  "test_runner": "auto"
+  "test_runner": "auto",
+  "policy": { "profile": "recommended" }
 }
 ```
 
@@ -68,7 +69,8 @@ The implementation combines deterministic built-in analysis with richer optional
 - `quality.hotspots` writes `hotspots.json`.
 - `quality.clones` writes `clones.json` using `jscpd` when available, plus built-in normalized line-window and AST structural clone detection. It also derives module-level duplication pressure records from clone density and cross-file repetition, and same-purpose export/component/hook records from naming and type-shape evidence.
 - `quality.escape_hatches` writes `ts_escape_hatches.json`.
-- `quality.type_health` writes `type_health.json` with TypeScript compiler API diagnostics, inferred symbols, exports, and fallback structural records.
+- `quality.type_health` writes `type_health.json` with TypeScript compiler API diagnostics, inferred symbols, exports, effective compiler-safety options, and fallback structural records.
+- `quality.lint` writes `lint_health.json` using a versioned, managed type-aware typescript-eslint ruleset when a tsconfig is available.
 - `quality.locality_dynamic` writes `locality_metrics.json`.
 - `quality.locality_leverage` writes `leverage_metrics.json`.
 - `quality.react_health` writes `react_health.json` with component heuristics, framework conventions, and `eslint-plugin-react-hooks` findings when available.
@@ -123,6 +125,7 @@ Supported config fields:
 | `performance_inputs` | Optional bundle and render-cost JSON inputs for map performance scoring. |
 | `public_api` | Entry files and named exports that cleanup should treat as intentional public surface. |
 | `cache` | Enable or disable analysis cache metadata. |
+| `policy` | Select `baseline`, `recommended`, `strict`, or `react` evidence requirements and optionally list required checks. |
 | `suppressions` | Narrow intentional findings by `id`, `file`, or `kind`, with an optional reason. |
 | `audit` | Default audit `base`, `changed_since`, `gate`, and `baseline` settings. |
 
@@ -134,7 +137,7 @@ Findings now include an `actions` array when they are written to disk. Actions d
 
 Configured suppressions mark matching findings with `suppressed: true` and preserve `suppression_reason` so dashboards and audit gates can distinguish intentional exceptions from active issues.
 
-Audit also reports stale configured suppressions as `stale_suppression` findings when they no longer match any current finding.
+Audit also reports stale configured suppressions as `stale_suppression` findings when they no longer match any current finding. Audit gates use finding dispositions (`block`, `warn`, `review`, or `info`) rather than raw risk scores; missing profile-required evidence produces an `incomplete` verdict.
 
 ## CI And Performance
 

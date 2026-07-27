@@ -76,7 +76,6 @@ export function escapeRecords(module: ModuleRecord): ScoredRecord[] {
 
   function visit(node: ts.Node): void {
     if (node.kind === ts.SyntaxKind.AnyKeyword) add("explicit_any", "medium", node);
-    if (node.kind === ts.SyntaxKind.UnknownKeyword) add("unknown_without_narrowing", "low", node);
     if (ts.isNonNullExpression(node)) add("non_null_assertion", "medium", node);
     if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
       add(nestedAssertion(node) ? "double_assertion" : "type_assertion", nestedAssertion(node) ? "high" : "medium", node);
@@ -329,7 +328,9 @@ function isWeakType(type: string | null): boolean {
 
 function suppressionRecords(module: ModuleRecord): ScoredRecord[] {
   const specs: Array<[string, RegExp, Severity]> = [
-    ["ts_suppression", /^\s*(?:(?:\/\/.*)|(?:\/\*.*))@ts-(?:ignore|expect-error|nocheck)/gm, "high"],
+    ["ts_ignore", /^\s*(?:(?:\/\/.*)|(?:\/\*.*))@ts-ignore\b/gm, "high"],
+    ["ts_expect_error", /^\s*(?:(?:\/\/.*)|(?:\/\*.*))@ts-expect-error\b/gm, "low"],
+    ["ts_nocheck", /^\s*(?:(?:\/\/.*)|(?:\/\*.*))@ts-nocheck\b/gm, "high"],
     ["eslint_suppression", /^\s*(?:(?:\/\/.*)|(?:\/\*.*))eslint-disable(?:-next-line)?/gm, "medium"],
   ];
   return specs.flatMap(([kind, re, severity]) => {

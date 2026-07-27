@@ -22,8 +22,9 @@ const AUDIT_TASK_IDS = [
   "quality.clones",
   "quality.escape_hatches",
   "quality.type_health",
+  "quality.lint",
   "quality.dependency_health",
-  "correctness.catalog",
+  "correctness.all",
   "quality.locality_dynamic",
   "quality.locality_leverage",
   "quality.react_health",
@@ -36,7 +37,7 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
   const gate = options.gate ?? config.audit.gate;
   const changedFiles = base ? changedFilesSince(config, base) : [];
   const changedLines = base ? changedLineRangesSince(config, base) : new Map<string, LineRange[]>();
-  runAuditMeasurements(config, command, context);
+  runAuditMeasurements(config, command, context, true);
   const baselineIds = readBaselineIds(options.baseline ?? config.audit.baseline);
   const baseFindingIds = base ? baseSnapshotFindingIds(config, base, command, baselineIds) : null;
   const allFindings = collectFindings(config, [], new Map(), baselineIds, true);
@@ -44,8 +45,10 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
     ...collectFindings(config, changedFiles, changedLines, baselineIds, false, baseFindingIds),
     ...staleSuppressionFindings(config, allFindings),
   ];
-  const gatedFindings = findings.filter((finding) => !isSuppressed(finding) && (gate === "all" || finding.introduced));
-  const verdict = auditVerdict(gatedFindings);
+  const activeFindings = findings.filter((finding) => !isSuppressed(finding) && (gate === "all" || finding.introduced));
+  const gatedFindings = activeFindings.filter((finding) => finding.disposition === "block" || finding.disposition === "warn");
+  const incompleteReasons = requiredEvidenceReasons(config);
+  const verdict = auditVerdict(gatedFindings, incompleteReasons);
   const baselineSuppressed = findings.filter((finding) => finding.suppression_reason === "Suppressed by audit baseline.").length;
   const configSuppressed = findings.filter((finding) => isSuppressed(finding) && finding.suppression_reason !== "Suppressed by audit baseline.").length;
   const artifact = {
@@ -64,6 +67,8 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
     task_id: "audit" as const,
     summary: {
       verdict,
+      complete: incompleteReasons.length === 0,
+      incomplete_reasons: incompleteReasons,
       gate,
       base,
       changed_files: changedFiles.length,
@@ -73,7 +78,9 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
       active_findings: gatedFindings.length,
       introduced_findings: findings.filter((finding) => finding.introduced).length,
       inherited_findings: findings.filter((finding) => !finding.introduced).length,
-      high_risk_findings: gatedFindings.filter((finding) => finding.risk === "high" || finding.severity === "high").length,
+      high_risk_findings: activeFindings.filter((finding) => finding.risk === "high" || finding.severity === "high").length,
+      blocking_findings: gatedFindings.filter((finding) => finding.disposition === "block").length,
+      warning_findings: gatedFindings.filter((finding) => finding.disposition === "warn").length,
       baseline_suppressed: baselineSuppressed,
       config_suppressed: configSuppressed,
       stale_suppressions: findings.filter((finding) => finding.kind === "stale_suppression").length,
@@ -85,8 +92,9 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
   return artifact;
 }
 
-function runAuditMeasurements(config: Config, command: string, context: AnalysisContext): void {
+function runAuditMeasurements(config: Config, command: string, context: AnalysisContext, includeTests: boolean): void {
   for (const taskId of AUDIT_TASK_IDS) {
+    if (!includeTests && taskId === "correctness.all") continue;
     const task = MEASURE_TASKS.get(taskId);
     if (!task) continue;
     task.handler(config, command, context);
@@ -118,6 +126,7 @@ function collectFindings(
       const baselineSuppressed = baselineIds.has(enriched.id);
       const finding = {
         ...enriched,
+        disposition: policyDisposition(config, enriched),
         kind: findingKind(enriched),
         task_id: taskId,
         introduced,
@@ -139,6 +148,12 @@ function introducedByDiffOrBase(
   return findingTouchesChangedLine(record, changedLines);
 }
 
+function policyDisposition(config: Config, finding: ScoredRecord): ScoredRecord["disposition"] {
+  if (finding.source === "typescript-eslint" && !config.policy.requiredChecks.includes("typed-lint")) return "review";
+  if (finding.source === "eslint-plugin-react-hooks" && !config.policy.requiredChecks.includes("react-hooks")) return "review";
+  return finding.disposition;
+}
+
 function staleSuppressionFindings(config: Config, findings: AuditFinding[]): AuditFinding[] {
   return config.suppressions.flatMap((suppression, index) => {
     const matched = findings.some((finding) => suppressionMatches(suppression, finding));
@@ -147,6 +162,12 @@ function staleSuppressionFindings(config: Config, findings: AuditFinding[]): Aud
     return [{
       id: `suppression:stale:${index + 1}:${id}`,
       kind: "stale_suppression",
+      rule_id: "ts-react-quality-lens/stale-suppression",
+      evidence_kind: "diagnostic",
+      disposition: "warn",
+      finding_confidence: "high",
+      message: "Configured suppression no longer matches a finding.",
+      scope: suppression.file ? "file" : "project",
       task_id: "audit",
       introduced: true,
       file: suppression.file,
@@ -175,15 +196,26 @@ export function auditMarkdown(artifact: AuditArtifact): string {
     `- Base: ${artifact.summary.base ?? "none"}`,
     `- Changed files: ${artifact.summary.changed_files}`,
     `- Changed hunks: ${artifact.summary.changed_hunks}`,
+    `- Complete: ${artifact.summary.complete}`,
     `- Active findings: ${artifact.summary.active_findings}`,
+    `- Blocking findings: ${artifact.summary.blocking_findings}`,
+    `- Warning findings: ${artifact.summary.warning_findings}`,
     `- Introduced findings: ${artifact.summary.introduced_findings}`,
     `- Inherited findings: ${artifact.summary.inherited_findings}`,
     `- Suppressed by baseline: ${artifact.summary.baseline_suppressed}`,
     `- Suppressed by config: ${artifact.summary.config_suppressed}`,
     `- Stale suppressions: ${artifact.summary.stale_suppressions}`,
+    ...(artifact.summary.incomplete_reasons.length
+      ? [`- Incomplete reasons: ${artifact.summary.incomplete_reasons.join("; ")}`]
+      : []),
     "",
   ];
-  const active = artifact.findings.filter((finding) => !isSuppressed(finding) && (artifact.summary.gate === "all" || finding.introduced));
+  const active = artifact.findings.filter(
+    (finding) =>
+      !isSuppressed(finding) &&
+      (artifact.summary.gate === "all" || finding.introduced) &&
+      (finding.disposition === "block" || finding.disposition === "warn"),
+  );
   if (!active.length) {
     lines.push("No active findings.");
     return `${lines.join("\n")}\n`;
@@ -191,7 +223,7 @@ export function auditMarkdown(artifact: AuditArtifact): string {
   lines.push("## Active Findings", "");
   for (const finding of active.slice(0, 25)) {
     const location = [finding.file, finding.line].filter((value) => value !== undefined && value !== null).join(":");
-    lines.push(`- ${finding.risk ?? finding.severity ?? "unknown"} ${finding.kind}: ${location || finding.id}`);
+    lines.push(`- ${finding.disposition ?? "review"} ${finding.kind}: ${location || finding.id}`);
   }
   if (active.length > 25) lines.push(`- ...and ${active.length - 25} more`);
   return `${lines.join("\n")}\n`;
@@ -202,6 +234,7 @@ function findingRecords(value: unknown): ScoredRecord[] {
 }
 
 function findingTouchesChangedFile(record: ScoredRecord, changedFiles: Set<string>): boolean {
+  if (record.scope === "project") return true;
   if (typeof record.file === "string" && changedFiles.has(stripSourceExtension(record.file))) return true;
   if (Array.isArray(record.files)) {
     return record.files.some((file) => typeof file === "string" && changedFiles.has(stripSourceExtension(file)));
@@ -214,6 +247,7 @@ function findingTouchesChangedFile(record: ScoredRecord, changedFiles: Set<strin
 }
 
 function findingTouchesChangedLine(record: ScoredRecord, changedLines: Map<string, LineRange[]>): boolean {
+  if (record.scope === "project") return true;
   if (changedLines.size === 0) return true;
   if (typeof record.file === "string") {
     const line = typeof record.line === "number" ? record.line : null;
@@ -244,11 +278,39 @@ function rangesOverlap(target: LineRange, ranges: LineRange[]): boolean {
   return ranges.some((range) => target.start <= range.end && range.start <= target.end);
 }
 
-function auditVerdict(findings: AuditFinding[]): AuditVerdict {
-  if (findings.some((finding) => finding.risk === "high" || finding.severity === "high" || Number(finding.score ?? 0) >= 70)) {
-    return "fail";
+function auditVerdict(findings: AuditFinding[], incompleteReasons: string[]): AuditVerdict {
+  if (findings.some((finding) => finding.disposition === "block")) return "fail";
+  if (incompleteReasons.length > 0) return "incomplete";
+  if (findings.some((finding) => finding.disposition === "warn")) return "warn";
+  return "pass";
+}
+
+function requiredEvidenceReasons(config: Config): string[] {
+  const reasons: string[] = [];
+  for (const check of config.policy.requiredChecks) {
+    if (check === "compiler") {
+      const artifact = readArtifact<Artifact>(config, "type_health.json");
+      if (artifact?.confidence.typescript_program_loaded !== true) reasons.push("TypeScript compiler program did not load.");
+    }
+    if (check === "typed-lint") {
+      const artifact = readArtifact<Artifact>(config, "lint_health.json");
+      if (artifact?.tool_status?.typed_eslint?.ran !== true || artifact?.tool_status?.typed_eslint?.complete !== true) {
+        reasons.push("Required type-aware ESLint analysis did not complete.");
+      }
+    }
+    if (check === "tests") {
+      const artifact = readArtifact<Artifact & { execution?: { status?: string } }>(config, "correctness_review.json");
+      if (!config.testCommand) reasons.push("Tests are required but no test command is configured.");
+      else if (!artifact?.execution || !["passed", "failed"].includes(artifact.execution.status ?? "")) {
+        reasons.push("Required test execution did not complete.");
+      }
+    }
+    if (check === "react-hooks") {
+      const artifact = readArtifact<Artifact>(config, "react_health.json");
+      if (artifact?.tool_status?.eslint_react_hooks?.ran !== true) reasons.push("Required React Hooks analysis did not run.");
+    }
   }
-  return findings.length > 0 ? "warn" : "pass";
+  return [...new Set(reasons)];
 }
 
 function changedFilesSince(config: Config, base: string): string[] {
@@ -302,7 +364,7 @@ function baseSnapshotFindingIds(config: Config, base: string, command: string, b
     baseConfig.outputDir = path.join(tempRoot, "target", "audit-base-analysis");
     baseConfig.cache.enabled = false;
     const context = createAnalysisContext(baseConfig);
-    runAuditMeasurements(baseConfig, command, context);
+    runAuditMeasurements(baseConfig, command, context, false);
     return new Set(collectFindings(baseConfig, [], new Map(), baselineIds, true).map((finding) => finding.id));
   } catch {
     return null;

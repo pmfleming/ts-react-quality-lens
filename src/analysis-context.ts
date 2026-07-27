@@ -8,6 +8,7 @@ import {
   runDependencyCruiser,
   runJscpd,
   runReactHooksLint,
+  runTypedLint,
 } from "./integrations.js";
 import { detectFrameworkDetails } from "./framework-adapters.js";
 import type { AnalysisContext, Config, Confidence, ProjectAnalysis } from "./types.js";
@@ -34,12 +35,14 @@ export function createAnalysisContext(config: Config): AnalysisContext {
     jscpd: () => runJscpd(config),
     dependencyCruiser: () => runDependencyCruiser(config),
     reactHooksLint: () => runReactHooksLint(config),
+    typedLint: () => runTypedLint(config),
   };
   return {
     project: () => cached(cache, "project", loaders.project),
     jscpd: () => cached(cache, "jscpd", loaders.jscpd),
     dependencyCruiser: () => cached(cache, "dependencyCruiser", loaders.dependencyCruiser),
     reactHooksLint: () => cached(cache, "reactHooksLint", loaders.reactHooksLint),
+    typedLint: () => cached(cache, "typedLint", loaders.typedLint),
   };
 }
 

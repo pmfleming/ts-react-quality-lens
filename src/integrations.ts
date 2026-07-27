@@ -11,6 +11,7 @@ import type {
   DependencyCruiserResult,
   DiagnosticRecord,
   EslintReactHooksResult,
+  EslintTypeAwareResult,
   JscpdResult,
   SourceFileRecord,
   TypedDeclaration,
@@ -172,6 +173,59 @@ export function runJscpd(config: Config): JscpdResult {
   );
 }
 
+export function runTypedLint(config: Config): EslintTypeAwareResult {
+  const version = toolPackageVersion("@typescript-eslint/eslint-plugin");
+  if (!config.tsconfig || !fs.existsSync(config.tsconfig)) {
+    return {
+      available: Boolean(localBin(config.projectRoot, "eslint", true)),
+      ran: false,
+      reason: "typed lint requires a readable tsconfig",
+      messages: [],
+      version,
+      complete: false,
+      duration_ms: 0,
+    };
+  }
+  const toolingDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-typed-eslint-${process.pid}-`));
+  const configPath = path.join(toolingDir, "eslint-typed.config.mjs");
+  fs.writeFileSync(configPath, typedLintConfig(config), "utf8");
+  const args = [
+    "--config",
+    configPath,
+    "--format",
+    "json",
+    "--no-error-on-unmatched-pattern",
+    ...existingRelativeRoots(config),
+  ];
+  try {
+    return runToolAdapter(
+      config,
+      "eslint",
+      "managed eslint executable was not found",
+      { messages: [], version, complete: false },
+      (executable: string) => {
+        const stdout = runLocalTool(executable, args, {
+          cwd: config.projectRoot,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: TOOL_TIMEOUT_MS,
+        });
+        const messages = normalizeEslintMessages(JSON.parse(stdout), config);
+        return { messages, version, complete: !messages.some((message) => message.rule_id === "eslint/parser") };
+      },
+      (error: ExecError) => {
+        const stdout = String(error.stdout ?? "");
+        if (!stdout.trim().startsWith("[")) return null;
+        const messages = normalizeEslintMessages(JSON.parse(stdout), config);
+        return { messages, version, complete: !messages.some((message) => message.rule_id === "eslint/parser") };
+      },
+      true,
+    );
+  } finally {
+    fs.rmSync(toolingDir, { recursive: true, force: true });
+  }
+}
+
 export function runReactHooksLint(config: Config): EslintReactHooksResult {
   const toolingDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-eslint-${process.pid}-`));
   const configPath = path.join(toolingDir, "eslint-react-hooks.config.mjs");
@@ -200,7 +254,7 @@ export function runReactHooksLint(config: Config): EslintReactHooksResult {
           stdio: ["ignore", "pipe", "pipe"],
           timeout: TOOL_TIMEOUT_MS,
         });
-        return { messages: normalizeEslintMessages(JSON.parse(stdout), config) };
+        return { messages: normalizeEslintMessages(JSON.parse(stdout), config, "react-hooks/") };
       } finally {
         fs.rmSync(toolingDir, { recursive: true, force: true });
       }
@@ -208,12 +262,54 @@ export function runReactHooksLint(config: Config): EslintReactHooksResult {
     (error: ExecError) => {
       const stdout = String(error.stdout ?? "");
       try {
-        return stdout.trim().startsWith("[") ? { messages: normalizeEslintMessages(JSON.parse(stdout), config) } : null;
+        return stdout.trim().startsWith("[") ? { messages: normalizeEslintMessages(JSON.parse(stdout), config, "react-hooks/") } : null;
       } finally {
         fs.rmSync(toolingDir, { recursive: true, force: true });
       }
     },
   );
+}
+
+function typedLintConfig(config: Config): string {
+  const toolPackageUrl = packageJsonUrl(repoRoot());
+  return `import { createRequire } from "node:module";
+const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
+const parser = toolRequire("@typescript-eslint/parser");
+const plugin = toolRequire("@typescript-eslint/eslint-plugin");
+export default [{
+  files: ["**/*.{ts,tsx,mts,cts}"],
+  ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
+  languageOptions: {
+    parser,
+    parserOptions: {
+      project: [${JSON.stringify(config.tsconfig)}],
+      tsconfigRootDir: ${JSON.stringify(config.projectRoot)},
+      ecmaFeatures: { jsx: true },
+      ecmaVersion: "latest",
+      sourceType: "module"
+    }
+  },
+  plugins: { "@typescript-eslint": plugin },
+  rules: {
+    "@typescript-eslint/no-unsafe-assignment": "error",
+    "@typescript-eslint/no-unsafe-argument": "error",
+    "@typescript-eslint/no-unsafe-call": "error",
+    "@typescript-eslint/no-unsafe-member-access": "error",
+    "@typescript-eslint/no-unsafe-return": "error",
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": "error",
+    "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+    "@typescript-eslint/no-unsafe-type-assertion": "warn",
+    "@typescript-eslint/ban-ts-comment": ["error", {
+      "ts-check": false,
+      "ts-expect-error": "allow-with-description",
+      "ts-ignore": true,
+      "ts-nocheck": true,
+      "minimumDescriptionLength": 3
+    }]
+  }
+}];
+`;
 }
 
 function reactHooksConfig(projectPackageUrl: string, toolPackageUrl: string): string {
@@ -239,18 +335,21 @@ function runToolAdapter<T extends Record<string, unknown>>(
   empty: T,
   run: (executable: string) => T,
   recover: ((error: ExecError) => T | null) | null = null,
+  preferManaged = false,
 ) {
-  const executable = localBin(config.projectRoot, executableName);
+  const startedAt = Date.now();
+  const executable = localBin(config.projectRoot, executableName, preferManaged);
   if (!executable) {
-    return { available: false, ran: false, reason: missingReason, ...empty };
+    return { available: false, ran: false, reason: missingReason, duration_ms: Date.now() - startedAt, ...empty };
   }
   try {
-    return { available: true, ran: true, reason: null, ...run(executable) };
+    const result = run(executable);
+    return { available: true, ran: true, reason: null, duration_ms: Date.now() - startedAt, ...result };
   } catch (error) {
     const execError = error as ExecError;
     const recovered = recover?.(execError);
-    if (recovered) return { available: true, ran: true, reason: null, ...recovered };
-    return { available: true, ran: false, reason: toolError(execError), ...empty };
+    if (recovered) return { available: true, ran: true, reason: null, duration_ms: Date.now() - startedAt, ...recovered };
+    return { available: true, ran: false, reason: toolError(execError), duration_ms: Date.now() - startedAt, ...empty };
   }
 }
 
@@ -367,15 +466,25 @@ function compilerOptionSummary(options: tsTypes.CompilerOptions) {
     strictNullChecks: Boolean(options.strictNullChecks || options.strict),
     noUncheckedIndexedAccess: Boolean(options.noUncheckedIndexedAccess),
     exactOptionalPropertyTypes: Boolean(options.exactOptionalPropertyTypes),
+    noImplicitOverride: Boolean(options.noImplicitOverride),
+    noImplicitReturns: Boolean(options.noImplicitReturns),
+    noFallthroughCasesInSwitch: Boolean(options.noFallthroughCasesInSwitch),
+    forceConsistentCasingInFileNames: Boolean(options.forceConsistentCasingInFileNames),
+    noPropertyAccessFromIndexSignature: Boolean(options.noPropertyAccessFromIndexSignature),
+    useUnknownInCatchVariables: Boolean(options.useUnknownInCatchVariables || options.strict),
+    declaration: Boolean(options.declaration),
+    isolatedDeclarations: Boolean(options.isolatedDeclarations),
+    verbatimModuleSyntax: Boolean(options.verbatimModuleSyntax),
     jsx: options.jsx,
     moduleResolution: options.moduleResolution,
     target: options.target,
   };
 }
 
-function localBin(projectRoot: string, name: string): string | null {
+function localBin(projectRoot: string, name: string, preferManaged = false): string | null {
   const names = process.platform === "win32" ? [`${name}.cmd`, name] : [name];
-  for (const root of [projectRoot, repoRoot()]) {
+  const roots = preferManaged ? [repoRoot(), projectRoot] : [projectRoot, repoRoot()];
+  for (const root of roots) {
     for (const candidate of names.map((binName) => path.join(root, "node_modules", ".bin", binName))) {
       if (fs.existsSync(candidate)) return candidate;
     }
@@ -395,21 +504,32 @@ function existingRelativeRoots(config: Config): string[] {
   return existingAbsoluteRoots(config).map((root) => toPosix(path.relative(config.projectRoot, root)) || ".");
 }
 
-function normalizeEslintMessages(results: Array<{ filePath: string; messages: Array<{ ruleId?: string; line?: number; column?: number; severity?: number; message: string }> }>, config: Config) {
+function normalizeEslintMessages(
+  results: Array<{ filePath: string; messages: Array<{ ruleId?: string | null; fatal?: boolean; line?: number; column?: number; severity?: number; message: string }> }>,
+  config: Config,
+  rulePrefix?: string,
+) {
   return results.flatMap((result) =>
     result.messages
-      .filter((message): message is { ruleId: string; line?: number; column?: number; severity?: number; message: string } =>
-        Boolean(message.ruleId?.startsWith("react-hooks/")),
-      )
+      .filter((message) => rulePrefix ? Boolean(message.ruleId?.startsWith(rulePrefix)) : Boolean(message.ruleId || message.fatal))
       .map((message) => ({
         file: toPosix(path.relative(config.projectRoot, result.filePath)),
         line: message.line ?? null,
         column: message.column ?? null,
-        rule_id: message.ruleId,
+        rule_id: message.ruleId ?? "eslint/parser",
         severity: message.severity === 2 ? "error" as const : "warning" as const,
         message: message.message,
       })),
   );
+}
+
+function toolPackageVersion(name: string): string | null {
+  try {
+    const manifest = require(`${name}/package.json`) as { version?: unknown };
+    return typeof manifest.version === "string" ? manifest.version : null;
+  } catch {
+    return null;
+  }
 }
 
 function requireOptional(name: "typescript"): typeof tsTypes | null;
