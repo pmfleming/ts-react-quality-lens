@@ -147,6 +147,6 @@ Run `npm run bench` for a synthetic multi-size benchmark harness. The analyzer a
 
 ## Design Notes
 
-This version intentionally keeps fallback heuristics explainable while using stronger tools when they are installed. The artifact contract preserves confidence metadata so missing `tsconfig`, unavailable type information, absent dependencies, missing git history, unknown framework/test runner states, and skipped integrations are visible to consumers.
+This version intentionally keeps fallback heuristics explainable while using stronger tools when they are installed. TypeScript project loading, ESLint execution, external analyzers, and shared process handling live in separate adapters so each integration can evolve and fail independently. The artifact contract preserves confidence metadata so missing `tsconfig`, unavailable type information, absent dependencies, missing git history, unknown framework/test runner states, and skipped integrations are visible to consumers.
 
 The framework convention layer is adapter-based. The first adapters cover generic React client/server signals, Next.js app/pages route conventions, Remix route conventions, and Storybook story evidence. Future work can deepen framework-specific scoring and add bundle/runtime analysis without changing the task IDs or artifact names.

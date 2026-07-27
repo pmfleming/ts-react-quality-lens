@@ -3,13 +3,9 @@ import { discoverSourceFiles, discoverTestFiles, readSourceFile } from "./files.
 import { analyzeModule } from "./extract.js";
 import { entrypointRolesForFile, projectEntrypoints } from "./entrypoints.js";
 import { updateAnalysisCache } from "./cache.js";
-import {
-  loadTypeScriptProject,
-  runDependencyCruiser,
-  runJscpd,
-  runReactHooksLint,
-  runTypedLint,
-} from "./integrations.js";
+import { runReactHooksLint, runTypedLint } from "./integrations/eslint-adapter.js";
+import { runDependencyCruiser, runJscpd } from "./integrations/external-tools.js";
+import { loadTypeScriptProject } from "./integrations/typescript-project.js";
 import { detectFrameworkDetails } from "./framework-adapters.js";
 import type { AnalysisContext, Config, Confidence, ProjectAnalysis } from "./types.js";
 
