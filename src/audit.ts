@@ -4,10 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { enrichFinding, findingKind, isSuppressed, suppressionMatches } from "./actions.js";
 import { analysisConfidence, artifactBase, createAnalysisContext, readArtifact, sourceSetHash, writeArtifact } from "./measure-shared.js";
+import { isRecord } from "./collections.js";
 import { loadConfig } from "./config.js";
 import { MEASURE_TASKS } from "./measures/registry.js";
 import { TASKS } from "./tasks.js";
-import type { AnalysisContext, Artifact, AuditArtifact, AuditFinding, AuditVerdict, Config, ScoredRecord } from "./types.js";
+import type { AnalysisContext, Artifact, AuditArtifact, AuditFinding, AuditVerdict, Config, PolicyCheck, ScoredRecord } from "./types.js";
 
 type AuditOptions = {
   base?: string | null;
@@ -29,7 +30,7 @@ const AUDIT_TASK_IDS = [
   "quality.locality_leverage",
   "quality.react_health",
   "quality.cleanup",
-] as const;
+];
 
 export function runAudit(config: Config, command: string, options: AuditOptions = {}): AuditArtifact {
   const context = createAnalysisContext(config);
@@ -64,7 +65,7 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
       }),
       sourceSetHash(context.project()),
     ),
-    task_id: "audit" as const,
+    task_id: "audit",
     summary: {
       verdict,
       complete: incompleteReasons.length === 0,
@@ -118,7 +119,7 @@ function collectFindings(
     const artifact = task ? readArtifact<Artifact>(config, task.artifact) : null;
     const rawFindings = [...findingRecords(artifact?.records), ...findingRecords(artifact?.groups)];
     return rawFindings.flatMap((raw): AuditFinding[] => {
-      const enriched = enrichFinding(config, raw) as ScoredRecord;
+      const enriched = enrichFinding(config, raw);
       if (!isRecord(enriched)) return [];
       const touchesChangedFile = noDiffScope || findingTouchesChangedFile(enriched, changed);
       if (!touchesChangedFile) return [];
@@ -285,32 +286,36 @@ function auditVerdict(findings: AuditFinding[], incompleteReasons: string[]): Au
   return "pass";
 }
 
+const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = {
+  compiler: compilerEvidenceReason,
+  "typed-lint": typedLintEvidenceReason,
+  tests: testEvidenceReason,
+  "react-hooks": reactHooksEvidenceReason,
+};
+
 function requiredEvidenceReasons(config: Config): string[] {
-  const reasons: string[] = [];
-  for (const check of config.policy.requiredChecks) {
-    if (check === "compiler") {
-      const artifact = readArtifact<Artifact>(config, "type_health.json");
-      if (artifact?.confidence.typescript_program_loaded !== true) reasons.push("TypeScript compiler program did not load.");
-    }
-    if (check === "typed-lint") {
-      const artifact = readArtifact<Artifact>(config, "lint_health.json");
-      if (artifact?.tool_status?.typed_eslint?.ran !== true || artifact?.tool_status?.typed_eslint?.complete !== true) {
-        reasons.push("Required type-aware ESLint analysis did not complete.");
-      }
-    }
-    if (check === "tests") {
-      const artifact = readArtifact<Artifact & { execution?: { status?: string } }>(config, "correctness_review.json");
-      if (!config.testCommand) reasons.push("Tests are required but no test command is configured.");
-      else if (!artifact?.execution || !["passed", "failed"].includes(artifact.execution.status ?? "")) {
-        reasons.push("Required test execution did not complete.");
-      }
-    }
-    if (check === "react-hooks") {
-      const artifact = readArtifact<Artifact>(config, "react_health.json");
-      if (artifact?.tool_status?.eslint_react_hooks?.ran !== true) reasons.push("Required React Hooks analysis did not run.");
-    }
-  }
-  return [...new Set(reasons)];
+  return config.policy.requiredChecks.flatMap((check) => EVIDENCE_CHECKS[check](config) ?? []);
+}
+
+function compilerEvidenceReason(config: Config): string | null {
+  const artifact = readArtifact<Artifact>(config, "type_health.json");
+  return artifact?.confidence.typescript_program_loaded === true ? null : "TypeScript compiler program did not load.";
+}
+
+function typedLintEvidenceReason(config: Config): string | null {
+  const status = readArtifact<Artifact>(config, "lint_health.json")?.tool_status?.typed_eslint;
+  return status?.ran === true && status.complete === true ? null : "Required type-aware ESLint analysis did not complete.";
+}
+
+function testEvidenceReason(config: Config): string | null {
+  if (!config.testCommand) return "Tests are required but no test command is configured.";
+  const execution = readArtifact<Artifact & { execution?: { status?: string } }>(config, "correctness_review.json")?.execution;
+  return execution && ["passed", "failed"].includes(execution.status ?? "") ? null : "Required test execution did not complete.";
+}
+
+function reactHooksEvidenceReason(config: Config): string | null {
+  const status = readArtifact<Artifact>(config, "react_health.json")?.tool_status?.eslint_react_hooks;
+  return status?.ran === true ? null : "Required React Hooks analysis did not run.";
 }
 
 function changedFilesSince(config: Config, base: string): string[] {
@@ -445,8 +450,4 @@ function writeBaseline(file: string, findings: AuditFinding[]): void {
 
 function stripSourceExtension(file: string): string {
   return file.replace(/\.[cm]?[jt]sx?$/, "");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

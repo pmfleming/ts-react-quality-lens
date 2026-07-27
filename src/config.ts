@@ -1,5 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
+import { isRecord } from "./collections.js";
+import { readPackageJson } from "./entrypoints.js";
 import { packageRootFrom } from "./package-root.js";
 import type {
   AuditConfig,
@@ -69,27 +72,16 @@ const PACKAGE_MANAGER_RULES = [
   { name: "npm", files: ["package-lock.json"] },
 ];
 
-const CONFIG_KEYS = new Set([
-  "$schema",
-  "project_name",
-  "project_root",
-  "source_roots",
-  "test_roots",
-  "output_dir",
-  "tsconfig",
-  "package_manager",
-  "framework",
-  "test_runner",
-  "test_command",
-  "exclude",
-  "layer_rules",
-  "performance_inputs",
-  "public_api",
-  "cache",
-  "policy",
-  "suppressions",
-  "audit",
-]);
+const getConfigValidator = (() => {
+  let validator: ValidateFunction<RawConfig> | null = null;
+  return (): ValidateFunction<RawConfig> => {
+    if (validator) return validator;
+    const schemaPath = path.join(packageRoot(), "ts-react-quality-lens.config.schema.json");
+    const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+    validator = new Ajv2020({ allErrors: true, strict: false }).compile<RawConfig>(schema);
+    return validator;
+  };
+})();
 
 export function loadConfig(configArg?: string | null): Config {
   const configPath = path.resolve(configArg ?? "ts-react-quality-lens.config.json");
@@ -198,31 +190,15 @@ function confidenceSignals(value: JsonValue | undefined): ConfidenceSignal[] {
 
 function validateRawConfig(value: unknown): RawConfig {
   if (!isRecord(value)) throw new Error("Config must be a JSON object.");
-  const errors: string[] = [];
-  const schemaKeys = configSchemaKeys();
-  for (const key of Object.keys(value)) {
-    if (!schemaKeys.has(key)) errors.push(`Unknown config key "${key}".`);
-  }
-  validateString(value, "project_name", errors);
-  validateString(value, "project_root", errors);
-  validateStringArray(value, "source_roots", errors);
-  validateStringArray(value, "test_roots", errors);
-  validateString(value, "output_dir", errors);
-  validateString(value, "tsconfig", errors);
-  validateString(value, "package_manager", errors);
-  validateString(value, "framework", errors);
-  validateString(value, "test_runner", errors);
-  validateNullableString(value, "test_command", errors);
-  validateStringArray(value, "exclude", errors);
-  validateLayerRules(value, "layer_rules", errors);
-  validatePerformanceInputs(value, "performance_inputs", errors);
-  validatePublicApi(value, "public_api", errors);
-  validateCache(value, "cache", errors);
-  validatePolicy(value, "policy", errors);
-  validateSuppressions(value, "suppressions", errors);
-  validateAudit(value, "audit", errors);
-  if (errors.length) throw new Error(`Invalid config:\n${errors.map((error) => `- ${error}`).join("\n")}`);
-  return value as RawConfig;
+  const validate = getConfigValidator();
+  if (validate(value)) return value;
+  const errors = (validate.errors ?? []).map(configErrorMessage);
+  throw new Error(`Invalid config:\n${errors.map((error) => `- ${error}`).join("\n")}`);
+}
+
+function configErrorMessage(error: ErrorObject): string {
+  if (error.keyword === "additionalProperties") return `Unknown config key "${String(error.params.additionalProperty)}".`;
+  return `${error.instancePath || "/"} ${error.message ?? "is invalid"}.`;
 }
 
 function parseJsonConfig(text: string): unknown {
@@ -289,151 +265,6 @@ function skipBlockComment(text: string, index: number): number {
   return cursor + 1;
 }
 
-function configSchemaKeys(): Set<string> {
-  const schemaPath = path.join(packageRoot(), "ts-react-quality-lens.config.schema.json");
-  if (!fs.existsSync(schemaPath)) return CONFIG_KEYS;
-  try {
-    const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
-    if (!isRecord(schema.properties)) return CONFIG_KEYS;
-    return new Set(Object.keys(schema.properties));
-  } catch {
-    return CONFIG_KEYS;
-  }
-}
-
-function validateString(record: Record<string, unknown>, key: string, errors: string[]): void {
-  if (record[key] !== undefined && typeof record[key] !== "string") errors.push(`"${key}" must be a string.`);
-}
-
-function validateNullableString(record: Record<string, unknown>, key: string, errors: string[]): void {
-  if (record[key] !== undefined && record[key] !== null && typeof record[key] !== "string") {
-    errors.push(`"${key}" must be a string or null.`);
-  }
-}
-
-function validateStringArray(record: Record<string, unknown>, key: string, errors: string[]): void {
-  if (record[key] === undefined) return;
-  if (!Array.isArray(record[key]) || !record[key].every((item) => typeof item === "string")) {
-    errors.push(`"${key}" must be an array of strings.`);
-  }
-}
-
-function validateLayerRules(record: Record<string, unknown>, key: string, errors: string[]): void {
-  const value = record[key];
-  if (value === undefined) return;
-  if (!Array.isArray(value)) {
-    errors.push(`"${key}" must be an array.`);
-    return;
-  }
-  for (const [index, item] of value.entries()) {
-    if (!isRecord(item) || typeof item.layer !== "string" || !Array.isArray(item.patterns)) {
-      errors.push(`"${key}[${index}]" must include "layer" and string array "patterns".`);
-    } else if (!item.patterns.every((pattern) => typeof pattern === "string")) {
-      errors.push(`"${key}[${index}].patterns" must be an array of strings.`);
-    }
-  }
-}
-
-function validatePerformanceInputs(record: Record<string, unknown>, key: string, errors: string[]): void {
-  const value = record[key];
-  if (validateOptionalObject(value, key, errors)) validateStringFields(value, ["bundle_stats", "render_costs"], errors);
-}
-
-function validatePublicApi(record: Record<string, unknown>, key: string, errors: string[]): void {
-  const value = record[key];
-  if (!validateOptionalObject(value, key, errors)) return;
-  validateStringArray(value, "entry", errors);
-  validateObjectArray(value.exports, `${key}.exports`, errors, (item, itemKey) =>
-    validatePublicApiExportRule(item, itemKey, errors),
-  );
-}
-
-function validatePublicApiExportRule(item: Record<string, unknown>, itemKey: string, errors: string[]): void {
-  if (typeof item.file !== "string" || !Array.isArray(item.names)) {
-    errors.push(`"${itemKey}" must include "file" and string array "names".`);
-  } else if (!item.names.every((name) => typeof name === "string")) {
-    errors.push(`"${itemKey}.names" must be an array of strings.`);
-  }
-}
-
-function validateCache(record: Record<string, unknown>, key: string, errors: string[]): void {
-  const value = record[key];
-  if (validateOptionalObject(value, key, errors) && value.enabled !== undefined && typeof value.enabled !== "boolean") {
-    errors.push(`"${key}.enabled" must be a boolean.`);
-  }
-}
-
-function validatePolicy(record: Record<string, unknown>, key: string, errors: string[]): void {
-  const value = record[key];
-  if (!validateOptionalObject(value, key, errors)) return;
-  if (!isOptionalOneOf(value.profile, ["baseline", "recommended", "strict", "react"])) {
-    errors.push(`"${key}.profile" must be "baseline", "recommended", "strict", or "react".`);
-  }
-  if (value.required_checks !== undefined) {
-    const allowed = new Set(["compiler", "typed-lint", "tests", "react-hooks"]);
-    if (!Array.isArray(value.required_checks) || !value.required_checks.every((item) => typeof item === "string" && allowed.has(item))) {
-      errors.push(`"${key}.required_checks" contains an unsupported check.`);
-    }
-  }
-}
-
-function validateSuppressions(record: Record<string, unknown>, key: string, errors: string[]): void {
-  validateObjectArray(record[key], key, errors, (item, itemKey) => {
-    validateString(item, "id", errors);
-    validateString(item, "file", errors);
-    validateString(item, "kind", errors);
-    validateString(item, "reason", errors);
-    if (!item.id && !item.file && !item.kind) {
-      errors.push(`"${itemKey}" must include at least one of "id", "file", or "kind".`);
-    }
-  });
-}
-
-function validateAudit(record: Record<string, unknown>, key: string, errors: string[]): void {
-  const value = record[key];
-  if (!validateOptionalObject(value, key, errors)) return;
-  validateStringFields(value, ["base", "changed_since", "baseline"], errors);
-  if (!isOptionalOneOf(value.gate, ["new-only", "all"])) {
-    errors.push(`"${key}.gate" must be "new-only" or "all".`);
-  }
-}
-
-function validateStringFields(record: Record<string, unknown>, keys: string[], errors: string[]): void {
-  for (const key of keys) validateString(record, key, errors);
-}
-
-function validateOptionalObject(value: unknown, key: string, errors: string[]): value is Record<string, unknown> {
-  if (value === undefined) return false;
-  if (isRecord(value)) return true;
-  errors.push(`"${key}" must be an object.`);
-  return false;
-}
-
-function validateObjectArray(
-  value: unknown,
-  key: string,
-  errors: string[],
-  validateItem: (item: Record<string, unknown>, key: string) => void,
-): void {
-  if (value === undefined) return;
-  if (!Array.isArray(value)) {
-    errors.push(`"${key}" must be an array.`);
-    return;
-  }
-  for (const [index, item] of value.entries()) {
-    if (isRecord(item)) validateItem(item, `${key}[${index}]`);
-    else errors.push(`"${key}[${index}]" must be an object.`);
-  }
-}
-
-function isOptionalOneOf(value: unknown, allowed: string[]): boolean {
-  return value === undefined || (typeof value === "string" && allowed.includes(value));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function resolveFromConfig(configDir: string, value: string): string {
   return path.resolve(configDir, value);
 }
@@ -449,15 +280,6 @@ function normalizeRoots(configDir: string, projectRoot: string, configured: stri
     if (fs.existsSync(resolved)) return resolved;
     return path.resolve(projectRoot, root);
   });
-}
-
-function readPackageJson(packageJsonPath: string): PackageJson | null {
-  if (!fs.existsSync(packageJsonPath)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-  } catch {
-    return null;
-  }
 }
 
 function autoPath(root: string, name: string): string | null {
@@ -548,11 +370,15 @@ function normalizeCache(outputDir: string, value: RawConfig["cache"] | undefined
 
 function normalizePolicy(value: PolicyConfig | undefined, hasTsconfig: boolean, hasTestCommand: boolean): Config["policy"] {
   const profile: PolicyProfile = value?.profile ?? "baseline";
+  const compiler: PolicyCheck[] = ["compiler"];
+  const typed: PolicyCheck[] = ["compiler", "typed-lint"];
+  const tests: PolicyCheck[] = ["tests"];
+  const react: PolicyCheck[] = ["react-hooks"];
   const defaults: PolicyCheck[] = [
-    ...(hasTsconfig ? ["compiler" as const] : []),
-    ...(profile === "baseline" ? [] : ["compiler" as const, "typed-lint" as const]),
-    ...(hasTestCommand ? ["tests" as const] : []),
-    ...(profile === "react" ? ["react-hooks" as const] : []),
+    ...(hasTsconfig ? compiler : []),
+    ...(profile === "baseline" ? [] : typed),
+    ...(hasTestCommand ? tests : []),
+    ...(profile === "react" ? react : []),
   ];
   return {
     profile,

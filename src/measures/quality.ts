@@ -82,7 +82,7 @@ export function measureLocality(config: Config, command: string, context: Analys
   const history = gitHistory(config);
   const records = project.modules.map((module) => {
     const internalImports = module.imports.filter((edge) => edge.to_kind === "relative");
-    const farImports = internalImports.filter((edge) => edge.specifier.startsWith("../"));
+    const farImports = internalImports.filter((edge) => edge.specifier.startsWith("../../"));
     const hiddenCoupling = hiddenCouplingSignals(module);
     const hasTestEvidence = testEvidence.has(module.file);
     const historyRecord = history.get(module.file) ?? { commits: 0, contributors: 0, defect_commits: 0, cochange_partners: [] };
@@ -143,14 +143,16 @@ export function measureLeverage(config: Config, command: string, context: Analys
         String(record.kind),
       ),
     ).length;
-    const score = Math.max(0, Math.min(100, inboundReach * 10 + publicSurface * 2 + deadExportSurface * 6 - weakSurface * 8));
-    const risk = inboundReach > 4 && weakSurface > 0 ? "high" : inboundReach > 2 && weakSurface > 0 ? "medium" : "low";
+    const leverageScore = Math.min(100, inboundReach * 10 + publicSurface * 2);
+    const hubWeaknessPenalty = inboundReach > 4 && weakSurface > 0 ? 20 : 0;
+    const score = Math.min(100, weakSurface * 12 + deadExportSurface * 6 + hubWeaknessPenalty);
     return {
       id: `leverage:${module.id}`,
       module_id: module.id,
       file: module.file,
       score,
-      risk,
+      risk: riskForScore(score),
+      leverage_score: leverageScore,
       inbound_reach: inboundReach,
       public_surface: publicSurface,
       weak_surface: weakSurface,

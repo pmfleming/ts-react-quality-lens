@@ -43,8 +43,8 @@ type ArchitectureRiskScores = NamedRiskScores & {
 
 export const RISK_MODEL = Object.freeze({
   id: "tsrqlens.architecture_risk",
-  version: 1,
-  calibration: "v1-static-analysis",
+  version: 2,
+  calibration: "v2-multi-complexity-static-analysis",
   thresholds: Object.freeze({
     warning: 35,
     bad: 70,
@@ -53,7 +53,9 @@ export const RISK_MODEL = Object.freeze({
     file_line_weight: 0.3,
     file_branch_weight: 2,
     file_import_weight: 2,
-    function_complexity_weight: 8,
+    function_cyclomatic_weight: 4,
+    function_cognitive_weight: 2,
+    function_effort_log_weight: 1,
     function_nesting_weight: 5,
     function_line_weight: 0.4,
     function_jsx_density_weight: 2,

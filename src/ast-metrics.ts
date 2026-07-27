@@ -1,6 +1,6 @@
 import * as ts from "typescript";
 
-const COMPLEXITY_CHECKS = [
+const CYCLOMATIC_CHECKS = [
   ts.isIfStatement,
   ts.isForStatement,
   ts.isForInStatement,
@@ -10,8 +10,6 @@ const COMPLEXITY_CHECKS = [
   ts.isCaseClause,
   ts.isCatchClause,
   ts.isConditionalExpression,
-  ts.isTryStatement,
-  ts.isAwaitExpression,
   isLogicalExpression,
 ];
 
@@ -27,10 +25,76 @@ const NESTING_CHECKS = [
   ts.isTryStatement,
 ];
 
+const COGNITIVE_BREAKS = [
+  ts.isIfStatement,
+  ts.isForStatement,
+  ts.isForInStatement,
+  ts.isForOfStatement,
+  ts.isWhileStatement,
+  ts.isDoStatement,
+  ts.isSwitchStatement,
+  ts.isCatchClause,
+  ts.isConditionalExpression,
+];
+
 const JSX_CONDITIONAL_CHECKS = [isConditionalJsx, isLogicalJsx, isMapJsx];
 
+type HalsteadMetrics = {
+  vocabulary: number;
+  length: number;
+  volume: number;
+  difficulty: number;
+  effort: number;
+};
+
+/** Compatibility alias: complexity is standard cyclomatic complexity. */
 export function complexityForNode(node: ts.Node): number {
-  return 1 + countMatchingNodes(node, (current) => COMPLEXITY_CHECKS.some((check) => check(current)));
+  return cyclomaticComplexityForNode(node);
+}
+
+function cyclomaticComplexityForNode(node: ts.Node): number {
+  return 1 + countMatchingNodes(node, (current) => CYCLOMATIC_CHECKS.some((check) => check(current)));
+}
+
+export function cognitiveComplexityForNode(node: ts.Node): number {
+  let complexity = 0;
+  visit(node, 0, true);
+  return complexity;
+
+  function visit(current: ts.Node, nesting: number, root: boolean): void {
+    if (!root && isFunctionLike(current)) return;
+    const structuralBreak = COGNITIVE_BREAKS.some((check) => check(current));
+    if (structuralBreak) complexity += 1 + nesting;
+    else if (isLogicalExpression(current)) complexity += 1;
+    const childNesting = structuralBreak ? nesting + 1 : nesting;
+    ts.forEachChild(current, (child) => visit(child, childNesting, false));
+  }
+}
+
+export function halsteadMetricsForNode(node: ts.Node): HalsteadMetrics {
+  const operators = new Map<string, number>();
+  const operands = new Map<string, number>();
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, node.getText());
+  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+    const text = scanner.getTokenText();
+    const target = isOperandToken(token) ? operands : operators;
+    target.set(text, (target.get(text) ?? 0) + 1);
+  }
+  const distinctOperators = operators.size;
+  const distinctOperands = operands.size;
+  const totalOperators = sumCounts(operators);
+  const totalOperands = sumCounts(operands);
+  const vocabulary = distinctOperators + distinctOperands;
+  const length = totalOperators + totalOperands;
+  const volume = vocabulary > 1 ? length * Math.log2(vocabulary) : 0;
+  const difficulty = distinctOperands > 0 ? (distinctOperators / 2) * (totalOperands / distinctOperands) : 0;
+  return {
+    vocabulary,
+    length,
+    volume: rounded(volume),
+    difficulty: rounded(difficulty),
+    effort: rounded(difficulty * volume),
+  };
 }
 
 export function maxNestingDepthForNode(node: ts.Node): number {
@@ -107,7 +171,8 @@ function isLogicalExpression(node: ts.Node): boolean {
   return (
     ts.isBinaryExpression(node) &&
     (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-      node.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+      node.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
   );
 }
 
@@ -126,4 +191,26 @@ function isMapJsx(node: ts.Node): boolean {
     node.expression.name.text === "map" &&
     node.arguments.some((argument) => hasJsx(argument))
   );
+}
+
+function isFunctionLike(node: ts.Node): boolean {
+  return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
+}
+
+function isOperandToken(token: ts.SyntaxKind): boolean {
+  return token === ts.SyntaxKind.Identifier ||
+    token === ts.SyntaxKind.PrivateIdentifier ||
+    token === ts.SyntaxKind.NumericLiteral ||
+    token === ts.SyntaxKind.BigIntLiteral ||
+    token === ts.SyntaxKind.StringLiteral ||
+    token === ts.SyntaxKind.RegularExpressionLiteral ||
+    token === ts.SyntaxKind.NoSubstitutionTemplateLiteral;
+}
+
+function sumCounts(values: Map<string, number>): number {
+  return [...values.values()].reduce((total, value) => total + value, 0);
+}
+
+function rounded(value: number): number {
+  return Math.round(value * 100) / 100;
 }

@@ -1,8 +1,8 @@
-# ts-react-quality-lens Risk Model v1
+# ts-react-quality-lens Risk Model v2
 
 Model id: `tsrqlens.architecture_risk`
-Version: `1`
-Calibration: `v1-static-analysis`
+Version: `2`
+Calibration: `v2-multi-complexity-static-analysis`
 
 This model separates raw measurement facts from derived risk scores. Since artifact schema 0.2.0, audit gating is also separate from these scores: findings carry `block`, `warn`, `review`, or `info` dispositions, and raw scores alone cannot fail an audit. Producers keep emitting task-specific records such as hotspot, dependency, type-health, locality, and React findings. The architecture map combines those records into portable category scores and records the model id, version, and calibration that produced them.
 
@@ -49,7 +49,9 @@ Hotspot scoring weights are centralized in `src/risk-model.ts`:
 | File line count | 0.3 |
 | File branch count | 2 |
 | File import count | 2 |
-| Function complexity | 8 |
+| Function cyclomatic complexity | 4 |
+| Function cognitive complexity | 2 |
+| Function log10 Halstead effort | 1 |
 | Function nesting depth | 5 |
 | Function line count | 0.4 |
 | Function JSX density | 2 |

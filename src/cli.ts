@@ -50,93 +50,64 @@ const VALUE_FLAGS: ValueFlag[] = [
   },
 ];
 
+type CommandHandler = (config: Config, args: ParsedArgs) => void;
+
+const COMMAND_HANDLERS: Record<string, CommandHandler> = {
+  catalog: runCatalogCommand,
+  init: runInitCommand,
+  audit: runAuditCommand,
+  context: runContextCommand,
+  measure: runMeasureCommand,
+};
+
 export async function runCli(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
-  if (args.help || !args.command) {
-    printHelp();
-    return;
-  }
+  if (args.help || !args.command) return printHelp();
+  const handler = COMMAND_HANDLERS[args.command];
+  if (!handler) throw new Error(`Unknown command: ${args.command}`);
+  handler(loadConfig(args.config), args);
+}
 
-  const config = loadConfig(args.config);
-  if (args.command === "catalog") {
-    console.log(JSON.stringify(catalogForConfig(config), null, 2));
-    return;
-  }
+function runCatalogCommand(config: Config): void {
+  console.log(JSON.stringify(catalogForConfig(config), null, 2));
+}
 
-  if (args.command === "init") {
-    writeInitialConfig(config, args.force);
-    console.log(
-      JSON.stringify(
-        {
-          project_name: config.projectName,
-          config: config.configPath,
-          created: true,
-        },
-        null,
-        2,
-      ),
-    );
-    return;
-  }
+function runInitCommand(config: Config, args: ParsedArgs): void {
+  writeInitialConfig(config, args.force);
+  console.log(JSON.stringify({ project_name: config.projectName, config: config.configPath, created: true }, null, 2));
+}
 
-  if (args.command === "audit") {
-    const command = `ts-react-quality-lens audit --config ${config.configPath}`;
-    const artifact = runAudit(config, command, {
-      base: args.base,
-      changedSince: args.changedSince,
-      gate: args.gate,
-      baseline: args.baseline,
-      saveBaseline: args.saveBaseline,
-    });
-    if (args.format === "json") {
-      console.log(JSON.stringify(artifact, null, 2));
-    } else if (args.format === "markdown") {
-      console.log(auditMarkdown(artifact));
-    } else {
-      console.log(
-        JSON.stringify(
-          {
-            project_name: config.projectName,
-            output_dir: config.outputDir,
-            audit: artifact.summary,
-          },
-          null,
-          2,
-        ),
-      );
-    }
-    if (artifact.summary.verdict === "fail" || artifact.summary.verdict === "incomplete") process.exitCode = 1;
-    return;
-  }
+function runAuditCommand(config: Config, args: ParsedArgs): void {
+  const artifact = runAudit(config, `ts-react-quality-lens audit --config ${config.configPath}`, {
+    base: args.base,
+    changedSince: args.changedSince,
+    gate: args.gate,
+    baseline: args.baseline,
+    saveBaseline: args.saveBaseline,
+  });
+  printAudit(config, args.format, artifact);
+  if (artifact.summary.verdict === "fail" || artifact.summary.verdict === "incomplete") process.exitCode = 1;
+}
 
-  if (args.command === "context") {
-    const command = `ts-react-quality-lens context --config ${config.configPath}`;
-    const context = projectContext(config, command);
-    console.log(JSON.stringify(context, null, 2));
-    return;
-  }
+function printAudit(config: Config, format: ParsedArgs["format"], artifact: ReturnType<typeof runAudit>): void {
+  if (format === "json") console.log(JSON.stringify(artifact, null, 2));
+  else if (format === "markdown") console.log(auditMarkdown(artifact));
+  else console.log(JSON.stringify({ project_name: config.projectName, output_dir: config.outputDir, audit: artifact.summary }, null, 2));
+}
 
-  if (args.command !== "measure") {
-    throw new Error(`Unknown command: ${args.command}`);
-  }
+function runContextCommand(config: Config): void {
+  const context = projectContext(config, `ts-react-quality-lens context --config ${config.configPath}`);
+  console.log(JSON.stringify(context, null, 2));
+}
 
+function runMeasureCommand(config: Config, args: ParsedArgs): void {
   const taskId = args.positionals[0] ?? "all";
-  const command = `ts-react-quality-lens measure ${taskId} --config ${config.configPath}`;
-  const results = runMeasure(config, taskId, command);
-  console.log(
-    JSON.stringify(
-      {
-        project_name: config.projectName,
-        output_dir: config.outputDir,
-        measured: results.map((result: Artifact) => ({
-          task_id: result.task_id,
-          summary: result.summary,
-        })),
-      },
-      null,
-      2,
-    ),
-  );
+  const results = runMeasure(config, taskId, `ts-react-quality-lens measure ${taskId} --config ${config.configPath}`);
+  console.log(JSON.stringify({
+    project_name: config.projectName,
+    output_dir: config.outputDir,
+    measured: results.map((result) => ({ task_id: result.task_id, summary: result.summary })),
+  }, null, 2));
 }
 
 export function runMeasure(config: Config, taskId: string, command: string, options: RunMeasureOptions = {}): Artifact[] {
@@ -173,23 +144,18 @@ function parseArgs(argv: string[]): ParsedArgs {
   } else {
     result.command = args.shift() ?? null;
   }
-  while (args.length) {
-    const arg = args.shift();
-    if (!arg) continue;
-    const valueFlag = valueFlagFor(arg);
-    if (valueFlag) {
-      valueFlag.set(result, requiredValue(arg, args), arg);
-    } else if (arg === "--help" || arg === "-h") {
-      result.help = true;
-    } else if (arg === "--force") {
-      result.force = true;
-    } else if (arg?.startsWith("-")) {
-      throw new Error(`Unknown flag: ${arg}`);
-    } else {
-      result.positionals.push(arg);
-    }
-  }
+  while (args.length) applyArgument(result, args, args.shift());
   return result;
+}
+
+function applyArgument(result: ParsedArgs, remaining: string[], argument: string | undefined): void {
+  if (!argument) return;
+  const valueFlag = valueFlagFor(argument);
+  if (valueFlag) valueFlag.set(result, requiredValue(argument, remaining), argument);
+  else if (argument === "--help" || argument === "-h") result.help = true;
+  else if (argument === "--force") result.force = true;
+  else if (argument.startsWith("-")) throw new Error(`Unknown flag: ${argument}`);
+  else result.positionals.push(argument);
 }
 
 function initialArgs(): ParsedArgs {
@@ -213,7 +179,8 @@ function valueFlagFor(arg: string): ValueFlag | undefined {
 }
 
 function oneOf<const T extends string>(flag: string, value: string, allowed: readonly T[]): T {
-  if (allowed.includes(value as T)) return value as T;
+  const match = allowed.find((item) => item === value);
+  if (match) return match;
   throw new Error(`${flag} must be ${allowed.map((item) => `"${item}"`).join(", or ")}.`);
 }
 

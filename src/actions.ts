@@ -1,3 +1,4 @@
+import { isRecord } from "./collections.js";
 import type {
   Config,
   EvidenceKind,
@@ -9,28 +10,22 @@ import type {
   SuppressionConfig,
 } from "./types.js";
 
-type ArtifactLike = {
-  records?: unknown;
-  groups?: unknown;
-  summary?: Record<string, unknown>;
-  [key: string]: unknown;
-};
-
 export function enrichArtifactFindings(config: Config, value: unknown): unknown {
   if (!isRecord(value)) return value;
-  const artifact = value as ArtifactLike;
-  const records = Array.isArray(artifact.records) ? artifact.records.map((record) => enrichFinding(config, record)) : artifact.records;
-  const groups = Array.isArray(artifact.groups) ? artifact.groups.map((record) => enrichFinding(config, record)) : artifact.groups;
+  const records = Array.isArray(value.records) ? value.records.map((record) => enrichFinding(config, record)) : value.records;
+  const groups = Array.isArray(value.groups) ? value.groups.map((record) => enrichFinding(config, record)) : value.groups;
   return {
-    ...artifact,
-    ...(Array.isArray(artifact.records) ? { records } : {}),
-    ...(Array.isArray(artifact.groups) ? { groups } : {}),
+    ...value,
+    ...(Array.isArray(value.records) ? { records } : {}),
+    ...(Array.isArray(value.groups) ? { groups } : {}),
   };
 }
 
+export function enrichFinding(config: Config, value: ScoredRecord): ScoredRecord;
+export function enrichFinding(config: Config, value: unknown): unknown;
 export function enrichFinding(config: Config, value: unknown): unknown {
-  if (!isRecord(value) || typeof value.id !== "string") return value;
-  const record = value as ScoredRecord;
+  if (!isScoredRecord(value)) return value;
+  const record = value;
   const suppression = matchingSuppression(config.suppressions, record);
   const kind = findingKind(record);
   const actions = record.actions?.length ? record.actions : actionsForRecord(record, kind);
@@ -45,6 +40,10 @@ export function enrichFinding(config: Config, value: unknown): unknown {
     actions,
     ...(suppression ? { suppressed: true, suppression_reason: suppression.reason ?? "Configured suppression." } : {}),
   };
+}
+
+function isScoredRecord(value: unknown): value is ScoredRecord {
+  return isRecord(value) && typeof value.id === "string";
 }
 
 export function isSuppressed(record: Pick<ScoredRecord, "suppressed">): boolean {
@@ -176,8 +175,4 @@ function suppressionValue(record: ScoredRecord, kind: string): JsonValue {
   if (record.file) value.file = record.file;
   value.reason = "Intentional finding; document the project-specific reason.";
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

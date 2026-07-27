@@ -4,8 +4,6 @@ import { RISK_MODEL, riskForScore, severityScore } from "./risk-model.js";
 import { callExpressionName, lineForNode } from "./ts-ast.js";
 import type { FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, Severity, Signal, TypeRecord, TypedDeclaration, TypedExport } from "./types.js";
 
-export { riskForScore } from "./risk-model.js";
-
 export function fileHotspotRecord(module: ModuleRecord): ScoredRecord {
   const branchCount = module.functions.reduce((total, fn) => total + Math.max(0, fn.complexity - 1), 0);
   const score = Math.round(
@@ -31,7 +29,9 @@ export function fileHotspotRecord(module: ModuleRecord): ScoredRecord {
 
 export function functionHotspotRecord(module: ModuleRecord, fn: FunctionRecord): ScoredRecord {
   const score = Math.round(
-    fn.complexity * RISK_MODEL.hotspot.function_complexity_weight +
+    fn.cyclomatic_complexity * RISK_MODEL.hotspot.function_cyclomatic_weight +
+      fn.cognitive_complexity * RISK_MODEL.hotspot.function_cognitive_weight +
+      Math.log10(fn.halstead_effort + 1) * RISK_MODEL.hotspot.function_effort_log_weight +
       fn.nesting_depth * RISK_MODEL.hotspot.function_nesting_weight +
       fn.lines * RISK_MODEL.hotspot.function_line_weight +
       fn.jsx_density * RISK_MODEL.hotspot.function_jsx_density_weight +
@@ -47,7 +47,9 @@ export function functionHotspotRecord(module: ModuleRecord, fn: FunctionRecord):
     score,
     risk: riskForScore(score),
     signals: [
-      { kind: "cognitive_complexity_proxy", value: fn.complexity },
+      { kind: "cyclomatic_complexity", value: fn.cyclomatic_complexity },
+      { kind: "cognitive_complexity", value: fn.cognitive_complexity },
+      { kind: "halstead_effort", value: fn.halstead_effort },
       { kind: "nesting_depth", value: fn.nesting_depth },
       { kind: "line_count", value: fn.lines },
       ...(fn.jsx_density ? [{ kind: "jsx_density", value: fn.jsx_density }] : []),

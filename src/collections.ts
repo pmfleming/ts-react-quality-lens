@@ -1,3 +1,7 @@
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 export function groupBy<T, K>(values: T[], keyFn: (value: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>();
   for (const value of values) {

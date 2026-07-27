@@ -66,6 +66,14 @@ test("measure all writes MVP artifacts", () => {
     );
   }
 
+  const hotspots = JSON.parse(fs.readFileSync(path.join(config.outputDir, "hotspots.json"), "utf8")) as Artifact;
+  assert.ok(hotspots.records?.some((record) =>
+    record.kind !== "file" &&
+    record.signals?.some((signal) => signal.kind === "cyclomatic_complexity") &&
+    record.signals?.some((signal) => signal.kind === "cognitive_complexity") &&
+    record.signals?.some((signal) => signal.kind === "halstead_effort")
+  ));
+
   const map = JSON.parse(fs.readFileSync(path.join(config.outputDir, "map.json"), "utf8")) as Artifact & {
     meta?: { risk_model_id?: string; risk_model_version?: number };
     nodes: Array<{
@@ -80,9 +88,9 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(map.nodes.length > 0);
   assert.ok(map.edges.length > 0);
   assert.equal(map.meta?.risk_model_id, "tsrqlens.architecture_risk");
-  assert.equal(map.meta?.risk_model_version, 1);
+  assert.equal(map.meta?.risk_model_version, 2);
   assert.ok(map.nodes.every((node) => node.risk_model_id === "tsrqlens.architecture_risk"));
-  assert.ok(map.nodes.every((node) => node.risk_model_version === 1));
+  assert.ok(map.nodes.every((node) => node.risk_model_version === 2));
   assert.ok(map.nodes.every((node) => Array.isArray(node.unknown_metrics)));
   assert.ok(Object.entries(map.summary.artifact_status ?? {}).every(([name, status]) => name === "performance" || status === "available"));
   assert.equal(map.summary.unknown_metric_nodes, 0);
@@ -123,6 +131,7 @@ test("measure all writes MVP artifacts", () => {
 
   const correctness = JSON.parse(fs.readFileSync(path.join(config.outputDir, "correctness_review.json"), "utf8"));
   assert.equal(correctness.summary.execution_status, "passed");
+  assert.ok(correctness.tests.some((testRecord: { source_mapping?: string[] }) => testRecord.source_mapping?.includes("src/format.ts")));
 
   const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
   assert.ok(cleanup.records?.some((record) => Array.isArray(record.actions) && record.actions.length > 0));

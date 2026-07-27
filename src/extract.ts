@@ -1,6 +1,6 @@
 import * as ts from "typescript";
 import { normalizeImportPath, relativeModuleId } from "./files.js";
-import { complexityForNode, countJsxConditionals, countOptionalTypeFields, countTypeFieldsForNode, countUnionMembers, maxNestingDepthForNode } from "./ast-metrics.js";
+import { cognitiveComplexityForNode, complexityForNode, countJsxConditionals, countOptionalTypeFields, countTypeFieldsForNode, countUnionMembers, halsteadMetricsForNode, maxNestingDepthForNode } from "./ast-metrics.js";
 import { countMatches, dedupeBy } from "./collections.js";
 import { callExpressionName, lineForNode } from "./ts-ast.js";
 import type { Config, ConfidenceSignal, ExportRecord, FunctionRecord, ImportKind, ImportRecord, ModuleRecord, SourceFileRecord, TypeRecord, TypeScriptProject } from "./types.js";
@@ -225,13 +225,19 @@ function extractFunctions(file: SourceFileRecord, sourceFile: ts.SourceFile): Fu
     const effects = countCallsMatching(bodyNode, /^use(?:Effect|LayoutEffect|InsertionEffect)$/);
     const jsxConditionals = countJsxConditionals(bodyNode);
     const kind = classifyFunction(name, body, jsxDensity);
+    const cyclomaticComplexity = complexityForNode(bodyNode);
+    const cognitiveComplexity = cognitiveComplexityForNode(bodyNode);
+    const halstead = halsteadMetricsForNode(bodyNode);
     records.push({
       id: `${file.relativePath}:${name}:${line}`,
       name,
       kind,
       line,
       lines,
-      complexity: complexityForNode(bodyNode),
+      complexity: cyclomaticComplexity,
+      cyclomatic_complexity: cyclomaticComplexity,
+      cognitive_complexity: cognitiveComplexity,
+      halstead_effort: halstead.effort,
       nesting_depth: maxNestingDepthForNode(bodyNode),
       jsx_density: jsxDensity,
       hooks,
@@ -297,7 +303,10 @@ function extractTypes(file: SourceFileRecord, sourceFile: ts.SourceFile): TypeRe
 }
 
 function extractExports(sourceFile: ts.SourceFile): ExportRecord[] {
-  return sourceFile.statements.flatMap((statement) => exportRecordsForStatement(sourceFile, statement));
+  return dedupeBy(
+    sourceFile.statements.flatMap((statement) => exportRecordsForStatement(sourceFile, statement)),
+    (record) => record.name,
+  );
 }
 
 function exportRecordsForStatement(sourceFile: ts.SourceFile, statement: ts.Statement): ExportRecord[] {
@@ -380,7 +389,7 @@ function classifyFunction(name: string, body: string, jsxDensity: number): Funct
 function isBarrel(sourceFile: ts.SourceFile): boolean {
   const statements = sourceFile.statements.filter((statement) => statement.kind !== ts.SyntaxKind.NotEmittedStatement);
   return (
-    statements.length > 1 &&
+    statements.length > 0 &&
     statements.some((statement) => ts.isExportDeclaration(statement)) &&
     statements.every((statement) => ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement))
   );

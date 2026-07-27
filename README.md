@@ -66,13 +66,13 @@ Module summaries include package/tool entrypoint roles detected from `package.js
 
 The implementation combines deterministic built-in analysis with richer optional tool integrations:
 
-- `quality.hotspots` writes `hotspots.json`.
+- `quality.hotspots` writes `hotspots.json` with cyclomatic complexity, cognitive complexity, nesting, and Halstead effort evidence.
 - `quality.clones` writes `clones.json` using `jscpd` when available, plus built-in normalized line-window and AST structural clone detection. It also derives module-level duplication pressure records from clone density and cross-file repetition, and same-purpose export/component/hook records from naming and type-shape evidence.
 - `quality.escape_hatches` writes `ts_escape_hatches.json`.
 - `quality.type_health` writes `type_health.json` with TypeScript compiler API diagnostics, inferred symbols, exports, effective compiler-safety options, and fallback structural records.
 - `quality.lint` writes `lint_health.json` using a versioned, managed type-aware typescript-eslint ruleset when a tsconfig is available.
 - `quality.locality_dynamic` writes `locality_metrics.json`.
-- `quality.locality_leverage` writes `leverage_metrics.json`.
+- `quality.locality_leverage` writes `leverage_metrics.json`, separating positive reuse leverage from public-surface risk.
 - `quality.react_health` writes `react_health.json` with component heuristics, framework conventions, and `eslint-plugin-react-hooks` findings when available.
 - `quality.dependency_health` writes `dependency_health.json` with `dependency-cruiser` graph data when available, plus built-in import parsing fallback.
 - `quality.cleanup` writes `cleanup.json` with unused files, unused exports, dependency hygiene issues, duplicate exports, and staged cleanup candidates.

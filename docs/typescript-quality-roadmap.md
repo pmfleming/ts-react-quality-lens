@@ -145,7 +145,7 @@ The final names should be settled schema-first and added to `ts-react-quality-le
 - `src/scoring.ts`
 - `src/risk-model.ts`
 - `ts-react-quality-lens.schema.json`
-- `docs/risk-model-v1.md`
+- `docs/risk-model-v2.md`
 
 **Acceptance criteria**
 

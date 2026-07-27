@@ -1,7 +1,7 @@
 import type { Config } from "./types.js";
 
 export const LENS_NAME = "ts-react-quality-lens";
-export const SCHEMA_VERSION = "0.2.0";
+export const SCHEMA_VERSION = "0.3.0";
 
 export const TASKS = [
   {
@@ -10,7 +10,7 @@ export const TASKS = [
     title: "Complexity hotspots",
     artifact: "hotspots.json",
     description:
-      "Ranks complex files, functions, components, hooks, reducers, route modules, and utilities.",
+      "Ranks files and functions using cyclomatic complexity, cognitive complexity, Halstead effort, nesting, and size.",
   },
   {
     id: "quality.clones",
@@ -58,7 +58,7 @@ export const TASKS = [
     title: "Architecture leverage",
     artifact: "leverage_metrics.json",
     description:
-      "Measures architectural leverage, inbound reach, public surface, dead export surface, weak surface, and hub pressure.",
+      "Separates positive reuse leverage from risk caused by weak hubs, dead export surface, and public-surface pressure.",
   },
   {
     id: "quality.react_health",

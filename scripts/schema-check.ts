@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Ajv2020, type AnySchema } from "ajv/dist/2020.js";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import { isRecord } from "../src/collections.js";
 import { TASKS } from "../src/tasks.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -46,6 +47,7 @@ for (const key of [
 assert.ok(packageJson.files.includes("ts-react-quality-lens.schema.json"), "package files must include artifact schema");
 assert.ok(packageJson.files.includes("ts-react-quality-lens.config.schema.json"), "package files must include config schema");
 for (const runtimeDependency of [
+  "ajv",
   "typescript",
   "eslint",
   "@typescript-eslint/parser",
@@ -63,12 +65,12 @@ assertValid(ajv, configSchema, representativeConfig(), "config schema must accep
 
 function representativeArtifact() {
   return {
-    schema_version: "0.2.0",
+    schema_version: "0.3.0",
     task_id: "quality.hotspots",
     project: { name: "fixture", root: "/tmp/fixture", framework: "react", package_manager: "npm", test_runner: "node" },
     provenance: {
       lens: "ts-react-quality-lens",
-      schema_version: "0.2.0",
+      schema_version: "0.3.0",
       command: "schema-check",
       host: "schema-check",
       measured_at: new Date(0).toISOString(),
@@ -121,7 +123,8 @@ function representativeConfig() {
 }
 
 function assertValid(ajv: Ajv2020, schema: unknown, value: unknown, message: string): void {
-  const validate = ajv.compile(schema as AnySchema);
+  if (!isRecord(schema)) throw new Error(`${message}: schema must be an object`);
+  const validate = ajv.compile(schema);
   assert.ok(validate(value), `${message}: ${ajv.errorsText(validate.errors)}`);
 }
 

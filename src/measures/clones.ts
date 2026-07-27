@@ -77,17 +77,20 @@ function samePurposeRecords(project: ProjectAnalysis): ScoredRecord[] {
 
 function purposeCandidatesForModule(module: ModuleRecord): PurposeCandidate[] {
   const functionByName = new Map(module.functions.map((fn) => [fn.name, fn]));
-  const exportCandidates = module.exports.flatMap((exportRecord) => {
-    const fn = functionByName.get(exportRecord.name);
-    const category = fn?.kind === "hook" ? "hook" : fn?.kind === "component" ? "component" : "export";
-    return purposeCandidate(module, {
-      category,
-      name: exportRecord.name,
-      line: exportRecord.line,
-      signature: typedExportType(module, exportRecord.name),
-      exported: true,
+  const typeNames = new Set(module.types.map((type) => type.name));
+  const exportCandidates = (module.isBarrel ? [] : module.exports)
+    .filter((exportRecord) => !typeNames.has(exportRecord.name))
+    .flatMap((exportRecord) => {
+      const fn = functionByName.get(exportRecord.name);
+      const category = fn?.kind === "hook" ? "hook" : fn?.kind === "component" ? "component" : "export";
+      return purposeCandidate(module, {
+        category,
+        name: exportRecord.name,
+        line: exportRecord.line,
+        signature: typedExportType(module, exportRecord.name),
+        exported: true,
+      });
     });
-  });
   const exportedKeys = new Set(exportCandidates.map((candidate) => `${candidate.category}:${candidate.name}:${candidate.line ?? 0}`));
   const functionCandidates = module.functions
     .filter((fn) => fn.kind === "component" || fn.kind === "hook")

@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import module from "node:module";
 import path from "node:path";
+import { isRecord } from "../collections.js";
 import { isEntrypointFile, packageEntryFiles, readPackageJson } from "../entrypoints.js";
 import { analysisConfidence, artifactBase, createAnalysisContext, sourceSetHash, writeArtifact } from "../measure-shared.js";
-import type { AnalysisContext, Config, ModuleRecord, PackageJson, ScoredRecord } from "../types.js";
+import type { AnalysisContext, Config, ModuleRecord, PackageJson, ProjectAnalysis, ScoredRecord } from "../types.js";
 
 const BUILTINS = new Set([...module.builtinModules, ...module.builtinModules.map((name) => `node:${name}`)]);
 const TOOL_ADAPTER_DEPENDENCIES = new Set([
+  "@typescript-eslint/eslint-plugin",
   "@typescript-eslint/parser",
   "dependency-cruiser",
   "eslint",
@@ -16,37 +18,24 @@ const TOOL_ADAPTER_DEPENDENCIES = new Set([
 ]);
 
 type ExternalUsage = { source: boolean; test: boolean; typeOnly: boolean };
+type CleanupUsage = {
+  internalInbound: Map<string, number>;
+  importedNamesByModule: Map<string, Set<string>>;
+  opaqueExportUsage: Set<string>;
+  externalImports: Map<string, ExternalUsage>;
+};
 
 export function measureCleanup(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const packageJson = readPackageJson(path.join(config.projectRoot, "package.json"));
   const dependencySets = dependencySetsFor(packageJson);
   const entryFiles = packageEntryFiles(config, packageJson);
-  const internalInbound = new Map<string, number>();
-  const importedNamesByModule = new Map<string, Set<string>>();
-  const opaqueExportUsage = new Set<string>();
-  const externalImports = new Map<string, ExternalUsage>();
-
-  for (const edge of project.imports) {
-    if (edge.to_kind === "relative") {
-      internalInbound.set(edge.to, (internalInbound.get(edge.to) ?? 0) + 1);
-      if (edge.namespace_import || edge.side_effect_import || edge.import_kind === "dynamic") {
-        opaqueExportUsage.add(edge.to);
-      } else {
-        const names = importedNamesByModule.get(edge.to) ?? new Set<string>();
-        for (const name of edge.imported_names ?? []) names.add(name);
-        importedNamesByModule.set(edge.to, names);
-      }
-    }
-    if (edge.to_kind === "external" && !BUILTINS.has(edge.specifier)) {
-      const packageName = externalPackageName(edge.specifier);
-      const fromIsTest = project.modules.find((moduleRecord) => moduleRecord.id === edge.from)?.sourceFile.isTest ?? false;
-      markExternalUsage(externalImports, packageName, { source: !fromIsTest, test: fromIsTest, typeOnly: edge.import_kind === "type" });
-    }
-  }
-  for (const dependency of packageObservedDependencies(config, packageJson, dependencySets.allDeclared)) {
-    markExternalUsage(externalImports, dependency, { source: true, test: false, typeOnly: dependency.startsWith("@types/") });
-  }
+  const { internalInbound, importedNamesByModule, opaqueExportUsage, externalImports } = cleanupUsage(
+    config,
+    project,
+    packageJson,
+    dependencySets.allDeclared,
+  );
 
   const records: ScoredRecord[] = [
     ...unusedFileRecords(config, project.modules, internalInbound, entryFiles),
@@ -75,6 +64,51 @@ export function measureCleanup(config: Config, command: string, context: Analysi
   };
   writeArtifact(config, "cleanup.json", artifact);
   return artifact;
+}
+
+function cleanupUsage(
+  config: Config,
+  project: ProjectAnalysis,
+  packageJson: PackageJson | null,
+  declared: Set<string>,
+): CleanupUsage {
+  const usage: CleanupUsage = {
+    internalInbound: new Map(),
+    importedNamesByModule: new Map(),
+    opaqueExportUsage: new Set(),
+    externalImports: new Map(),
+  };
+  for (const edge of project.imports) collectImportUsage(project, usage, edge);
+  for (const dependency of packageObservedDependencies(config, packageJson, declared)) {
+    markExternalUsage(usage.externalImports, dependency, {
+      source: true,
+      test: false,
+      typeOnly: dependency.startsWith("@types/"),
+    });
+  }
+  return usage;
+}
+
+function collectImportUsage(project: ProjectAnalysis, usage: CleanupUsage, edge: ProjectAnalysis["imports"][number]): void {
+  if (edge.to_kind === "relative") {
+    usage.internalInbound.set(edge.to, (usage.internalInbound.get(edge.to) ?? 0) + 1);
+    if (edge.namespace_import || edge.side_effect_import || edge.import_kind === "dynamic") usage.opaqueExportUsage.add(edge.to);
+    else addImportedNames(usage.importedNamesByModule, edge.to, edge.imported_names ?? []);
+  }
+  if (edge.to_kind !== "external" || BUILTINS.has(edge.specifier)) return;
+  const packageName = externalPackageName(edge.specifier);
+  const fromIsTest = project.modules.find((moduleRecord) => moduleRecord.id === edge.from)?.sourceFile.isTest ?? false;
+  markExternalUsage(usage.externalImports, packageName, {
+    source: !fromIsTest,
+    test: fromIsTest,
+    typeOnly: edge.import_kind === "type",
+  });
+}
+
+function addImportedNames(imports: Map<string, Set<string>>, moduleId: string, importedNames: string[]): void {
+  const names = imports.get(moduleId) ?? new Set<string>();
+  for (const name of importedNames) names.add(name);
+  imports.set(moduleId, names);
 }
 
 function unusedFileRecords(
@@ -188,9 +222,10 @@ function dependencyRecord(
   };
 }
 
-function duplicateExportRecords(modules: Array<{ id: string; file: string; exports: Array<{ name: string; line: number }> }>): ScoredRecord[] {
+function duplicateExportRecords(modules: ModuleRecord[]): ScoredRecord[] {
   const byName = new Map<string, Array<{ id: string; file: string; line: number }>>();
   for (const moduleRecord of modules) {
+    if (moduleRecord.isBarrel) continue;
     for (const exportRecord of moduleRecord.exports) {
       if (exportRecord.name === "default" || exportRecord.name === "export=") continue;
       const group = byName.get(exportRecord.name) ?? [];
@@ -323,9 +358,6 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function readJsonRecord(file: string): Record<string, unknown> | null {
   try {

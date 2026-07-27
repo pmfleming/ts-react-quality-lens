@@ -1,6 +1,6 @@
 import path from "node:path";
 import { toPosix } from "./files.js";
-import { riskForScore } from "./scoring.js";
+import { riskForScore } from "./risk-model.js";
 import type { CloneBlock, CloneGroup, Config, JscpdDuplicate, Signal } from "./types.js";
 
 type CloneScoreWeights = { block: number; file: number; source: number };

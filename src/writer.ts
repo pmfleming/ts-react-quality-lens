@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { enrichArtifactFindings } from "./actions.js";
-import type { Config } from "./types.js";
+import type { Artifact, Config } from "./types.js";
 
 export function writeArtifact(config: Config, artifactName: string, value: unknown): string {
   fs.mkdirSync(config.outputDir, { recursive: true });
@@ -15,7 +15,7 @@ export function writeArtifact(config: Config, artifactName: string, value: unkno
   return target;
 }
 
-export function readArtifact<T = any>(config: Config, artifactName: string): T | null {
+export function readArtifact<T = Artifact>(config: Config, artifactName: string): T | null {
   const target = path.join(config.outputDir, artifactName);
   if (!fs.existsSync(target)) return null;
   for (let attempt = 0; attempt < 3; attempt += 1) {

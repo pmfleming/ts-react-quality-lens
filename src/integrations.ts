@@ -4,12 +4,14 @@ import path from "node:path";
 import os from "node:os";
 import { createRequire } from "node:module";
 import type * as tsTypes from "typescript";
+import { isRecord } from "./collections.js";
 import { relativeModuleId, toPosix } from "./files.js";
 import { packageJsonUrl, packageRootFrom } from "./package-root.js";
 import type {
   Config,
   DependencyCruiserResult,
   DiagnosticRecord,
+  EslintMessage,
   EslintReactHooksResult,
   EslintTypeAwareResult,
   JscpdResult,
@@ -346,7 +348,7 @@ function runToolAdapter<T extends Record<string, unknown>>(
     const result = run(executable);
     return { available: true, ran: true, reason: null, duration_ms: Date.now() - startedAt, ...result };
   } catch (error) {
-    const execError = error as ExecError;
+    const execError = normalizeExecError(error);
     const recovered = recover?.(execError);
     if (recovered) return { available: true, ran: true, reason: null, duration_ms: Date.now() - startedAt, ...recovered };
     return { available: true, ran: false, reason: toolError(execError), duration_ms: Date.now() - startedAt, ...empty };
@@ -517,7 +519,7 @@ function normalizeEslintMessages(
         line: message.line ?? null,
         column: message.column ?? null,
         rule_id: message.ruleId ?? "eslint/parser",
-        severity: message.severity === 2 ? "error" as const : "warning" as const,
+        severity: eslintSeverity(message.severity),
         message: message.message,
       })),
   );
@@ -525,11 +527,24 @@ function normalizeEslintMessages(
 
 function toolPackageVersion(name: string): string | null {
   try {
-    const manifest = require(`${name}/package.json`) as { version?: unknown };
-    return typeof manifest.version === "string" ? manifest.version : null;
+    const manifest: unknown = require(`${name}/package.json`);
+    return isRecord(manifest) && typeof manifest.version === "string" ? manifest.version : null;
   } catch {
     return null;
   }
+}
+
+function eslintSeverity(value: number | undefined): EslintMessage["severity"] {
+  return value === 2 ? "error" : "warning";
+}
+
+function normalizeExecError(value: unknown): ExecError {
+  const details = isRecord(value) ? value : {};
+  return Object.assign(value instanceof Error ? value : new Error(String(value)), {
+    stdout: details.stdout,
+    stderr: details.stderr,
+    status: typeof details.status === "number" ? details.status : undefined,
+  });
 }
 
 function requireOptional(name: "typescript"): typeof tsTypes | null;

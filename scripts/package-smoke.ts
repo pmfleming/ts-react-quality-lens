@@ -1,6 +1,7 @@
 import childProcess from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { isRecord } from "../src/collections.js";
 
 const binPath = path.resolve("dist/bin/ts-react-quality-lens.js");
 if (!fs.existsSync(binPath)) throw new Error("Built CLI bin is missing. Run npm run build first.");
@@ -22,8 +23,10 @@ const packJson = process.platform === "win32"
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
-const [pack] = JSON.parse(packJson) as Array<{ files?: Array<{ path?: string }> }>;
-const files = new Set((pack?.files ?? []).map((file) => file.path));
+const parsedPack: unknown = JSON.parse(packJson);
+const pack = Array.isArray(parsedPack) && isRecord(parsedPack[0]) ? parsedPack[0] : {};
+const packedFiles = Array.isArray(pack.files) ? pack.files : [];
+const files = new Set(packedFiles.flatMap((file) => isRecord(file) && typeof file.path === "string" ? [file.path] : []));
 for (const required of [
   "dist/bin/ts-react-quality-lens.js",
   "ts-react-quality-lens.schema.json",
