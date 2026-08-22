@@ -36,6 +36,7 @@ export type RawConfig = {
   cleanup?: CleanupConfig;
   type_coverage?: TypeCoverageConfig;
   package_health?: PackageHealthConfig;
+  sarif_inputs?: SarifInputConfig[];
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -80,6 +81,12 @@ export type TypeCoverageConfig = {
 export type PackageHealthConfig = {
   enabled?: boolean;
   attw_profile?: "strict" | "node16" | "esm-only";
+};
+
+export type SarifInputConfig = {
+  path: string;
+  name?: string;
+  required?: boolean;
 };
 
 export type SuppressionConfig = {
@@ -196,6 +203,11 @@ export type Config = {
     enabled: boolean;
     attwProfile: "strict" | "node16" | "esm-only";
   };
+  sarifInputs: Array<{
+    path: string;
+    name: string;
+    required: boolean;
+  }>;
   policy: {
     profile: PolicyProfile;
     requiredChecks: PolicyCheck[];

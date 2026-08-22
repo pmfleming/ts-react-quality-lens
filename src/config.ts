@@ -24,6 +24,7 @@ import type {
   PublicApiConfig,
   RawConfig,
   ReactConfig,
+  SarifInputConfig,
   SuppressionConfig,
   TypeCoverageConfig,
 } from "./types.js";
@@ -141,6 +142,7 @@ export function loadConfig(configArg?: string | null): Config {
     cleanup: normalizeCleanup(rawConfig.cleanup),
     typeCoverage: normalizeTypeCoverage(configDir, rawConfig.type_coverage),
     packageHealth: normalizePackageHealth(rawConfig.package_health, rawConfig.policy?.profile),
+    sarifInputs: normalizeSarifInputs(configDir, rawConfig.sarif_inputs),
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
@@ -411,6 +413,14 @@ function normalizePackageHealth(value: PackageHealthConfig | undefined, profile:
     enabled: value?.enabled ?? profile === "library",
     attwProfile: value?.attw_profile ?? "strict",
   };
+}
+
+function normalizeSarifInputs(configDir: string, value: SarifInputConfig[] | undefined): Config["sarifInputs"] {
+  return (value ?? []).map((input, index) => ({
+    path: path.resolve(configDir, input.path),
+    name: input.name ?? `sarif-${index + 1}`,
+    required: input.required === true,
+  }));
 }
 
 function normalizePolicy(value: PolicyConfig | undefined, hasTsconfig: boolean, hasTestCommand: boolean): Config["policy"] {

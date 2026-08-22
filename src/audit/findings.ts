@@ -27,6 +27,7 @@ const AUDIT_TASK_IDS = [
   "quality.locality_leverage",
   "quality.react_health",
   "quality.cleanup",
+  "quality.sarif",
 ];
 
 type FindingScope = {

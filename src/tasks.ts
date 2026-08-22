@@ -85,6 +85,14 @@ export const TASKS = [
       "Finds unused files, unused exports, dependency hygiene issues, duplicate exports, and staged cleanup candidates.",
   },
   {
+    id: "quality.sarif",
+    category: "quality",
+    title: "External SARIF findings",
+    artifact: "sarif_findings.json",
+    description:
+      "Normalizes SARIF findings while preserving fingerprints, ranges, code flows, fixes, and invocation status.",
+  },
+  {
     id: "quality.package_health",
     category: "quality",
     title: "Package health",

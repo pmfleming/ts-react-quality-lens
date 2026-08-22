@@ -79,6 +79,7 @@ The implementation combines deterministic built-in analysis with richer optional
 - `quality.dependency_health` writes `dependency_health.json` with `dependency-cruiser` graph data when available, plus built-in import parsing fallback.
 - `quality.cleanup` writes `cleanup.json` with unused files, exports, dependency hygiene, unresolved imports, cycles, catalog issues, and staged cleanup candidates. Managed Knip evidence is normalized and reconciled with the built-in fallback instead of silently replacing disagreements.
 - `quality.package_health` writes `package_health.json` with isolated declaration emit, lifecycle-script-free package packing, publint metadata/file checks, and Are The Types Wrong resolution matrices. It is enabled by the `library` policy profile or explicit config.
+- `quality.sarif` writes `sarif_findings.json` for CodeQL, Semgrep, or any SARIF 2.1 producer while retaining tool/rule metadata, partial fingerprints, primary and related ranges, source-to-sink code flows, proposed fixes, automation details, and invocation failures.
 - `correctness.catalog` writes `correctness_review.json` and `test_catalog.json`.
 - `correctness.all` writes `correctness_review.json` with test execution status when `test_command` is configured.
 - `map.architecture` writes `map.json`.
@@ -136,6 +137,7 @@ Supported config fields:
 | `cleanup` | Enable Knip-backed cleanup evidence and optionally use Knip production mode. |
 | `type_coverage` | Configure project, per-file, or changed-file minimum percentages and an earlier `type_health.json` ratchet baseline. |
 | `package_health` | Enable package validation and select the ATTW `strict`, `node16`, or `esm-only` profile. |
+| `sarif_inputs` | Import named SARIF 2.1 files and optionally require their successful, complete production. |
 | `policy` | Select `baseline`, `recommended`, `strict`, `react`, or `library` evidence requirements and optionally list required checks. |
 | `suppressions` | Narrow intentional findings by `id`, `file`, or `kind`, with an optional reason. |
 | `audit` | Default audit `base`, `changed_since`, `gate`, and `baseline` settings. |

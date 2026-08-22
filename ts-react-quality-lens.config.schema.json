@@ -108,6 +108,19 @@
         "attw_profile": { "enum": ["strict", "node16", "esm-only"] }
       }
     },
+    "sarif_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "name": { "type": "string" },
+          "required": { "type": "boolean" }
+        }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,

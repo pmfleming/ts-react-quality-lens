@@ -23,6 +23,7 @@
         "quality.react_health",
         "quality.dependency_health",
         "quality.cleanup",
+        "quality.sarif",
         "quality.package_health",
         "correctness.catalog",
         "correctness.all",

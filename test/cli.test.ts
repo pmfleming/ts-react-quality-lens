@@ -29,10 +29,11 @@ test("catalog exposes stable board task metadata", () => {
   const config = loadConfig(fixtureConfig);
   const catalog = catalogForConfig(config);
   assert.equal(catalog.lens, "ts-react-quality-lens");
-  assert.equal(catalog.tasks.length, 14);
+  assert.equal(catalog.tasks.length, 15);
   assert.ok(catalog.tasks.some((task) => task.id === "quality.hotspots"));
   assert.ok(catalog.tasks.some((task) => task.id === "quality.cleanup"));
   assert.ok(catalog.tasks.some((task) => task.id === "quality.package_health"));
+  assert.ok(catalog.tasks.some((task) => task.id === "quality.sarif"));
   assert.ok(catalog.tasks.some((task) => task.id === "map.architecture"));
 });
 
@@ -58,6 +59,7 @@ test("measure all writes MVP artifacts", () => {
     "dependency_health.json",
     "cleanup.json",
     "package_health.json",
+    "sarif_findings.json",
     "correctness_review.json",
     "test_catalog.json",
     "locality_metrics.json",
@@ -398,6 +400,79 @@ test("library profile validates declaration emit, packed files, and type resolut
   assert.equal(requiredToolStatus(artifact, "publint").complete, true);
   assert.equal(requiredToolStatus(artifact, "are_the_types_wrong").complete, true);
   assert.ok(Number(artifact.summary.packed_files) > 0);
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("SARIF ingestion preserves fingerprints, flows, fixes, and invocation failures", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-sarif-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "sarif-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(path.join(tempDir, "src", "query.ts"), "export const query = input;\nrun(query);\n", "utf8");
+  const validSarif = path.join(tempDir, "codeql.sarif");
+  fs.writeFileSync(validSarif, JSON.stringify({
+    version: "2.1.0",
+    runs: [{
+      tool: { driver: {
+        name: "CodeQL",
+        semanticVersion: "2.20.0",
+        rules: [{ id: "js/sql-injection", helpUri: "https://example.test/rule", defaultConfiguration: { level: "error" } }],
+      } },
+      automationDetails: { id: "security/pr" },
+      invocations: [{ executionSuccessful: true }],
+      results: [{
+        ruleId: "js/sql-injection",
+        level: "error",
+        message: { text: "Unsanitized input reaches a query sink." },
+        locations: [{ physicalLocation: { artifactLocation: { uri: "src/query.ts" }, region: { startLine: 1, startColumn: 22, endLine: 1, endColumn: 27 } } }],
+        partialFingerprints: { primaryLocationLineHash: "fingerprint-1" },
+        properties: { "security-severity": "9.3" },
+        codeFlows: [{ threadFlows: [{ locations: [
+          { location: { physicalLocation: { artifactLocation: { uri: "src/query.ts" }, region: { startLine: 1, startColumn: 22 } } } },
+          { location: { physicalLocation: { artifactLocation: { uri: "src/query.ts" }, region: { startLine: 2, startColumn: 1 } } } },
+        ] }] }],
+        fixes: [{ description: { text: "Use a parameterized query." }, artifactChanges: [{
+          artifactLocation: { uri: "src/query.ts" },
+          replacements: [{ deletedRegion: { startLine: 2, startColumn: 1 }, insertedContent: { text: "safeRun(query)" } }],
+        }] }],
+      }],
+    }],
+  }), "utf8");
+  const failedSarif = path.join(tempDir, "semgrep.sarif");
+  fs.writeFileSync(failedSarif, JSON.stringify({
+    version: "2.1.0",
+    runs: [{
+      tool: { driver: { name: "Semgrep", version: "1.0.0" } },
+      invocations: [{
+        executionSuccessful: false,
+        toolExecutionNotifications: [{ level: "error", message: { text: "Analysis timed out." } }],
+      }],
+      results: [],
+    }],
+  }), "utf8");
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
+  fs.writeFileSync(configPath, JSON.stringify({
+    project_root: ".",
+    source_roots: ["src"],
+    output_dir: "target/analysis",
+    sarif_inputs: [
+      { path: "codeql.sarif", name: "codeql", required: true },
+      { path: "semgrep.sarif", name: "semgrep", required: false },
+    ],
+  }), "utf8");
+
+  const config = loadConfig(configPath);
+  const [artifact] = runMeasure(config, "quality.sarif", "test sarif") as [ToolArtifact];
+  const finding = artifact.records?.find((record) => record.original_rule_id === "js/sql-injection");
+  assert.equal(requiredToolStatus(artifact, "codeql_1").complete, true);
+  assert.equal(requiredToolStatus(artifact, "semgrep_2").complete, false);
+  assert.equal(finding?.file, "src/query.ts");
+  assert.equal(finding?.end_column, 27);
+  assert.equal((finding?.partial_fingerprints as Record<string, string>).primaryLocationLineHash, "fingerprint-1");
+  assert.equal((finding?.automation_details as { id?: string }).id, "security/pr");
+  assert.ok(finding?.related_locations?.some((location) => location.role === "source"));
+  assert.ok(finding?.related_locations?.some((location) => location.role === "sink"));
+  assert.ok(Array.isArray(finding?.sarif_fixes) && finding.sarif_fixes.length > 0);
+  assert.ok(artifact.records?.some((record) => record.kind === "sarif_invocation_incomplete" && record.source === "Semgrep"));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 

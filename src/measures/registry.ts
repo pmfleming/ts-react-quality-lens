@@ -5,6 +5,7 @@ import { measureCorrectnessCatalog } from "./correctness.js";
 import { measureDependencyHealth } from "./dependency.js";
 import { measureHotspots } from "./hotspots.js";
 import { measurePackageHealth } from "./package-health.js";
+import { measureSarif } from "./sarif.js";
 import {
   measureEscapeHatches,
   measureLeverage,
@@ -33,6 +34,7 @@ export const MEASURE_ORDER = [
   "quality.react_health",
   "quality.cleanup",
   "quality.package_health",
+  "quality.sarif",
   "correctness.all",
   "map.architecture",
 ] as const;
@@ -47,6 +49,7 @@ export const MEASURE_TASKS = new Map<string, MeasureTask>(
     ["quality.dependency_health", { handler: measureDependencyHealth }],
     ["quality.cleanup", { handler: measureCleanup }],
     ["quality.package_health", { handler: measurePackageHealth }],
+    ["quality.sarif", { handler: measureSarif }],
     ["correctness.catalog", { handler: (config, command, context) => measureCorrectnessCatalog(config, command, false, context) }],
     ["quality.locality_dynamic", { handler: measureLocality, prerequisites: ["correctness.catalog"] }],
     ["quality.locality_leverage", { handler: measureLeverage }],
