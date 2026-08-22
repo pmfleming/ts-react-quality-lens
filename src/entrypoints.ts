@@ -45,6 +45,7 @@ function packageEntryReferences(config: Config, packageJson: PackageJson | null,
     ...Object.values(packageJson?.scripts ?? {}).flatMap((command) =>
       scriptFileReferences(command).flatMap((file) => sourceEntryReferences(config, file, "npm_script", "package.json#scripts", packageRoot)),
     ),
+    ...htmlModuleEntryReferences(config, packageRoot),
     ...sourceEntryReferences(config, packageJson?.main, "package_main", "package.json#main", packageRoot),
     ...sourceEntryReferences(config, packageJson?.module, "package_module", "package.json#module", packageRoot),
     ...sourceEntryReferences(config, packageJson?.types ?? packageJson?.typings, "package_types", "package.json#types", packageRoot),
@@ -60,6 +61,19 @@ function configuredPublicApiReferences(config: Config): EntryPointReference[] {
       ? []
       : sourceEntryReferences(config, pattern, "configured_public_api", "config.public_api.entry"),
   );
+}
+
+function htmlModuleEntryReferences(config: Config, packageRoot: string): EntryPointReference[] {
+  const htmlPath = path.join(packageRoot, "index.html");
+  if (!fs.existsSync(htmlPath)) return [];
+  const html = fs.readFileSync(htmlPath, "utf8");
+  return [...html.matchAll(/<script\b[^>]*>/gi)].flatMap(([tag]) => {
+    if (!/\btype=["']module["']/i.test(tag)) return [];
+    const source = tag.match(/\bsrc=["']([^"']+)["']/i)?.[1];
+    if (!source || /^(?:[a-z]+:)?\/\//i.test(source)) return [];
+    const file = source.replace(/^\//, "").split(/[?#]/, 1)[0];
+    return sourceEntryReferences(config, file, "html_module", "index.html#script[type=module]", packageRoot);
+  });
 }
 
 function scriptFileReferences(command: string): string[] {

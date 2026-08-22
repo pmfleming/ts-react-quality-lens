@@ -77,7 +77,10 @@ export function jscpdCloneGroup(config: Config, duplicate: JscpdDuplicate, index
   const instances = [first, second]
     .filter((item): item is typeof item & { name: string } => typeof item.name === "string")
     .map((item) => ({
-      file: toPosix(path.relative(config.projectRoot, path.resolve(item.name))),
+      file: toPosix(path.relative(
+        config.projectRoot,
+        path.isAbsolute(item.name) ? item.name : path.resolve(config.projectRoot, item.name),
+      )),
       start_line: item.start ?? item.startLoc?.line ?? null,
       end_line: item.end ?? item.endLoc?.line ?? null,
     }));

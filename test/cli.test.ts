@@ -158,6 +158,8 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(clones.summary.jscpd_clone_groups > 0);
   assert.ok(clones.summary.duplication_records > 0);
   assert.ok(clones.records?.some((record) => record.kind === "duplication_pressure"));
+  const cloneGroups = clones.groups as Array<{ instances: Array<{ file: string }> }>;
+  assert.ok(cloneGroups.flatMap((group) => group.instances).every((instance) => !instance.file.startsWith("..")));
 
   const reactHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "react_health.json"), "utf8")) as ToolArtifact &
     SummaryArtifact<{ hook_lint_findings: number }>;
@@ -708,6 +710,8 @@ test("project analysis marks package tool entrypoints", () => {
   );
   fs.writeFileSync(path.join(tempDir, "bin", "tool.ts"), "export function run(): void {}\n", "utf8");
   fs.writeFileSync(path.join(tempDir, "src", "index.ts"), "export const api = 1;\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "src", "browser.ts"), "export const browser = true;\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "index.html"), '<script type="module" src="/src/browser.ts"></script>\n', "utf8");
   fs.writeFileSync(path.join(tempDir, "scripts", "smoke.ts"), "export const smoke = true;\n", "utf8");
   fs.writeFileSync(
     path.join(tempDir, "ts-react-quality-lens.config.json"),
@@ -726,8 +730,9 @@ test("project analysis marks package tool entrypoints", () => {
     summary: { entrypoint_modules?: number };
     modules: Array<{ file: string; entrypoint_roles: string[] }>;
   };
-  assert.equal(context.summary.entrypoint_modules, 3);
+  assert.equal(context.summary.entrypoint_modules, 4);
   assert.deepEqual(context.modules.find((module) => module.file === "bin/tool.ts")?.entrypoint_roles, ["cli_bin"]);
+  assert.deepEqual(context.modules.find((module) => module.file === "src/browser.ts")?.entrypoint_roles, ["html_module"]);
   assert.deepEqual(context.modules.find((module) => module.file === "src/index.ts")?.entrypoint_roles, ["package_main"]);
   assert.deepEqual(context.modules.find((module) => module.file === "scripts/smoke.ts")?.entrypoint_roles, ["npm_script"]);
 
@@ -942,20 +947,27 @@ test("analysis handles inline type imports and default export assignments", () =
 test("cleanup honors configured public API exports", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-public-api-`));
   fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "tests"), { recursive: true });
   fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "public-api-fixture", type: "module" }), "utf8");
   fs.writeFileSync(
     path.join(tempDir, "tsconfig.json"),
     JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" }, include: ["src"] }),
     "utf8",
   );
-  fs.writeFileSync(path.join(tempDir, "src", "lib.ts"), "export const publicHelper = 1;\nexport const unusedHelper = 2;\n", "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "src", "lib.ts"),
+    "export const publicHelper = 1;\nexport const testHelper = 2;\nexport const unusedHelper = 3;\n",
+    "utf8",
+  );
   fs.writeFileSync(path.join(tempDir, "src", "index.ts"), "export {};\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "tests", "lib.test.ts"), "import { testHelper } from '../src/lib.js';\nvoid testHelper;\n", "utf8");
   fs.writeFileSync(
     path.join(tempDir, "ts-react-quality-lens.config.json"),
     JSON.stringify({
       project_name: "public-api-fixture",
       project_root: ".",
       source_roots: ["src"],
+      test_roots: ["tests"],
       output_dir: "target/analysis",
       tsconfig: "tsconfig.json",
       public_api: { exports: [{ file: "src/lib.ts", names: ["publicHelper"] }] },
@@ -967,6 +979,7 @@ test("cleanup honors configured public API exports", () => {
   const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
   assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
   assert.ok(!cleanup.disagreements?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
+  assert.ok(!cleanup.disagreements?.some((record) => record.id === "cleanup:unused-export:src/lib:testHelper"));
   assert.ok(cleanup.disagreements?.some((record) =>
     record.id === "cleanup:unused-export:src/lib:unusedHelper" &&
     record.semantic_decision === "disagreed",
@@ -989,9 +1002,13 @@ test("cleanup aligns script binaries, declaration-surface types, and canonical r
       type: "module",
       main: "./dist/index.js",
       scripts: { build: "fixture-tsc -p tsconfig.json" },
-      devDependencies: { "aliased-compiler": "npm:compiler-implementation@1.0.0" },
+      dependencies: { "platform-package": "1.0.0" },
+      devDependencies: { "aliased-compiler": "npm:compiler-implementation@1.0.0", "configured-plugin": "1.0.0" },
     }),
   );
+  fs.mkdirSync(path.join(tempDir, "android"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "import plugin from 'configured-plugin';\nvoid plugin;\n");
+  fs.writeFileSync(path.join(tempDir, "android", "settings.gradle"), "includeBuild '../node_modules/platform-package/native'\n");
   fs.writeFileSync(
     path.join(tempDir, "tsconfig.json"),
     JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" }, include: ["src"] }),
@@ -1019,7 +1036,9 @@ test("cleanup aligns script binaries, declaration-surface types, and canonical r
   const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
   runMeasure(config, "quality.cleanup", "test cleanup semantics");
   const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
-  assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-dependency:aliased-compiler"));
+  assert.ok(!cleanup.records?.some((record) => record.name === "aliased-compiler"));
+  assert.ok(!cleanup.records?.some((record) => record.name === "configured-plugin"));
+  assert.ok(!cleanup.records?.some((record) => record.name === "platform-package"));
   assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/runner:Options"));
   assert.ok(!cleanup.records?.some((record) => record.kind === "duplicate_export" && record.name === "run"));
   assert.ok(cleanup.records?.some((record) => record.kind === "duplicate_export" && record.name === "shared"));
@@ -1128,6 +1147,7 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
       modules: [
         { source: "src/a.ts", dependencies: [{ resolved: "src/b.ts", cycle: true }] },
         { source: "src/b.ts", dependencies: [{ resolved: "src/a.ts", cycle: [{ name: "src/a.ts" }] }] },
+        { source: "node_modules/example/a.js", dependencies: [{ resolved: "node_modules/example/b.js", cycle: ["node_modules/example/a.js"] }] },
       ],
       summary: {},
     }),

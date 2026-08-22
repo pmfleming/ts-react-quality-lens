@@ -3,6 +3,7 @@ import module from "node:module";
 import path from "node:path";
 import * as ts from "typescript";
 import { isRecord, parseJson } from "../collections.js";
+import { analyzeModule } from "../extract.js";
 import { isEntrypointFile, packageEntryFiles, readPackageJson } from "../entrypoints.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
@@ -74,6 +75,7 @@ export function measureCleanup(config: Config, command: string, context: Analysi
       unused_files: records.filter((record) => record.kind === "unused_file").length,
       unused_exports: records.filter((record) => record.kind === "unused_export").length,
       unused_dependencies: records.filter((record) => record.kind === "unused_dependency").length,
+      unused_dev_dependencies: records.filter((record) => record.kind === "unused_dev_dependency").length,
       unlisted_dependencies: records.filter((record) => record.kind === "unlisted_dependency").length,
       type_only_production_dependencies: records.filter((record) => record.kind === "type_only_production_dependency").length,
       test_only_production_dependencies: records.filter((record) => record.kind === "test_only_production_dependency").length,
@@ -227,7 +229,7 @@ function confirmedCleanupRecord(record: ScoredRecord, match: ScoredRecord): Scor
 function cleanupValidation(record: ScoredRecord, knip: KnipResult): "disagreed" | "not_comparable" | "excluded_by_tool" | "unavailable" {
   if (!knip.complete) return "unavailable";
   if (dependencyExcludedByKnip(record, knip.excluded_dependencies)) return "excluded_by_tool";
-  if (isDependencyRecord(record) && !knip.exclusions_complete) return "not_comparable";
+  if (record.validation_scope_complete === false || isDependencyRecord(record) && !knip.exclusions_complete) return "not_comparable";
   return typeof record.kind === "string" && KNIP_COMPARABLE_KINDS.has(record.kind) ? "disagreed" : "not_comparable";
 }
 
@@ -271,7 +273,12 @@ function cleanupUsage(
     opaqueExportUsage: new Set(),
     externalImports: new Map(),
   };
-  for (const edge of project.imports) collectImportUsage(project, usage, edge);
+  const sourcePaths = new Set(project.sourceFiles.map((file) => file.path));
+  const testModules = project.testFiles
+    .filter((file) => !sourcePaths.has(file.path))
+    .map((file) => analyzeModule(config, file, project.tsProject));
+  const usageModules = [...project.modules, ...testModules];
+  for (const edge of usageModules.flatMap((moduleRecord) => moduleRecord.imports)) collectImportUsage(usageModules, usage, edge);
   for (const dependency of packageObservedDependencies(config, packageJson, declared)) {
     markExternalUsage(usage.externalImports, dependency, {
       source: true,
@@ -282,7 +289,7 @@ function cleanupUsage(
   return usage;
 }
 
-function collectImportUsage(project: ProjectAnalysis, usage: CleanupUsage, edge: ProjectAnalysis["imports"][number]): void {
+function collectImportUsage(modules: ModuleRecord[], usage: CleanupUsage, edge: ProjectAnalysis["imports"][number]): void {
   if (edge.to_kind === "relative") {
     usage.internalInbound.set(edge.to, (usage.internalInbound.get(edge.to) ?? 0) + 1);
     if (edge.namespace_import || edge.side_effect_import || edge.import_kind === "dynamic") usage.opaqueExportUsage.add(edge.to);
@@ -290,7 +297,7 @@ function collectImportUsage(project: ProjectAnalysis, usage: CleanupUsage, edge:
   }
   if (edge.to_kind !== "external" || BUILTINS.has(edge.specifier)) return;
   const packageName = externalPackageName(edge.specifier);
-  const fromIsTest = project.modules.find((moduleRecord) => moduleRecord.id === edge.from)?.sourceFile.isTest ?? false;
+  const fromIsTest = modules.find((moduleRecord) => moduleRecord.id === edge.from)?.sourceFile.isTest ?? false;
   markExternalUsage(usage.externalImports, packageName, {
     source: !fromIsTest,
     test: fromIsTest,
@@ -373,7 +380,9 @@ function dependencyHygieneRecords(
   return [
     ...[...sets.allDeclared]
       .filter((dependency) => !imports.has(dependency))
-      .map((dependency) => dependencyRecord("unused_dependency", dependency, 55, "medium", "declared_but_not_observed")),
+      .map((dependency) => sets.devDependencies.has(dependency)
+        ? { ...dependencyRecord("unused_dev_dependency", dependency, 45, "medium", "dev_dependency_not_observed"), validation_scope_complete: false }
+        : dependencyRecord("unused_dependency", dependency, 55, "medium", "declared_but_not_observed")),
     ...imported
       .filter(([dependency]) => !sets.allDeclared.has(dependency))
       .map(([dependency]) => dependencyRecord("unlisted_dependency", dependency, 75, "high", "observed_but_not_declared")),
@@ -548,6 +557,7 @@ function dependencySetsFor(packageJson: PackageJson | null) {
   const optionalDependencies = new Set(Object.keys(packageJson?.optionalDependencies ?? {}));
   return {
     dependencies,
+    devDependencies,
     allDeclared: new Set([...dependencies, ...devDependencies, ...peerDependencies, ...optionalDependencies]),
   };
 }
@@ -569,9 +579,26 @@ function externalPackageName(specifier: string): string {
 function packageObservedDependencies(config: Config, packageJson: PackageJson | null, declared: Set<string>): Set<string> {
   return new Set([
     ...scriptDependencyNames(config.projectRoot, packageJson?.scripts, declared),
+    ...configurationDependencyNames(config.projectRoot, declared),
     ...workspaceTypeDependencies(config),
     ...[...TOOL_ADAPTER_DEPENDENCIES].filter((dependency) => declared.has(dependency)),
   ]);
+}
+
+function configurationDependencyNames(root: string, declared: Set<string>): string[] {
+  const rootConfigs = fs.readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /(?:config\.[cm]?[jt]s|rc(?:\.[^.]+)?|\.config\.[cm]?[jt]s)$/.test(entry.name))
+    .map((entry) => path.join(root, entry.name));
+  const nativeManifests = [
+    path.join(root, "android", "settings.gradle"),
+    path.join(root, "android", "capacitor.settings.gradle"),
+    path.join(root, "ios", "App", "Podfile"),
+  ];
+  const evidence = [...rootConfigs, ...nativeManifests]
+    .filter((file) => fs.existsSync(file))
+    .map((file) => fs.readFileSync(file, "utf8"))
+    .join("\n");
+  return [...declared].filter((dependency) => evidence.includes(dependency));
 }
 
 function scriptDependencyNames(root: string, scripts: PackageJson["scripts"], declared: Set<string>): string[] {

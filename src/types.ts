@@ -90,6 +90,7 @@ export type PackageJson = {
 export type EntryPointRole =
   | "cli_bin"
   | "npm_script"
+  | "html_module"
   | "package_export"
   | "package_main"
   | "package_module"

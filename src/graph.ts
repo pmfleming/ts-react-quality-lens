@@ -137,6 +137,7 @@ class TarjanCycleFinder {
 }
 
 export function dependencyCruiserEdges(project: { imports: ImportRecord[] }, modules: DependencyCruiserModule[]) {
+  const sourceModules = new Set(project.imports.map((edge) => edge.from));
   const lineIndex = new Map<string, number>();
   const targetIndex = new Map<string, string>();
   for (const edge of project.imports) {
@@ -147,7 +148,7 @@ export function dependencyCruiserEdges(project: { imports: ImportRecord[] }, mod
   }
   return modules.flatMap((module) => {
     const from = module.source ? stripSourceExtension(toPosix(module.source)) : null;
-    if (!from || isTestPath(from)) return [];
+    if (!from || isTestPath(from) || !sourceModules.has(from)) return [];
     return (module.dependencies ?? [])
       .map((dependency) => ({
         from,
@@ -177,7 +178,7 @@ export function dependencyCruiserCycles(config: Config, modules: DependencyCruis
         const files = [from, ...cycle.map((item) => stripSourceExtension(toPosix(item)))]
           .filter((file): file is string => typeof file === "string" && file.length > 0)
           .map((file) => stripProjectPrefix(config, file));
-        if (files.length > 1) cycles.push(files);
+        if (files.length > 1 && files.every((file) => isMeasuredSource(config, file))) cycles.push(files);
       }
     }
   }
@@ -226,6 +227,11 @@ function normalizeDependencyCruiserCycle(cycle: DependencyCruiserDependency["cyc
       return null;
     })
     .filter((item): item is string => typeof item === "string");
+}
+
+function isMeasuredSource(config: Config, file: string): boolean {
+  const absolute = path.resolve(config.projectRoot, file);
+  return config.sourceRoots.some((root) => absolute === root || absolute.startsWith(`${root}${path.sep}`));
 }
 
 function stripProjectPrefix(config: Config, value: string): string {
