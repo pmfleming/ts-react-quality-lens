@@ -70,6 +70,18 @@
         "ruleset": { "enum": ["classic-v1", "recommended-v2"] }
       }
     },
+    "accessibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "components": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "polymorphic_prop_name": { "type": "string" }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,

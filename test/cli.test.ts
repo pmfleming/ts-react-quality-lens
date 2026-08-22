@@ -134,8 +134,13 @@ test("measure all writes MVP artifacts", () => {
   const reactHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "react_health.json"), "utf8")) as ToolArtifact &
     SummaryArtifact<{ hook_lint_findings: number }>;
   const reactHooks = requiredToolStatus(reactHealth, "eslint_react_hooks");
+  const jsxA11y = requiredToolStatus(reactHealth, "jsx_a11y");
   assert.equal(reactHooks.available, true);
   assert.equal(reactHooks.ran, true);
+  assert.equal(jsxA11y.available, true);
+  assert.equal(jsxA11y.ran, true);
+  assert.equal(jsxA11y.complete, true);
+  assert.ok(!reactHealth.records?.some((record) => record.source === "jsx-a11y-heuristic"));
   assert.ok(reactHealth.summary.hook_lint_findings > 0);
   assert.ok(reactHealth.records?.some((record: ScoredRecord) => record.source === "framework-adapter"));
 
@@ -255,6 +260,7 @@ test("init writes a starter schema-backed config", async () => {
   assert.equal(raw.$schema, "./ts-react-quality-lens.config.schema.json");
   assert.equal(raw.policy.profile, "recommended");
   assert.equal(raw.react.ruleset, "recommended-v2");
+  assert.equal(raw.accessibility.enabled, true);
   assert.equal(raw.audit.gate, "new-only");
   await assert.rejects(() => runCli(["init", "--config", configPath]), /Config already exists/);
   fs.rmSync(tempDir, { recursive: true, force: true });
@@ -573,6 +579,35 @@ test("react hooks lint resolves dependencies when output dir is outside the proj
   fs.rmSync(config.outputDir, { recursive: true, force: true });
 });
 
+test("jsx-a11y findings replace heuristics when managed lint completes", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-a11y-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "a11y-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "src", "Card.tsx"),
+    'export function Card() { return <img src="avatar.png" />; }\n',
+    "utf8",
+  );
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({ project_root: ".", source_roots: ["src"], output_dir: "target/analysis" }),
+    "utf8",
+  );
+
+  const config = loadConfig(configPath);
+  const [managed] = runMeasure(config, "quality.react_health", "test managed a11y") as [ToolArtifact];
+  assert.equal(requiredToolStatus(managed, "jsx_a11y").complete, true);
+  assert.ok(managed.records?.some((record) => record.rule_id === "jsx-a11y/alt-text" && record.source === "eslint-plugin-jsx-a11y"));
+  assert.ok(!managed.records?.some((record) => record.source === "jsx-a11y-heuristic"));
+
+  config.accessibility.enabled = false;
+  const [fallback] = runMeasure(config, "quality.react_health", "test fallback a11y") as [ToolArtifact];
+  assert.equal(requiredToolStatus(fallback, "jsx_a11y").ran, false);
+  assert.ok(fallback.records?.some((record) => record.kind === "img_missing_alt" && record.source === "jsx-a11y-heuristic"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("dependency health tolerates dependency-cruiser cycle shape variants", () => {
   const config = loadConfig(fixtureConfig);
   config.outputDir = path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-depcruise`);
@@ -611,6 +646,14 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
       ruleset: "recommended-v2",
       complete: false,
     }),
+    jsxA11yLint: () => ({
+      available: false,
+      ran: false,
+      reason: "not used",
+      messages: [],
+      version: null,
+      complete: false,
+    }),
     typedLint: () => ({ available: false, ran: false, reason: "not used", messages: [], version: null, complete: false }),
   };
 
@@ -646,7 +689,7 @@ test("golden fixture exercises edge-case artifact signals", () => {
   const react = JSON.parse(fs.readFileSync(path.join(config.outputDir, "react_health.json"), "utf8")) as Artifact &
     SummaryArtifact<{ a11y_findings: number }>;
   assert.ok(react.summary.a11y_findings > 0);
-  assert.ok(react.records?.some((record) => record.kind === "img_missing_alt"));
+  assert.ok(react.records?.some((record) => record.rule_id === "jsx-a11y/alt-text" && record.source === "eslint-plugin-jsx-a11y"));
   assert.ok(react.records?.some((record) => record.id === "framework:transitive-client-server-boundary:src/app/page.tsx"));
 
   const leverage = JSON.parse(fs.readFileSync(path.join(config.outputDir, "leverage_metrics.json"), "utf8")) as Artifact;

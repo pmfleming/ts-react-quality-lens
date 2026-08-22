@@ -32,6 +32,7 @@ export type RawConfig = {
   public_api?: PublicApiConfig;
   cache?: CacheConfig;
   react?: ReactConfig;
+  accessibility?: AccessibilityConfig;
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -53,6 +54,12 @@ type CacheConfig = {
 
 export type ReactConfig = {
   ruleset?: ReactRuleset;
+};
+
+export type AccessibilityConfig = {
+  enabled?: boolean;
+  components?: Record<string, string>;
+  polymorphic_prop_name?: string;
 };
 
 export type SuppressionConfig = {
@@ -149,6 +156,11 @@ export type Config = {
   };
   react: {
     ruleset: ReactRuleset;
+  };
+  accessibility: {
+    enabled: boolean;
+    components: Record<string, string>;
+    polymorphicPropName: string | null;
   };
   policy: {
     profile: PolicyProfile;
@@ -325,6 +337,7 @@ export type AnalysisContext = {
   jscpd: () => JscpdResult;
   dependencyCruiser: () => DependencyCruiserResult;
   reactHooksLint: () => EslintReactHooksResult;
+  jsxA11yLint: () => EslintAccessibilityResult;
   typedLint: () => EslintTypeAwareResult;
 };
 
@@ -542,6 +555,12 @@ export type EslintReactHooksResult = ToolResult & {
   messages: EslintMessage[];
   version: string | null;
   ruleset: ReactRuleset;
+  complete: boolean;
+};
+
+export type EslintAccessibilityResult = ToolResult & {
+  messages: EslintMessage[];
+  version: string | null;
   complete: boolean;
 };
 

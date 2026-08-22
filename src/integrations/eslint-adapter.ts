@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { packageJsonUrl } from "../package-root.js";
-import type { Config, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult, ReactRuleset } from "../types.js";
+import type { Config, EslintAccessibilityResult, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult, ReactRuleset } from "../types.js";
 import {
   existingRelativeRoots,
   managedPackageJsonUrl,
@@ -28,6 +28,33 @@ export function runTypedLint(config: Config): EslintTypeAwareResult {
     };
   }
   const result = runTemporaryEslint(config, "typed", typedLintConfig(config), undefined, true);
+  return {
+    ...result,
+    version,
+    complete: result.ran && !result.messages.some((message) => message.rule_id === "eslint/parser"),
+  };
+}
+
+export function runJsxA11yLint(config: Config): EslintAccessibilityResult {
+  const version = toolPackageVersion("eslint-plugin-jsx-a11y");
+  if (!config.accessibility.enabled) {
+    return {
+      available: version !== null,
+      ran: false,
+      reason: "managed accessibility lint is disabled",
+      duration_ms: 0,
+      messages: [],
+      version,
+      complete: false,
+    };
+  }
+  const result = runTemporaryEslint(
+    config,
+    "jsx-a11y",
+    jsxA11yConfig(managedPackageJsonUrl(), config),
+    "jsx-a11y/",
+    true,
+  );
   return {
     ...result,
     version,
@@ -128,6 +155,27 @@ export default [{
       "ts-ignore": true, "ts-nocheck": true, "minimumDescriptionLength": 3
     }]
   }
+}];
+`;
+}
+
+function jsxA11yConfig(toolPackageUrl: string, config: Config): string {
+  const settings = {
+    components: config.accessibility.components,
+    ...(config.accessibility.polymorphicPropName
+      ? { polymorphicPropName: config.accessibility.polymorphicPropName }
+      : {}),
+  };
+  return `import { createRequire } from "node:module";
+const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
+const jsxA11y = toolRequire("eslint-plugin-jsx-a11y");
+const tsParser = toolRequire("@typescript-eslint/parser");
+export default [{
+  files: ["**/*.{js,jsx,ts,tsx}"], ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
+  languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module" } },
+  plugins: { "jsx-a11y": jsxA11y },
+  settings: { "jsx-a11y": ${JSON.stringify(settings)} },
+  rules: jsxA11y.configs.recommended.rules
 }];
 `;
 }

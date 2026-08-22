@@ -5,6 +5,7 @@ import { isRecord } from "./collections.js";
 import { readPackageJson } from "./entrypoints.js";
 import { packageRootFrom } from "./package-root.js";
 import type {
+  AccessibilityConfig,
   AuditConfig,
   Config,
   Confidence,
@@ -133,6 +134,7 @@ export function loadConfig(configArg?: string | null): Config {
     publicApi: normalizePublicApi(rawConfig.public_api),
     cache: normalizeCache(outputDir, rawConfig.cache),
     react: normalizeReact(rawConfig.react),
+    accessibility: normalizeAccessibility(rawConfig.accessibility),
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
@@ -372,6 +374,14 @@ function normalizeCache(outputDir: string, value: RawConfig["cache"] | undefined
 
 function normalizeReact(value: ReactConfig | undefined): Config["react"] {
   return { ruleset: value?.ruleset ?? "recommended-v2" };
+}
+
+function normalizeAccessibility(value: AccessibilityConfig | undefined): Config["accessibility"] {
+  return {
+    enabled: value?.enabled !== false,
+    components: value?.components ?? {},
+    polymorphicPropName: value?.polymorphic_prop_name ?? null,
+  };
 }
 
 function normalizePolicy(value: PolicyConfig | undefined, hasTsconfig: boolean, hasTestCommand: boolean): Config["policy"] {

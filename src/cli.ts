@@ -200,6 +200,9 @@ function writeInitialConfig(config: Config, force: boolean): void {
     react: {
       ruleset: "recommended-v2",
     },
+    accessibility: {
+      enabled: true,
+    },
     policy: {
       profile: "recommended",
     },

@@ -182,9 +182,11 @@ export function measureLeverage(config: Config, command: string, context: Analys
 export function measureReactHealth(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const hooksLint = context.reactHooksLint();
+  const a11yLint = context.jsxA11yLint();
   const records = [
-    ...project.modules.flatMap(reactModuleRecords),
+    ...project.modules.flatMap((module) => reactModuleRecords(module, !a11yLint.complete)),
     ...(hooksLint.messages ?? []).map(hookLintRecord),
+    ...(a11yLint.messages ?? []).map(a11yLintRecord),
     ...frameworkRiskRecords(project),
   ];
   const artifact = {
@@ -196,6 +198,9 @@ export function measureReactHealth(config: Config, command: string, context: Ana
         eslint_react_hooks_available: hooksLint.available,
         eslint_react_hooks_ran: hooksLint.ran,
         eslint_react_hooks_complete: hooksLint.complete,
+        jsx_a11y_available: a11yLint.available,
+        jsx_a11y_ran: a11yLint.ran,
+        jsx_a11y_complete: a11yLint.complete,
       }),
       sourceSetHash(project),
     ),
@@ -203,7 +208,9 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       components: project.modules.reduce((count, module) => count + module.components.length, 0),
       records: records.length,
       hook_lint_findings: hooksLint.messages?.length ?? 0,
-      a11y_findings: records.filter((record) => record.source === "jsx-a11y-heuristic").length,
+      a11y_findings: records.filter((record) => ["eslint-plugin-jsx-a11y", "jsx-a11y-heuristic"].includes(String(record.source))).length,
+      a11y_tool_findings: a11yLint.messages.length,
+      a11y_heuristic_findings: records.filter((record) => record.source === "jsx-a11y-heuristic").length,
       high_risk_components: records.filter((record) => record.risk === "high").length,
     },
     framework: project.frameworkDetails,
@@ -216,6 +223,14 @@ export function measureReactHealth(config: Config, command: string, context: Ana
         version: hooksLint.version,
         ruleset: hooksLint.ruleset,
       },
+      jsx_a11y: {
+        available: a11yLint.available,
+        ran: a11yLint.ran,
+        complete: a11yLint.complete,
+        reason: a11yLint.reason ?? null,
+        version: a11yLint.version,
+        ruleset: "jsx-a11y-recommended-v1",
+      },
     },
     records,
   };
@@ -223,8 +238,11 @@ export function measureReactHealth(config: Config, command: string, context: Ana
   return artifact;
 }
 
-function reactModuleRecords(module: ModuleRecord): ScoredRecord[] {
-  return [...jsxA11yRecords(module), ...module.components.map((component) => componentHealthRecord(module, component))];
+function reactModuleRecords(module: ModuleRecord, includeA11yFallback: boolean): ScoredRecord[] {
+  return [
+    ...(includeA11yFallback ? jsxA11yRecords(module) : []),
+    ...module.components.map((component) => componentHealthRecord(module, component)),
+  ];
 }
 
 function componentHealthRecord(module: ModuleRecord, component: FunctionRecord): ScoredRecord {
@@ -283,6 +301,29 @@ function reactRuleDisposition(ruleName: string): FindingDisposition {
   return "review";
 }
 
+function a11yLintRecord(message: EslintMessage): ScoredRecord {
+  const kind = message.rule_id.replace(/^jsx-a11y\//, "a11y_").replace(/-/g, "_");
+  return {
+    id: `jsx-a11y:${message.rule_id}:${message.file}:${message.line ?? 0}:${message.column ?? 0}`,
+    rule_id: message.rule_id,
+    kind,
+    evidence_kind: "tool-rule",
+    disposition: "warn",
+    finding_confidence: "high",
+    scope: "file",
+    module_id: message.file.replace(/\.[cm]?[jt]sx?$/, ""),
+    file: message.file,
+    line: message.line,
+    column: message.column,
+    score: 60,
+    severity: "medium",
+    risk: "medium",
+    source: "eslint-plugin-jsx-a11y",
+    message: message.message,
+    signals: [{ kind, message: message.message }],
+  };
+}
+
 function jsxA11yRecords(module: ModuleRecord): ScoredRecord[] {
   const records: ScoredRecord[] = [];
   for (const match of module.text.matchAll(/<img\b(?![^>]*\balt=)[^>]*>/g)) {
@@ -302,6 +343,11 @@ function a11yRecord(module: ModuleRecord, kind: string, index: number, score: nu
     file: module.file,
     line,
     kind,
+    rule_id: `ts-react-quality-lens/${kind}`,
+    evidence_kind: "heuristic",
+    disposition: "review",
+    finding_confidence: "medium",
+    scope: "file",
     score,
     risk: riskForScore(score),
     source: "jsx-a11y-heuristic",

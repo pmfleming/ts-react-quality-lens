@@ -12,6 +12,7 @@ const TOOL_ADAPTER_DEPENDENCIES = new Set([
   "@typescript-eslint/parser",
   "dependency-cruiser",
   "eslint",
+  "eslint-plugin-jsx-a11y",
   "eslint-plugin-react-hooks",
   "jscpd",
   "typescript",
