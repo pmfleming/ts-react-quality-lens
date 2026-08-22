@@ -254,6 +254,7 @@ test("init writes a starter schema-backed config", async () => {
   const raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
   assert.equal(raw.$schema, "./ts-react-quality-lens.config.schema.json");
   assert.equal(raw.policy.profile, "recommended");
+  assert.equal(raw.react.ruleset, "recommended-v2");
   assert.equal(raw.audit.gate, "new-only");
   await assert.rejects(() => runCli(["init", "--config", configPath]), /Config already exists/);
   fs.rmSync(tempDir, { recursive: true, force: true });
@@ -565,6 +566,10 @@ test("react hooks lint resolves dependencies when output dir is outside the proj
 
   assert.equal(reactHooks.available, true);
   assert.equal(reactHooks.ran, true);
+  assert.equal(reactHooks.complete, true);
+  assert.equal(typeof reactHooks.version, "string");
+  assert.equal(reactHooks.ruleset, "recommended-v2");
+  assert.ok(reactHealth.records?.some((record) => record.rule_id === "react-hooks/set-state-in-effect" && record.disposition === "review"));
   fs.rmSync(config.outputDir, { recursive: true, force: true });
 });
 
@@ -597,7 +602,15 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
       ],
       summary: {},
     }),
-    reactHooksLint: () => ({ available: false, ran: false, reason: "not used", messages: [] }),
+    reactHooksLint: () => ({
+      available: false,
+      ran: false,
+      reason: "not used",
+      messages: [],
+      version: null,
+      ruleset: "recommended-v2",
+      complete: false,
+    }),
     typedLint: () => ({ available: false, ran: false, reason: "not used", messages: [], version: null, complete: false }),
   };
 

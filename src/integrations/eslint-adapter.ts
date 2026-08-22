@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { packageJsonUrl } from "../package-root.js";
-import type { Config, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult } from "../types.js";
+import type { Config, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult, ReactRuleset } from "../types.js";
 import {
   existingRelativeRoots,
   managedPackageJsonUrl,
@@ -37,13 +37,19 @@ export function runTypedLint(config: Config): EslintTypeAwareResult {
 
 export function runReactHooksLint(config: Config): EslintReactHooksResult {
   const projectPackageUrl = packageJsonUrl(config.projectRoot);
-  return runTemporaryEslint(
+  const result = runTemporaryEslint(
     config,
     "react-hooks",
-    reactHooksConfig(projectPackageUrl, managedPackageJsonUrl()),
+    reactHooksConfig(projectPackageUrl, managedPackageJsonUrl(), config.react.ruleset),
     "react-hooks/",
     false,
   );
+  return {
+    ...result,
+    version: toolPackageVersion("eslint-plugin-react-hooks"),
+    ruleset: config.react.ruleset,
+    complete: result.ran && !result.messages.some((message) => message.rule_id === "eslint/parser"),
+  };
 }
 
 function runTemporaryEslint(
@@ -126,18 +132,27 @@ export default [{
 `;
 }
 
-function reactHooksConfig(projectPackageUrl: string, toolPackageUrl: string): string {
+function reactHooksConfig(projectPackageUrl: string, toolPackageUrl: string, ruleset: ReactRuleset): string {
+  const classicRules = {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+  };
   return `import { createRequire } from "node:module";
 const projectRequire = createRequire(${JSON.stringify(projectPackageUrl)});
 const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
 function requireTool(name) { try { return projectRequire(name); } catch { return toolRequire(name); } }
 const reactHooks = requireTool("eslint-plugin-react-hooks");
 const tsParser = requireTool("@typescript-eslint/parser");
+const classicRules = ${JSON.stringify(classicRules)};
+const recommendedRules = reactHooks.configs?.flat?.["recommended-latest"]?.rules
+  ?? reactHooks.configs?.["recommended-latest"]?.rules
+  ?? reactHooks.configs?.flat?.recommended?.rules
+  ?? classicRules;
 export default [{
   files: ["**/*.{js,jsx,ts,tsx}"], ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
   languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module" } },
   plugins: { "react-hooks": reactHooks },
-  rules: { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "warn" }
+  rules: ${ruleset === "recommended-v2" ? "recommendedRules" : "classicRules"}
 }];
 `;
 }
@@ -159,7 +174,9 @@ function normalizeEslintMessages(
 ): EslintMessage[] {
   return results.flatMap((result) =>
     result.messages
-      .filter((message) => rulePrefix ? Boolean(message.ruleId?.startsWith(rulePrefix)) : Boolean(message.ruleId || message.fatal))
+      .filter((message) => rulePrefix
+        ? Boolean(message.ruleId?.startsWith(rulePrefix) || message.fatal)
+        : Boolean(message.ruleId || message.fatal))
       .map((message) => ({
         file: relativePath(config.projectRoot, result.filePath),
         line: message.line ?? null,

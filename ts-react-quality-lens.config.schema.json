@@ -63,6 +63,13 @@
         "enabled": { "type": "boolean" }
       }
     },
+    "react": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ruleset": { "enum": ["classic-v1", "recommended-v2"] }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,

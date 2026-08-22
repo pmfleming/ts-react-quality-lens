@@ -20,6 +20,7 @@ import type {
   PolicyProfile,
   PublicApiConfig,
   RawConfig,
+  ReactConfig,
   SuppressionConfig,
 } from "./types.js";
 
@@ -131,6 +132,7 @@ export function loadConfig(configArg?: string | null): Config {
     performanceInputs: normalizePerformanceInputs(configDir, rawConfig.performance_inputs),
     publicApi: normalizePublicApi(rawConfig.public_api),
     cache: normalizeCache(outputDir, rawConfig.cache),
+    react: normalizeReact(rawConfig.react),
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
@@ -366,6 +368,10 @@ function normalizeCache(outputDir: string, value: RawConfig["cache"] | undefined
     enabled: value?.enabled !== false,
     dir: path.join(outputDir, ".cache"),
   };
+}
+
+function normalizeReact(value: ReactConfig | undefined): Config["react"] {
+  return { ruleset: value?.ruleset ?? "recommended-v2" };
 }
 
 function normalizePolicy(value: PolicyConfig | undefined, hasTsconfig: boolean, hasTestCommand: boolean): Config["policy"] {

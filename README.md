@@ -18,6 +18,7 @@ Create `ts-react-quality-lens.config.json` in the project you want to measure:
   "output_dir": "target/analysis",
   "framework": "auto",
   "test_runner": "auto",
+  "react": { "ruleset": "recommended-v2" },
   "policy": { "profile": "recommended" }
 }
 ```
@@ -73,7 +74,7 @@ The implementation combines deterministic built-in analysis with richer optional
 - `quality.lint` writes `lint_health.json` using a versioned, managed type-aware typescript-eslint ruleset when a tsconfig is available.
 - `quality.locality_dynamic` writes `locality_metrics.json`.
 - `quality.locality_leverage` writes `leverage_metrics.json`, separating positive reuse leverage from public-surface risk.
-- `quality.react_health` writes `react_health.json` with component heuristics, framework conventions, and `eslint-plugin-react-hooks` findings when available.
+- `quality.react_health` writes `react_health.json` with component heuristics, framework conventions, and a versioned managed `eslint-plugin-react-hooks` ruleset. The default `recommended-v2` ruleset includes official React Compiler diagnostics; `classic-v1` preserves only Rules of Hooks and exhaustive dependencies.
 - `quality.dependency_health` writes `dependency_health.json` with `dependency-cruiser` graph data when available, plus built-in import parsing fallback.
 - `quality.cleanup` writes `cleanup.json` with unused files, unused exports, dependency hygiene issues, duplicate exports, and staged cleanup candidates.
 - `correctness.catalog` writes `correctness_review.json` and `test_catalog.json`.
@@ -125,6 +126,7 @@ Supported config fields:
 | `performance_inputs` | Optional bundle and render-cost JSON inputs for map performance scoring. |
 | `public_api` | Entry files and named exports that cleanup should treat as intentional public surface. |
 | `cache` | Enable or disable analysis cache metadata. |
+| `react` | Select the managed React ruleset: `recommended-v2` (default) or compatibility `classic-v1`. |
 | `policy` | Select `baseline`, `recommended`, `strict`, or `react` evidence requirements and optionally list required checks. |
 | `suppressions` | Narrow intentional findings by `id`, `file`, or `kind`, with an optional reason. |
 | `audit` | Default audit `base`, `changed_since`, `gate`, and `baseline` settings. |

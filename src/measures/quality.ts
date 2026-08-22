@@ -1,5 +1,5 @@
 import { analysisConfidence, artifactBase, countBy, createAnalysisContext, escapeRecords, frameworkRiskRecords, gitHistory, hiddenCouplingSignals, readArtifact, riskForScore, sourceSetHash, stableHash, typeHealthRecords, writeArtifact } from "../measure-shared.js";
-import type { AnalysisContext, Artifact, Config, DiagnosticRecord, EslintMessage, FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, TestRecord } from "../types.js";
+import type { AnalysisContext, Artifact, Config, DiagnosticRecord, EslintMessage, FindingDisposition, FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, TestRecord } from "../types.js";
 
 export function measureEscapeHatches(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
@@ -195,6 +195,7 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       analysisConfidence(config, project, {
         eslint_react_hooks_available: hooksLint.available,
         eslint_react_hooks_ran: hooksLint.ran,
+        eslint_react_hooks_complete: hooksLint.complete,
       }),
       sourceSetHash(project),
     ),
@@ -210,7 +211,10 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       eslint_react_hooks: {
         available: hooksLint.available,
         ran: hooksLint.ran,
+        complete: hooksLint.complete,
         reason: hooksLint.reason ?? null,
+        version: hooksLint.version,
+        ruleset: hooksLint.ruleset,
       },
     },
     records,
@@ -244,30 +248,39 @@ function componentHealthRecord(module: ModuleRecord, component: FunctionRecord):
 }
 
 function hookLintRecord(message: EslintMessage): ScoredRecord {
-  const blocks = message.rule_id === "react-hooks/rules-of-hooks";
-  const score = blocks ? 85 : 55;
+  const ruleName = message.rule_id.replace(/^react-hooks\//, "");
+  const disposition = reactRuleDisposition(ruleName);
+  const score = disposition === "block" ? 90 : disposition === "warn" ? 60 : disposition === "review" ? 45 : 20;
+  const kind = `${ruleName.replace(/-/g, "_")}_violation`;
   return {
-    id: `react-hooks:${message.file}:${message.line}:${message.rule_id}`,
+    id: `react-hooks:${message.file}:${message.line ?? 0}:${message.column ?? 0}:${message.rule_id}`,
     rule_id: message.rule_id,
-    kind: blocks ? "rules_of_hooks_violation" : "exhaustive_deps_violation",
+    kind,
     evidence_kind: "tool-rule",
-    disposition: blocks ? "block" : "warn",
+    disposition,
     finding_confidence: "high",
     scope: "file",
     module_id: message.file.replace(/\.[cm]?[jt]sx?$/, ""),
     file: message.file,
     name: message.rule_id,
     line: message.line,
+    column: message.column,
     score,
-    severity: blocks ? "high" : "medium",
-    risk: blocks ? "high" : "medium",
+    severity: disposition === "block" ? "high" : disposition === "info" ? "low" : "medium",
+    risk: disposition === "block" ? "high" : disposition === "info" ? "low" : "medium",
     source: "eslint-plugin-react-hooks",
     message: message.message,
-    signals: [{
-      kind: blocks ? "rules_of_hooks_violation" : "exhaustive_deps_violation",
-      message: message.message,
-    }],
+    signals: [{ kind, message: message.message }],
   };
+}
+
+function reactRuleDisposition(ruleName: string): FindingDisposition {
+  if (["rules-of-hooks", "set-state-in-render"].includes(ruleName)) return "block";
+  if (["exhaustive-deps", "immutability", "globals", "refs", "purity", "static-components", "error-boundaries"].includes(ruleName)) {
+    return "warn";
+  }
+  if (["unsupported-syntax"].includes(ruleName)) return "info";
+  return "review";
 }
 
 function jsxA11yRecords(module: ModuleRecord): ScoredRecord[] {

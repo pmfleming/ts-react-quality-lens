@@ -197,6 +197,9 @@ function writeInitialConfig(config: Config, force: boolean): void {
     output_dir: "target/analysis",
     framework: "auto",
     test_runner: "auto",
+    react: {
+      ruleset: "recommended-v2",
+    },
     policy: {
       profile: "recommended",
     },

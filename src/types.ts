@@ -10,6 +10,7 @@ export type EvidenceKind = "diagnostic" | "tool-rule" | "test" | "metric" | "heu
 export type FindingConfidence = "low" | "medium" | "high";
 export type PolicyProfile = "baseline" | "recommended" | "strict" | "react";
 export type PolicyCheck = "compiler" | "typed-lint" | "tests" | "react-hooks";
+export type ReactRuleset = "classic-v1" | "recommended-v2";
 export type ImportKind = "static" | "dynamic" | "type";
 type ImportTargetKind = "external" | "relative" | "unresolved";
 
@@ -30,6 +31,7 @@ export type RawConfig = {
   performance_inputs?: PerformanceInputConfig;
   public_api?: PublicApiConfig;
   cache?: CacheConfig;
+  react?: ReactConfig;
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -47,6 +49,10 @@ export type PublicApiConfig = {
 
 type CacheConfig = {
   enabled?: boolean;
+};
+
+export type ReactConfig = {
+  ruleset?: ReactRuleset;
 };
 
 export type SuppressionConfig = {
@@ -140,6 +146,9 @@ export type Config = {
   cache: {
     enabled: boolean;
     dir: string;
+  };
+  react: {
+    ruleset: ReactRuleset;
   };
   policy: {
     profile: PolicyProfile;
@@ -531,6 +540,9 @@ export type EslintMessage = {
 
 export type EslintReactHooksResult = ToolResult & {
   messages: EslintMessage[];
+  version: string | null;
+  ruleset: ReactRuleset;
+  complete: boolean;
 };
 
 export type EslintTypeAwareResult = ToolResult & {
