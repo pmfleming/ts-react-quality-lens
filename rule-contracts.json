@@ -1,0 +1,96 @@
+{
+  "$schema": "./rule-contracts.schema.json",
+  "schema_version": "1.0.0",
+  "rules": [
+    {
+      "id": "react-hooks/rules-of-hooks",
+      "owner": "upstream",
+      "behavior": "Reports Hooks called outside a React component or custom Hook, or along a conditional execution path.",
+      "runtime_rationale": "React relies on stable Hook call order to associate state with the same component invocation.",
+      "authoritative_sources": [
+        "https://react.dev/reference/rules/rules-of-hooks",
+        "https://react.dev/reference/eslint-plugin-react-hooks/lints/rules-of-hooks"
+      ],
+      "evidence_kind": "tool-rule",
+      "precision": "scope",
+      "scope": ["javascript", "typescript", "jsx", "tsx", "react"],
+      "default_disposition": "block",
+      "positive_examples": [
+        "Calling useState after an early return in a component."
+      ],
+      "false_positive_traps": [
+        "Hooks called unconditionally at the component top level must remain valid after formatting and identifier renames."
+      ],
+      "out_of_scope": [
+        "Whether a custom Hook performs useful work or follows project naming style."
+      ]
+    },
+    {
+      "id": "react-hooks/set-state-in-render",
+      "owner": "upstream",
+      "behavior": "Reports unconditional state updates executed while a React component is rendering.",
+      "runtime_rationale": "An unconditional render-time state update can trigger a render loop before React can commit the result.",
+      "authoritative_sources": [
+        "https://react.dev/reference/eslint-plugin-react-hooks/lints/set-state-in-render"
+      ],
+      "evidence_kind": "tool-rule",
+      "precision": "scope",
+      "scope": ["javascript", "typescript", "jsx", "tsx", "react"],
+      "default_disposition": "block",
+      "positive_examples": [
+        "Calling a useState setter directly in the component body."
+      ],
+      "false_positive_traps": [
+        "A setter called from an event handler is deferred until interaction and must not be reported as a render-time update."
+      ],
+      "out_of_scope": [
+        "State updates performed by external stores whose APIs are not recognized by the upstream React rule."
+      ]
+    },
+    {
+      "id": "jsx-a11y/alt-text",
+      "owner": "upstream",
+      "behavior": "Reports image-like JSX elements that do not provide alternative text through a supported attribute.",
+      "runtime_rationale": "Assistive technologies require an alternative description or an explicit empty alternative for decorative images.",
+      "authoritative_sources": [
+        "https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html",
+        "https://github.com/jsx-eslint/eslint-plugin-jsx-a11y/blob/main/docs/rules/alt-text.md"
+      ],
+      "evidence_kind": "tool-rule",
+      "precision": "syntax",
+      "scope": ["jsx", "tsx", "react"],
+      "default_disposition": "warn",
+      "positive_examples": [
+        "An img element with a src attribute and no alt attribute."
+      ],
+      "false_positive_traps": [
+        "An image with descriptive alt text or an explicit empty alt for decoration must not be reported as missing alt text."
+      ],
+      "out_of_scope": [
+        "Whether alternative text accurately describes rendered visual content."
+      ]
+    },
+    {
+      "id": "ts-react-quality-lens/img_missing_alt",
+      "owner": "lens",
+      "behavior": "Provides a conservative missing-alt fallback when the managed JSX accessibility analyzer cannot complete.",
+      "runtime_rationale": "A missing alternative prevents non-visual users from receiving equivalent image information.",
+      "authoritative_sources": [
+        "https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html"
+      ],
+      "evidence_kind": "heuristic",
+      "precision": "syntax",
+      "scope": ["jsx", "tsx", "react"],
+      "default_disposition": "review",
+      "positive_examples": [
+        "A literal img opening element with no alt attribute."
+      ],
+      "false_positive_traps": [
+        "The fallback is suppressed whenever managed jsx-a11y evidence completes, and img elements with an alt attribute are not reported."
+      ],
+      "out_of_scope": [
+        "Spread-provided attributes, custom image components, and semantic quality of alternative text."
+      ]
+    }
+  ]
+}

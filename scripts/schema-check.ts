@@ -37,6 +37,8 @@ for (const key of [
   "performance_inputs",
   "public_api",
   "cache",
+  "react",
+  "accessibility",
   "policy",
   "suppressions",
   "audit",
@@ -46,12 +48,15 @@ for (const key of [
 
 assert.ok(packageJson.files.includes("ts-react-quality-lens.schema.json"), "package files must include artifact schema");
 assert.ok(packageJson.files.includes("ts-react-quality-lens.config.schema.json"), "package files must include config schema");
+assert.ok(packageJson.files.includes("rule-contracts.json"), "package files must include rule contracts");
+assert.ok(packageJson.files.includes("rule-contracts.schema.json"), "package files must include rule contract schema");
 for (const runtimeDependency of [
   "ajv",
   "typescript",
   "eslint",
   "@typescript-eslint/parser",
   "@typescript-eslint/eslint-plugin",
+  "eslint-plugin-jsx-a11y",
   "eslint-plugin-react-hooks",
   "jscpd",
   "dependency-cruiser",
@@ -116,6 +121,8 @@ function representativeConfig() {
     test_command: null,
     public_api: { entry: ["src/index.ts"], exports: [{ file: "src/lib.ts", names: ["publicHelper"] }] },
     cache: { enabled: true },
+    react: { ruleset: "recommended-v2" },
+    accessibility: { enabled: true, components: { Image: "img" }, polymorphic_prop_name: "as" },
     policy: { profile: "recommended", required_checks: ["compiler", "typed-lint", "tests"] },
     suppressions: [{ id: "fixture:finding", reason: "schema fixture" }],
     audit: { base: "origin/main", gate: "new-only" },

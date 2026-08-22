@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pmfleming/ts-react-quality-lens/rule-contracts.schema.json",
+  "title": "ts-react-quality-lens rule contracts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "rules"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "const": "1.0.0" },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "owner",
+          "behavior",
+          "runtime_rationale",
+          "authoritative_sources",
+          "evidence_kind",
+          "precision",
+          "scope",
+          "default_disposition",
+          "positive_examples",
+          "false_positive_traps",
+          "out_of_scope"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 3 },
+          "owner": { "enum": ["lens", "upstream"] },
+          "behavior": { "type": "string", "minLength": 10 },
+          "runtime_rationale": { "type": "string", "minLength": 10 },
+          "authoritative_sources": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "format": "uri" }
+          },
+          "evidence_kind": { "enum": ["diagnostic", "tool-rule", "test", "metric", "heuristic"] },
+          "precision": { "enum": ["syntax", "scope", "path", "type-aware", "runtime"] },
+          "scope": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "enum": ["javascript", "typescript", "jsx", "tsx", "react", "project"] }
+          },
+          "default_disposition": { "enum": ["block", "warn", "review", "info"] },
+          "positive_examples": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 3 }
+          },
+          "false_positive_traps": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 3 }
+          },
+          "out_of_scope": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 3 }
+          }
+        }
+      }
+    }
+  }
+}

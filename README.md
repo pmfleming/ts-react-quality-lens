@@ -95,6 +95,8 @@ The analyzer now has broader duplication and entrypoint awareness:
 - `map.json` exposes `summary.entrypoint_nodes` and node-level `entrypoint_roles`.
 - `map.architecture` now consumes clone-derived records as maintainability input, so duplication pressure can affect module risk instead of staying isolated in `clones.json`.
 
+Managed blockers and built-in heuristics have schema-backed contracts in `rule-contracts.json`. `npm run rule:check` requires true-positive, false-positive, and verdict-preserving mutation cases; see [`docs/rule-development.md`](docs/rule-development.md).
+
 Each major artifact includes:
 
 - `schema_version`
@@ -145,7 +147,7 @@ Audit also reports stale configured suppressions as `stale_suppression` findings
 
 ## CI And Performance
 
-`npm run ci` runs type checking, build, schema drift checks, formatting checks, tests, a smoke performance gate over `examples/basic`, and package smoke validation. Override the generous default performance threshold with `TSRQLENS_PERF_MAX_MS` when a CI environment needs a different budget.
+`npm run ci` runs type checking, build, schema and rule-contract checks, formatting checks, tests, a smoke performance gate over `examples/basic`, and package smoke validation. Override the generous default performance threshold with `TSRQLENS_PERF_MAX_MS` when a CI environment needs a different budget.
 
 Development uses TypeScript 7's native `tsc` for faster parallel builds. TypeScript 7.0 does not expose the compiler API yet, so the runtime analyzer and typescript-eslint use Microsoft's `@typescript/typescript6` compatibility package through the standard `typescript` package alias. This supported side-by-side setup preserves AST and typed-lint functionality until the new TypeScript API is available.
 

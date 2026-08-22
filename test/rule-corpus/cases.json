@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0.0",
+  "cases": [
+    {
+      "id": "rules-of-hooks-conditional",
+      "contract_id": "react-hooks/rules-of-hooks",
+      "verdict": "true-positive",
+      "file": "conditional-hook.tsx",
+      "source": "import { useState } from \"react\";\nexport function ConditionalHook({ enabled }: { enabled: boolean }) {\n  if (!enabled) return null;\n  const [value] = useState(0);\n  return <span>{value}</span>;\n}\n",
+      "mutation": { "search": "enabled", "replace": "isEnabled" }
+    },
+    {
+      "id": "rules-of-hooks-top-level",
+      "contract_id": "react-hooks/rules-of-hooks",
+      "verdict": "false-positive",
+      "file": "valid-hook.tsx",
+      "source": "import { useState } from \"react\";\nexport function ValidHook({ enabled }: { enabled: boolean }) {\n  const [value] = useState(0);\n  if (!enabled) return null;\n  return <span>{value}</span>;\n}\n",
+      "mutation": { "search": "value", "replace": "currentValue" }
+    },
+    {
+      "id": "set-state-during-render",
+      "contract_id": "react-hooks/set-state-in-render",
+      "verdict": "true-positive",
+      "file": "render-update.tsx",
+      "source": "import { useState } from \"react\";\nexport function RenderUpdate() {\n  const [count, setCount] = useState(0);\n  setCount(1);\n  return <span>{count}</span>;\n}\n",
+      "mutation": { "search": "count", "replace": "value" }
+    },
+    {
+      "id": "set-state-in-handler",
+      "contract_id": "react-hooks/set-state-in-render",
+      "verdict": "false-positive",
+      "file": "event-update.tsx",
+      "source": "import { useState } from \"react\";\nexport function EventUpdate() {\n  const [count, setCount] = useState(0);\n  return <button onClick={() => setCount(count + 1)}>{count}</button>;\n}\n",
+      "mutation": { "search": "count", "replace": "clickCount" }
+    },
+    {
+      "id": "image-without-alt",
+      "contract_id": "jsx-a11y/alt-text",
+      "verdict": "true-positive",
+      "file": "missing-alt.tsx",
+      "source": "export function Avatar() {\n  return <img src=\"avatar.png\" />;\n}\n",
+      "mutation": { "search": "Avatar", "replace": "ProfileImage" }
+    },
+    {
+      "id": "image-with-alt",
+      "contract_id": "jsx-a11y/alt-text",
+      "verdict": "false-positive",
+      "file": "described-image.tsx",
+      "source": "export function Logo() {\n  return <img src=\"logo.png\" alt=\"Company logo\" />;\n}\n",
+      "mutation": { "search": "Logo", "replace": "BrandMark" }
+    },
+    {
+      "id": "fallback-image-without-alt",
+      "contract_id": "ts-react-quality-lens/img_missing_alt",
+      "verdict": "true-positive",
+      "file": "fallback-missing-alt.tsx",
+      "source": "export function FallbackAvatar() {\n  return <img src=\"avatar.png\" />;\n}\n",
+      "mutation": { "search": "FallbackAvatar", "replace": "FallbackProfileImage" }
+    },
+    {
+      "id": "fallback-image-with-alt",
+      "contract_id": "ts-react-quality-lens/img_missing_alt",
+      "verdict": "false-positive",
+      "file": "fallback-described-image.tsx",
+      "source": "export function FallbackLogo() {\n  return <img src=\"logo.png\" alt=\"Company logo\" />;\n}\n",
+      "mutation": { "search": "FallbackLogo", "replace": "FallbackBrandMark" }
+    }
+  ]
+}

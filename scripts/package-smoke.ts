@@ -31,6 +31,8 @@ for (const required of [
   "dist/bin/ts-react-quality-lens.js",
   "ts-react-quality-lens.schema.json",
   "ts-react-quality-lens.config.schema.json",
+  "rule-contracts.json",
+  "rule-contracts.schema.json",
   "README.md",
 ]) {
   if (!files.has(required)) throw new Error(`Package dry-run is missing ${required}.`);
