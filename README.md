@@ -78,6 +78,7 @@ The implementation combines deterministic built-in analysis with richer optional
 - `quality.react_health` writes `react_health.json` with component heuristics, framework conventions, a versioned managed `eslint-plugin-react-hooks` ruleset, and managed `eslint-plugin-jsx-a11y` evidence. The default `recommended-v2` React ruleset includes official React Compiler diagnostics; `classic-v1` preserves only Rules of Hooks and exhaustive dependencies. Accessibility falls back to explicitly labeled heuristics only when the standards-based adapter cannot complete.
 - `quality.dependency_health` writes `dependency_health.json` with `dependency-cruiser` graph data when available, plus built-in import parsing fallback.
 - `quality.cleanup` writes `cleanup.json` with unused files, exports, dependency hygiene, unresolved imports, cycles, catalog issues, and staged cleanup candidates. Managed Knip evidence is normalized and reconciled with the built-in fallback instead of silently replacing disagreements.
+- `quality.package_health` writes `package_health.json` with isolated declaration emit, lifecycle-script-free package packing, publint metadata/file checks, and Are The Types Wrong resolution matrices. It is enabled by the `library` policy profile or explicit config.
 - `correctness.catalog` writes `correctness_review.json` and `test_catalog.json`.
 - `correctness.all` writes `correctness_review.json` with test execution status when `test_command` is configured.
 - `map.architecture` writes `map.json`.
@@ -133,7 +134,8 @@ Supported config fields:
 | `accessibility` | Enable managed jsx-a11y analysis and configure custom component mappings or a polymorphic prop name. |
 | `cleanup` | Enable Knip-backed cleanup evidence and optionally use Knip production mode. |
 | `type_coverage` | Configure project, per-file, or changed-file minimum percentages and an earlier `type_health.json` ratchet baseline. |
-| `policy` | Select `baseline`, `recommended`, `strict`, or `react` evidence requirements and optionally list required checks. |
+| `package_health` | Enable package validation and select the ATTW `strict`, `node16`, or `esm-only` profile. |
+| `policy` | Select `baseline`, `recommended`, `strict`, `react`, or `library` evidence requirements and optionally list required checks. |
 | `suppressions` | Narrow intentional findings by `id`, `file`, or `kind`, with an optional reason. |
 | `audit` | Default audit `base`, `changed_since`, `gate`, and `baseline` settings. |
 

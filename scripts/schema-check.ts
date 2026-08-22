@@ -41,6 +41,7 @@ for (const key of [
   "accessibility",
   "cleanup",
   "type_coverage",
+  "package_health",
   "policy",
   "suppressions",
   "audit",
@@ -54,6 +55,8 @@ assert.ok(packageJson.files.includes("rule-contracts.json"), "package files must
 assert.ok(packageJson.files.includes("rule-contracts.schema.json"), "package files must include rule contract schema");
 for (const runtimeDependency of [
   "ajv",
+  "@arethetypeswrong/cli",
+  "publint",
   "typescript",
   "eslint",
   "@typescript-eslint/parser",
@@ -133,6 +136,7 @@ function representativeConfig() {
       changed_file_minimum_percent: 95,
       baseline: "target/baselines/type_health.json",
     },
+    package_health: { enabled: true, attw_profile: "strict" },
     policy: { profile: "recommended", required_checks: ["compiler", "typed-lint", "tests"] },
     suppressions: [{ id: "fixture:finding", reason: "schema fixture" }],
     audit: { base: "origin/main", gate: "new-only" },

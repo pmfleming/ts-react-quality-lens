@@ -29,9 +29,10 @@ test("catalog exposes stable board task metadata", () => {
   const config = loadConfig(fixtureConfig);
   const catalog = catalogForConfig(config);
   assert.equal(catalog.lens, "ts-react-quality-lens");
-  assert.equal(catalog.tasks.length, 13);
+  assert.equal(catalog.tasks.length, 14);
   assert.ok(catalog.tasks.some((task) => task.id === "quality.hotspots"));
   assert.ok(catalog.tasks.some((task) => task.id === "quality.cleanup"));
+  assert.ok(catalog.tasks.some((task) => task.id === "quality.package_health"));
   assert.ok(catalog.tasks.some((task) => task.id === "map.architecture"));
 });
 
@@ -56,6 +57,7 @@ test("measure all writes MVP artifacts", () => {
     "lint_health.json",
     "dependency_health.json",
     "cleanup.json",
+    "package_health.json",
     "correctness_review.json",
     "test_catalog.json",
     "locality_metrics.json",
@@ -334,6 +336,62 @@ test("init writes a starter schema-backed config", async () => {
   assert.equal(raw.cleanup.knip, true);
   assert.equal(raw.audit.gate, "new-only");
   await assert.rejects(() => runCli(["init", "--config", configPath]), /Config already exists/);
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("library profile validates declaration emit, packed files, and type resolution", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-package-health-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "dist"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempDir, "package.json"),
+    JSON.stringify({
+      name: "package-health-fixture",
+      version: "1.0.0",
+      type: "module",
+      files: ["dist"],
+      main: "./dist/index.js",
+      types: "./dist/index.d.ts",
+      exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js", default: "./dist/index.js" } },
+      engines: { node: ">=20" },
+      license: "MIT",
+    }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(tempDir, "src", "index.ts"), "export const answer: number = 42;\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "dist", "index.js"), "export const answer = 42;\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "dist", "index.d.ts"), "export declare const answer: number;\n", "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: { strict: true, module: "NodeNext", moduleResolution: "NodeNext", declaration: true, rootDir: "src" },
+      include: ["src"],
+    }),
+    "utf8",
+  );
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({
+      project_root: ".",
+      source_roots: ["src"],
+      output_dir: "target/analysis",
+      tsconfig: "tsconfig.json",
+      policy: { profile: "library" },
+    }),
+    "utf8",
+  );
+
+  const config = loadConfig(configPath);
+  assert.equal(config.packageHealth.enabled, true);
+  assert.ok(config.policy.requiredChecks.includes("package"));
+  const [artifact] = runMeasure(config, "quality.package_health", "test package health") as [ToolArtifact];
+  assert.equal(artifact.summary.complete, true);
+  assert.equal(requiredToolStatus(artifact, "declaration_emit").complete, true);
+  assert.equal(requiredToolStatus(artifact, "npm_pack").complete, true);
+  assert.equal(requiredToolStatus(artifact, "publint").complete, true);
+  assert.equal(requiredToolStatus(artifact, "are_the_types_wrong").complete, true);
+  assert.ok(Number(artifact.summary.packed_files) > 0);
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -716,6 +774,13 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
       issues: [],
       version: null,
       complete: false,
+    }),
+    packageHealth: () => ({
+      enabled: false,
+      declaration: { available: false, ran: false, complete: false, reason: "not used" },
+      pack: { available: false, ran: false, complete: false, reason: "not used", files: 0, size: null },
+      publint: { available: false, ran: false, complete: false, reason: "not used", messages: [] },
+      attw: { available: false, ran: false, complete: false, reason: "not used", problems: [], profile: "strict" },
     }),
     reactHooksLint: () => ({
       available: false,

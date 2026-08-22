@@ -85,6 +85,14 @@ export const TASKS = [
       "Finds unused files, unused exports, dependency hygiene issues, duplicate exports, and staged cleanup candidates.",
   },
   {
+    id: "quality.package_health",
+    category: "quality",
+    title: "Package health",
+    artifact: "package_health.json",
+    description:
+      "Validates declaration emit, packed files, package metadata, and TypeScript resolution modes for publishable libraries.",
+  },
+  {
     id: "correctness.catalog",
     category: "correctness",
     title: "Correctness catalog",

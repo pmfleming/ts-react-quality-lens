@@ -8,6 +8,7 @@ import type { AnalysisContext, Config, ModuleRecord, PackageJson, ProjectAnalysi
 
 const BUILTINS = new Set([...module.builtinModules, ...module.builtinModules.map((name) => `node:${name}`)]);
 const TOOL_ADAPTER_DEPENDENCIES = new Set([
+  "@arethetypeswrong/cli",
   "@typescript-eslint/eslint-plugin",
   "@typescript-eslint/parser",
   "dependency-cruiser",
@@ -16,6 +17,7 @@ const TOOL_ADAPTER_DEPENDENCIES = new Set([
   "eslint-plugin-react-hooks",
   "jscpd",
   "knip",
+  "publint",
   "typescript",
 ]);
 

@@ -93,6 +93,8 @@ function introducedByDiffOrBase(
 function policyDisposition(config: Config, finding: ScoredRecord): FindingDisposition {
   if (finding.source === "typescript-eslint" && !config.policy.requiredChecks.includes("typed-lint")) return "review";
   if (finding.source === "eslint-plugin-react-hooks" && !config.policy.requiredChecks.includes("react-hooks")) return "review";
+  if (["publint", "are-the-types-wrong", "declaration-emit", "pack", "attw"].includes(String(finding.source)) &&
+      !config.policy.requiredChecks.includes("package")) return "review";
   return finding.disposition ?? "review";
 }
 
@@ -147,6 +149,9 @@ const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = 
   "react-hooks": (config) => readArtifact<Artifact>(config, "react_health.json")?.tool_status?.eslint_react_hooks?.ran === true
     ? null
     : "Required React Hooks analysis did not run.",
+  package: (config) => readArtifact<Artifact>(config, "package_health.json")?.summary.complete === true
+    ? null
+    : "Required package health analysis did not complete.",
 };
 
 export function requiredEvidenceReasons(config: Config): string[] {

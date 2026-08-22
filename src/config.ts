@@ -13,6 +13,7 @@ import type {
   CleanupConfig,
   JsonValue,
   LayerRule,
+  PackageHealthConfig,
   PackageJson,
   PackageManagerDetection,
   PathAliasRule,
@@ -139,6 +140,7 @@ export function loadConfig(configArg?: string | null): Config {
     accessibility: normalizeAccessibility(rawConfig.accessibility),
     cleanup: normalizeCleanup(rawConfig.cleanup),
     typeCoverage: normalizeTypeCoverage(configDir, rawConfig.type_coverage),
+    packageHealth: normalizePackageHealth(rawConfig.package_health, rawConfig.policy?.profile),
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
@@ -404,17 +406,26 @@ function normalizeTypeCoverage(configDir: string, value: TypeCoverageConfig | un
   };
 }
 
+function normalizePackageHealth(value: PackageHealthConfig | undefined, profile: PolicyProfile | undefined): Config["packageHealth"] {
+  return {
+    enabled: value?.enabled ?? profile === "library",
+    attwProfile: value?.attw_profile ?? "strict",
+  };
+}
+
 function normalizePolicy(value: PolicyConfig | undefined, hasTsconfig: boolean, hasTestCommand: boolean): Config["policy"] {
   const profile: PolicyProfile = value?.profile ?? "baseline";
   const compiler: PolicyCheck[] = ["compiler"];
   const typed: PolicyCheck[] = ["compiler", "typed-lint"];
   const tests: PolicyCheck[] = ["tests"];
   const react: PolicyCheck[] = ["react-hooks"];
+  const packageHealth: PolicyCheck[] = ["package"];
   const defaults: PolicyCheck[] = [
     ...(hasTsconfig ? compiler : []),
     ...(profile === "baseline" ? [] : typed),
     ...(hasTestCommand ? tests : []),
     ...(profile === "react" ? react : []),
+    ...(profile === "library" ? packageHealth : []),
   ];
   return {
     profile,

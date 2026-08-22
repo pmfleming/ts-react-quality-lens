@@ -8,8 +8,8 @@ export type Severity = RiskLevel;
 export type FindingDisposition = "block" | "warn" | "review" | "info";
 export type EvidenceKind = "diagnostic" | "tool-rule" | "test" | "metric" | "heuristic";
 export type FindingConfidence = "low" | "medium" | "high";
-export type PolicyProfile = "baseline" | "recommended" | "strict" | "react";
-export type PolicyCheck = "compiler" | "typed-lint" | "tests" | "react-hooks";
+export type PolicyProfile = "baseline" | "recommended" | "strict" | "react" | "library";
+export type PolicyCheck = "compiler" | "typed-lint" | "tests" | "react-hooks" | "package";
 export type ReactRuleset = "classic-v1" | "recommended-v2";
 export type ImportKind = "static" | "dynamic" | "type";
 type ImportTargetKind = "external" | "relative" | "unresolved";
@@ -35,6 +35,7 @@ export type RawConfig = {
   accessibility?: AccessibilityConfig;
   cleanup?: CleanupConfig;
   type_coverage?: TypeCoverageConfig;
+  package_health?: PackageHealthConfig;
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -74,6 +75,11 @@ export type TypeCoverageConfig = {
   per_file_minimum_percent?: number;
   changed_file_minimum_percent?: number;
   baseline?: string;
+};
+
+export type PackageHealthConfig = {
+  enabled?: boolean;
+  attw_profile?: "strict" | "node16" | "esm-only";
 };
 
 export type SuppressionConfig = {
@@ -185,6 +191,10 @@ export type Config = {
     perFileMinimumPercent: number | null;
     changedFileMinimumPercent: number | null;
     baseline: string | null;
+  };
+  packageHealth: {
+    enabled: boolean;
+    attwProfile: "strict" | "node16" | "esm-only";
   };
   policy: {
     profile: PolicyProfile;
@@ -380,6 +390,7 @@ export type AnalysisContext = {
   jscpd: () => JscpdResult;
   dependencyCruiser: () => DependencyCruiserResult;
   knip: () => KnipResult;
+  packageHealth: () => PackageHealthResult;
   reactHooksLint: () => EslintReactHooksResult;
   jsxA11yLint: () => EslintAccessibilityResult;
   typedLint: () => EslintTypeAwareResult;
@@ -604,6 +615,32 @@ export type KnipResult = ToolResult & {
   issues: KnipIssueEntry[];
   version: string | null;
   complete: boolean;
+};
+
+export type PackageToolStatus = ToolResult & {
+  complete: boolean;
+  version?: string | null;
+};
+
+export type PublintMessage = {
+  code: string;
+  type: "suggestion" | "warning" | "error";
+  path: string[];
+  args: Record<string, unknown>;
+};
+
+export type AttwProblem = {
+  kind: string;
+  entrypoint?: string;
+  resolutionKind?: string;
+};
+
+export type PackageHealthResult = {
+  enabled: boolean;
+  declaration: PackageToolStatus;
+  pack: PackageToolStatus & { files: number; size: number | null };
+  publint: PackageToolStatus & { messages: PublintMessage[] };
+  attw: PackageToolStatus & { problems: AttwProblem[]; profile: "strict" | "node16" | "esm-only" };
 };
 
 export type EslintMessage = {

@@ -100,15 +100,23 @@
         "baseline": { "type": "string" }
       }
     },
+    "package_health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "attw_profile": { "enum": ["strict", "node16", "esm-only"] }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "profile": { "enum": ["baseline", "recommended", "strict", "react"] },
+        "profile": { "enum": ["baseline", "recommended", "strict", "react", "library"] },
         "required_checks": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "enum": ["compiler", "typed-lint", "tests", "react-hooks"] }
+          "items": { "enum": ["compiler", "typed-lint", "tests", "react-hooks", "package"] }
         }
       }
     },
