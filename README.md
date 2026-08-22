@@ -80,6 +80,7 @@ The implementation combines deterministic built-in analysis with richer optional
 - `quality.cleanup` writes `cleanup.json` with unused files, exports, dependency hygiene, unresolved imports, cycles, catalog issues, and staged cleanup candidates. Managed Knip evidence is normalized and reconciled with the built-in fallback instead of silently replacing disagreements.
 - `quality.package_health` writes `package_health.json` with isolated declaration emit, lifecycle-script-free package packing, publint metadata/file checks, and Are The Types Wrong resolution matrices. It is enabled by the `library` policy profile or explicit config.
 - `quality.sarif` writes `sarif_findings.json` for CodeQL, Semgrep, or any SARIF 2.1 producer while retaining tool/rule metadata, partial fingerprints, primary and related ranges, source-to-sink code flows, proposed fixes, automation details, and invocation failures.
+- `quality.runtime` writes `runtime_health.json` from React Profiler commit summaries, rendered axe results, and optional independently generated React Doctor JSON.
 - `correctness.catalog` writes `correctness_review.json` and `test_catalog.json`.
 - `correctness.all` writes `correctness_review.json` with test execution status when `test_command` is configured.
 - `map.architecture` writes `map.json`.
@@ -139,6 +140,7 @@ Supported config fields:
 | `package_health` | Enable package validation and select the ATTW `strict`, `node16`, or `esm-only` profile. |
 | `sarif_inputs` | Import named SARIF 2.1 files and optionally require their successful, complete production. |
 | `workspaces` | Enable workspace discovery, override package globs, and assign per-workspace framework or policy profiles. |
+| `runtime_inputs` | Ingest React Profiler commits, axe results, and optional React Doctor JSON without running or modifying the application. |
 | `policy` | Select `baseline`, `recommended`, `strict`, `react`, or `library` evidence requirements and optionally list required checks. |
 | `suppressions` | Narrow intentional findings by `id`, `file`, or `kind`, with an optional reason. |
 | `audit` | Default audit `base`, `changed_since`, `gate`, and `baseline` settings. |
@@ -159,7 +161,25 @@ Audit also reports stale configured suppressions as `stale_suppression` findings
 
 Development uses TypeScript 7's native `tsc` for faster parallel builds. TypeScript 7.0 does not expose the compiler API yet, so the runtime analyzer and typescript-eslint use Microsoft's `@typescript/typescript6` compatibility package through the standard `typescript` package alias. This supported side-by-side setup preserves AST and typed-lint functionality until the new TypeScript API is available.
 
-Run `npm run bench` for a synthetic multi-size benchmark harness. The analyzer also writes cache metadata under `output_dir/.cache/analysis.json` when `cache.enabled` is not set to `false`.
+Run `npm run bench` for a synthetic multi-size benchmark harness. When `cache.enabled` is not `false`, the analyzer writes a content-addressed reusable project snapshot under `output_dir/.cache/analysis-v2.json`. The key includes source/test contents, compiler and integration versions, rulesets, manifests, lockfiles, workspace tsconfigs, and config; incomplete project analyses are never cached.
+
+## MCP and LSP
+
+Start the read-only MCP server with:
+
+```sh
+node ./dist/bin/ts-react-quality-lens.js mcp --config ./ts-react-quality-lens.config.json
+```
+
+It exposes `catalog`, `context`, `measure`, `audit`, and `explain` tools plus artifact resources over newline-delimited JSON-RPC stdio.
+
+Start the Language Server Protocol endpoint with:
+
+```sh
+node ./dist/bin/ts-react-quality-lens.js lsp --config ./ts-react-quality-lens.config.json
+```
+
+The LSP endpoint publishes enriched diagnostics, supports pull diagnostics, and provides explain-finding code actions. Neither server applies upstream fixes or edits measured source.
 
 ## Design Notes
 

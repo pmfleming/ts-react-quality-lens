@@ -85,6 +85,14 @@ export const TASKS = [
       "Finds unused files, unused exports, dependency hygiene issues, duplicate exports, and staged cleanup candidates.",
   },
   {
+    id: "quality.runtime",
+    category: "quality",
+    title: "Runtime React evidence",
+    artifact: "runtime_health.json",
+    description:
+      "Ingests React Profiler commits, rendered axe violations, and optional React Doctor diagnostics.",
+  },
+  {
     id: "quality.sarif",
     category: "quality",
     title: "External SARIF findings",

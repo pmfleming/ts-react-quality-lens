@@ -5,6 +5,8 @@ import { createAnalysisContext } from "./analysis-context.js";
 import { MEASURE_ORDER, MEASURE_TASKS } from "./measures/registry.js";
 import { auditMarkdown, runAudit } from "./audit.js";
 import { projectContext } from "./context.js";
+import { runLspServer } from "./lsp.js";
+import { runMcpServer } from "./mcp.js";
 import type { AnalysisContext, Artifact, Config } from "./types.js";
 
 type RunMeasureOptions = {
@@ -57,6 +59,8 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   init: runInitCommand,
   audit: runAuditCommand,
   context: runContextCommand,
+  lsp: (config) => { runLspServer(config); },
+  mcp: (config) => { runMcpServer(config); },
   measure: runMeasureCommand,
 };
 
@@ -232,6 +236,8 @@ Usage:
   ts-react-quality-lens measure <task-id|all> --config ./ts-react-quality-lens.config.json
   ts-react-quality-lens audit --config ./ts-react-quality-lens.config.json [--base origin/main]
   ts-react-quality-lens context --config ./ts-react-quality-lens.config.json
+  ts-react-quality-lens mcp --config ./ts-react-quality-lens.config.json
+  ts-react-quality-lens lsp --config ./ts-react-quality-lens.config.json
 
 Commands:
   catalog       Print board-compatible task metadata.
@@ -239,5 +245,7 @@ Commands:
   measure       Write one task artifact or all artifacts.
   audit         Run changed-code quality audit and write audit.json.
   context       Write and print compact agent-ready project context.
+  mcp           Start a read-only JSON-RPC MCP server over stdio.
+  lsp           Start an LSP diagnostics and code-action server over stdio.
 `);
 }

@@ -10,7 +10,7 @@ const help = childProcess.execFileSync("node", [binPath, "--help"], {
   encoding: "utf8",
   stdio: ["ignore", "pipe", "pipe"],
 });
-for (const command of ["catalog", "init", "measure", "audit", "context"]) {
+for (const command of ["catalog", "init", "measure", "audit", "context", "mcp", "lsp"]) {
   if (!help.includes(command)) throw new Error(`CLI help is missing ${command}.`);
 }
 

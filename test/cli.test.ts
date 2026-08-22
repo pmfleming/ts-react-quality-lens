@@ -29,11 +29,12 @@ test("catalog exposes stable board task metadata", () => {
   const config = loadConfig(fixtureConfig);
   const catalog = catalogForConfig(config);
   assert.equal(catalog.lens, "ts-react-quality-lens");
-  assert.equal(catalog.tasks.length, 15);
+  assert.equal(catalog.tasks.length, 16);
   assert.ok(catalog.tasks.some((task) => task.id === "quality.hotspots"));
   assert.ok(catalog.tasks.some((task) => task.id === "quality.cleanup"));
   assert.ok(catalog.tasks.some((task) => task.id === "quality.package_health"));
   assert.ok(catalog.tasks.some((task) => task.id === "quality.sarif"));
+  assert.ok(catalog.tasks.some((task) => task.id === "quality.runtime"));
   assert.ok(catalog.tasks.some((task) => task.id === "map.architecture"));
 });
 
@@ -60,6 +61,7 @@ test("measure all writes MVP artifacts", () => {
     "cleanup.json",
     "package_health.json",
     "sarif_findings.json",
+    "runtime_health.json",
     "correctness_review.json",
     "test_catalog.json",
     "locality_metrics.json",
@@ -168,7 +170,7 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(cleanup.records?.some((record) => record.semantic_decision === "disagreed"));
   assert.ok(cleanup.records?.some((record) => Array.isArray(record.actions) && record.actions.length > 0));
 
-  assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "analysis.json")));
+  assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "analysis-v2.json")));
 });
 
 test("config accepts JSONC comments and rejects unknown keys through schema-backed validation", () => {
@@ -476,6 +478,68 @@ test("SARIF ingestion preserves fingerprints, flows, fixes, and invocation failu
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("runtime inputs normalize React Profiler, axe, and React Doctor evidence", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-runtime-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "runtime-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(path.join(tempDir, "src", "App.tsx"), "export function App() { return <main />; }\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "profiler.json"), JSON.stringify({ commits: [{
+    component: "App",
+    duration_ms: 64,
+    render_count: 12,
+    phase: "update",
+    file: "src/App.tsx",
+    line: 1,
+  }] }), "utf8");
+  fs.writeFileSync(path.join(tempDir, "axe.json"), JSON.stringify({ violations: [{
+    id: "color-contrast",
+    impact: "critical",
+    help: "Elements must meet minimum color contrast.",
+    helpUrl: "https://example.test/axe/color-contrast",
+    nodes: [{ target: ["main"], html: "<main>", failureSummary: "Contrast is too low." }],
+  }] }), "utf8");
+  fs.writeFileSync(path.join(tempDir, "react-doctor.json"), JSON.stringify({
+    schemaVersion: 3,
+    diagnostics: [{
+      id: "doctor-1",
+      normalizedFilePath: "src/App.tsx",
+      plugin: "react-doctor",
+      rule: "no-large-component",
+      severity: "warning",
+      message: "Component is too large.",
+      help: "Split the component.",
+      line: 1,
+      column: 1,
+      endLine: 1,
+      endColumn: 10,
+      fixGroupId: "split-app",
+      relatedLocations: [{ filePath: "src/App.tsx", line: 1, column: 20, message: "Large subtree." }],
+    }],
+  }), "utf8");
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
+  fs.writeFileSync(configPath, JSON.stringify({
+    project_root: ".",
+    source_roots: ["src"],
+    output_dir: "target/analysis",
+    runtime_inputs: {
+      react_profiler: "profiler.json",
+      axe: "axe.json",
+      react_doctor: "react-doctor.json",
+    },
+  }), "utf8");
+
+  const config = loadConfig(configPath);
+  const [artifact] = runMeasure(config, "quality.runtime", "test runtime") as [ToolArtifact];
+  assert.equal(artifact.summary.status, "complete");
+  assert.equal(requiredToolStatus(artifact, "react_profiler").complete, true);
+  assert.equal(requiredToolStatus(artifact, "axe").complete, true);
+  assert.equal(requiredToolStatus(artifact, "react_doctor").complete, true);
+  assert.ok(artifact.records?.some((record) => record.source === "react-profiler" && record.duration_ms === 64));
+  assert.ok(artifact.records?.some((record) => record.source === "axe" && record.disposition === "block"));
+  assert.ok(artifact.records?.some((record) => record.source === "react-doctor" && record.fix_group_id === "split-app"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("audit writes changed-code verdict artifact with actions", () => {
   const config = loadConfig(fixtureConfig);
   config.outputDir = path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-audit`);
@@ -589,8 +653,14 @@ test("context command writes compact project context and cache can hit", () => {
   const second = projectContext(config, "test context second");
 
   assert.equal(first.task_id, "context.project");
+  assert.equal(first.summary.cache_reused, false);
   assert.ok(fs.existsSync(path.join(config.outputDir, "context.json")));
   assert.equal(second.summary.cache_status, "hit");
+  assert.equal(second.summary.cache_reused, true);
+  config.react.ruleset = "classic-v1";
+  const invalidated = projectContext(config, "test context invalidated");
+  assert.equal(invalidated.summary.cache_status, "miss");
+  assert.equal(invalidated.summary.cache_reused, false);
   fs.rmSync(config.outputDir, { recursive: true, force: true });
 });
 

@@ -28,6 +28,7 @@ const AUDIT_TASK_IDS = [
   "quality.react_health",
   "quality.cleanup",
   "quality.sarif",
+  "quality.runtime",
 ];
 
 type FindingScope = {

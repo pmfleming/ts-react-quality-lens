@@ -26,6 +26,7 @@ export function projectContext(config: Config, command: string) {
         .filter(([, enabled]) => enabled)
         .map(([name]) => name),
       cache_status: analysis.cache.status,
+      cache_reused: analysis.cache.reused,
       policy_profile: config.policy.profile,
       required_checks: config.policy.requiredChecks,
     },

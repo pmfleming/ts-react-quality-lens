@@ -24,6 +24,7 @@ import type {
   PublicApiConfig,
   RawConfig,
   ReactConfig,
+  RuntimeInputConfig,
   SarifInputConfig,
   SuppressionConfig,
   TypeCoverageConfig,
@@ -145,6 +146,7 @@ export function loadConfig(configArg?: string | null): Config {
     packageHealth: normalizePackageHealth(rawConfig.package_health, rawConfig.policy?.profile),
     sarifInputs: normalizeSarifInputs(configDir, rawConfig.sarif_inputs),
     workspaces: normalizeWorkspaces(rawConfig.workspaces),
+    runtimeInputs: normalizeRuntimeInputs(configDir, rawConfig.runtime_inputs),
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
@@ -431,6 +433,14 @@ function normalizeWorkspaces(value: WorkspacesConfig | undefined): Config["works
     enabled: value?.enabled !== false,
     patterns: value?.patterns ?? [],
     overrides: value?.overrides ?? [],
+  };
+}
+
+function normalizeRuntimeInputs(configDir: string, value: RuntimeInputConfig | undefined): Config["runtimeInputs"] {
+  return {
+    reactProfiler: value?.react_profiler ? path.resolve(configDir, value.react_profiler) : null,
+    axe: value?.axe ? path.resolve(configDir, value.axe) : null,
+    reactDoctor: value?.react_doctor ? path.resolve(configDir, value.react_doctor) : null,
   };
 }
 

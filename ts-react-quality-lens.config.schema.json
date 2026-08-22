@@ -142,6 +142,15 @@
         }
       }
     },
+    "runtime_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "react_profiler": { "type": "string" },
+        "axe": { "type": "string" },
+        "react_doctor": { "type": "string" }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,

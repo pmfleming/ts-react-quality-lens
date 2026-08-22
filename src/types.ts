@@ -38,6 +38,7 @@ export type RawConfig = {
   package_health?: PackageHealthConfig;
   sarif_inputs?: SarifInputConfig[];
   workspaces?: WorkspacesConfig;
+  runtime_inputs?: RuntimeInputConfig;
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -100,6 +101,12 @@ export type WorkspacesConfig = {
   enabled?: boolean;
   patterns?: string[];
   overrides?: WorkspaceOverrideConfig[];
+};
+
+export type RuntimeInputConfig = {
+  react_profiler?: string;
+  axe?: string;
+  react_doctor?: string;
 };
 
 export type SuppressionConfig = {
@@ -228,6 +235,11 @@ export type Config = {
     enabled: boolean;
     patterns: string[];
     overrides: WorkspaceOverrideConfig[];
+  };
+  runtimeInputs: {
+    reactProfiler: string | null;
+    axe: string | null;
+    reactDoctor: string | null;
   };
   policy: {
     profile: PolicyProfile;
@@ -440,6 +452,7 @@ export type ProjectAnalysis = {
   cache: {
     enabled: boolean;
     status: "hit" | "miss" | "disabled";
+    reused: boolean;
     file: string | null;
     previous_source_set_hash: string | null;
   };

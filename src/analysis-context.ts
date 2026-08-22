@@ -2,7 +2,7 @@ import { createConfidence } from "./config.js";
 import { discoverSourceFiles, discoverTestFiles, readSourceFile } from "./files.js";
 import { analyzeModule } from "./extract.js";
 import { entrypointRolesForFile, projectEntrypoints, workspacePackageEntrypoints } from "./entrypoints.js";
-import { updateAnalysisCache } from "./cache.js";
+import { readAnalysisCache, writeAnalysisCache } from "./cache.js";
 import { runJsxA11yLint, runReactHooksLint, runTypedLint } from "./integrations/eslint-adapter.js";
 import { runDependencyCruiser, runJscpd, runKnip } from "./integrations/external-tools.js";
 import { loadTypeScriptProjects } from "./integrations/typescript-project.js";
@@ -14,6 +14,8 @@ import type { AnalysisContext, Config, Confidence, ProjectAnalysis } from "./typ
 function analyzeProject(config: Config): ProjectAnalysis {
   const sourceFiles = discoverSourceFiles(config).map((file) => readSourceFile(file, config.projectRoot));
   const testFiles = discoverTestFiles(config).map((file) => readSourceFile(file, config.projectRoot));
+  const cachedProject = readAnalysisCache(config, sourceFiles, testFiles);
+  if (cachedProject) return cachedProject;
   const workspaceDiscovery = discoverWorkspaces(config, sourceFiles);
   const tsProject = loadTypeScriptProjects(config, sourceFiles, workspaceDiscovery.tsconfigPaths);
   const entrypoints = [
@@ -35,7 +37,7 @@ function analyzeProject(config: Config): ProjectAnalysis {
   const frameworkDetails = detectFrameworkDetails(config, { sourceFiles, testFiles, modules, imports });
   const unsupportedPatterns = modules.flatMap((module) => module.unsupportedPatterns);
   const projectWithoutCache = { sourceFiles, testFiles, modules, imports, tsProject, frameworkDetails, workspaces, unsupportedPatterns };
-  const cache = updateAnalysisCache(config, projectWithoutCache);
+  const cache = writeAnalysisCache(config, projectWithoutCache);
   return { ...projectWithoutCache, cache };
 }
 
