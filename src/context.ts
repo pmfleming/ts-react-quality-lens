@@ -20,6 +20,8 @@ export function projectContext(config: Config, command: string) {
       modules: analysis.modules.length,
       imports: analysis.imports.length,
       entrypoint_modules: analysis.modules.filter((module) => module.entrypointRoles.length > 0).length,
+      workspaces: analysis.workspaces.length,
+      incomplete_workspace_projects: analysis.workspaces.filter((workspace) => workspace.tsconfigs.length > 0 && !workspace.project_loaded).length,
       framework_conventions: Object.entries(analysis.frameworkDetails.conventions)
         .filter(([, enabled]) => enabled)
         .map(([name]) => name),
@@ -27,6 +29,7 @@ export function projectContext(config: Config, command: string) {
       policy_profile: config.policy.profile,
       required_checks: config.policy.requiredChecks,
     },
+    workspaces: analysis.workspaces,
     tasks: catalogForConfig(config).tasks.map((task) => ({
       id: task.id,
       artifact: task.artifact,
@@ -39,6 +42,8 @@ export function projectContext(config: Config, command: string) {
       imports: module.imports.length,
       exports: module.exports.map((item) => item.name),
       entrypoint_roles: module.entrypointRoles,
+      workspace_id: module.workspace_id,
+      workspace_name: module.workspace_name,
       functions: module.functions.length,
       components: module.components.map((component) => component.name),
     })),

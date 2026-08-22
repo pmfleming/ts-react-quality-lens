@@ -121,6 +121,27 @@
         }
       }
     },
+    "workspaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "patterns": { "type": "array", "items": { "type": "string" } },
+        "overrides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["workspace"],
+            "additionalProperties": false,
+            "properties": {
+              "workspace": { "type": "string" },
+              "framework": { "type": "string" },
+              "policy_profile": { "enum": ["baseline", "recommended", "strict", "react", "library"] }
+            }
+          }
+        }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,

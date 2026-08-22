@@ -37,6 +37,7 @@ export type RawConfig = {
   type_coverage?: TypeCoverageConfig;
   package_health?: PackageHealthConfig;
   sarif_inputs?: SarifInputConfig[];
+  workspaces?: WorkspacesConfig;
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -89,6 +90,18 @@ export type SarifInputConfig = {
   required?: boolean;
 };
 
+export type WorkspaceOverrideConfig = {
+  workspace: string;
+  framework?: string;
+  policy_profile?: PolicyProfile;
+};
+
+export type WorkspacesConfig = {
+  enabled?: boolean;
+  patterns?: string[];
+  overrides?: WorkspaceOverrideConfig[];
+};
+
 export type SuppressionConfig = {
   id?: string;
   file?: string;
@@ -120,6 +133,9 @@ export type PathAliasRule = {
 
 export type PackageJson = {
   name?: string;
+  version?: string;
+  private?: boolean;
+  workspaces?: string[] | { packages?: string[] };
   main?: string;
   module?: string;
   types?: string;
@@ -208,6 +224,11 @@ export type Config = {
     name: string;
     required: boolean;
   }>;
+  workspaces: {
+    enabled: boolean;
+    patterns: string[];
+    overrides: WorkspaceOverrideConfig[];
+  };
   policy: {
     profile: PolicyProfile;
     requiredChecks: PolicyCheck[];
@@ -252,6 +273,9 @@ export type SourceFileRecord = {
 
 export type ImportRecord = {
   from: string;
+  from_workspace?: string;
+  to_workspace?: string;
+  workspace_dependency?: boolean;
   to: string;
   to_kind: ImportTargetKind;
   resolved: string | null;
@@ -339,6 +363,13 @@ export type TypeCoverageSummary = Omit<TypeCoverageFile, "file"> & {
   files: number;
 };
 
+export type TypeScriptProjectConfig = {
+  tsconfig: string;
+  workspace_id: string;
+  loaded: boolean;
+  reason: string | null;
+};
+
 export type TypeScriptProject = {
   available: boolean;
   loaded: boolean;
@@ -350,6 +381,7 @@ export type TypeScriptProject = {
     summary: TypeCoverageSummary;
     files: TypeCoverageFile[];
   };
+  project_configs?: TypeScriptProjectConfig[];
 };
 
 export type ModuleRecord = {
@@ -368,8 +400,23 @@ export type ModuleRecord = {
   text: string;
   sourceFile: SourceFileRecord;
   entrypointRoles: EntryPointRole[];
+  workspace_id: string;
+  workspace_name: string;
   unsupportedPatterns: ConfidenceSignal[];
   astSourceFile?: ts.SourceFile;
+};
+
+export type WorkspaceRecord = {
+  id: string;
+  name: string;
+  root: string;
+  private: boolean;
+  framework: string;
+  policy_profile: PolicyProfile;
+  tsconfigs: string[];
+  source_files: number;
+  project_loaded: boolean;
+  project_reason: string | null;
 };
 
 export type FrameworkDetails = {
@@ -388,6 +435,7 @@ export type ProjectAnalysis = {
   imports: ImportRecord[];
   tsProject: TypeScriptProject;
   frameworkDetails: FrameworkDetails;
+  workspaces: WorkspaceRecord[];
   unsupportedPatterns: ConfidenceSignal[];
   cache: {
     enabled: boolean;
@@ -481,6 +529,8 @@ export type ScoredRecord = {
   scope?: "file" | "project";
   file?: string;
   files?: string[];
+  workspace_id?: string;
+  workspace_name?: string;
   line?: number | null;
   column?: number | null;
   end_line?: number | null;

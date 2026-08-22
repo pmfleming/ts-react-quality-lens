@@ -62,7 +62,7 @@ node ./dist/bin/ts-react-quality-lens.js context --config ./ts-react-quality-len
 ```
 
 This writes `context.json` with task metadata, framework facts, module summaries, and cache status.
-Module summaries include package/tool entrypoint roles detected from `package.json` fields such as `bin`, `scripts`, `main`, `module`, `types`, and `exports`.
+Module summaries include package/tool entrypoint roles detected from root and workspace `package.json` fields such as `bin`, `scripts`, `main`, `module`, `types`, and `exports`. npm, pnpm, and Yarn workspace patterns, TypeScript project references, package ownership, and cross-workspace edges are represented explicitly.
 
 ## Current Measurements
 
@@ -138,6 +138,7 @@ Supported config fields:
 | `type_coverage` | Configure project, per-file, or changed-file minimum percentages and an earlier `type_health.json` ratchet baseline. |
 | `package_health` | Enable package validation and select the ATTW `strict`, `node16`, or `esm-only` profile. |
 | `sarif_inputs` | Import named SARIF 2.1 files and optionally require their successful, complete production. |
+| `workspaces` | Enable workspace discovery, override package globs, and assign per-workspace framework or policy profiles. |
 | `policy` | Select `baseline`, `recommended`, `strict`, `react`, or `library` evidence requirements and optionally list required checks. |
 | `suppressions` | Narrow intentional findings by `id`, `file`, or `kind`, with an optional reason. |
 | `audit` | Default audit `base`, `changed_since`, `gate`, and `baseline` settings. |

@@ -36,6 +36,9 @@ export function measureArchitectureMap(config: Config, command: string, context:
     to: edge.to,
     type: edge.import_kind === "dynamic" ? "dynamic_import" : edge.import_kind === "type" ? "type_only_import" : "static_import",
     source: edge.source,
+    from_workspace: edge.from_workspace ?? null,
+    to_workspace: edge.to_workspace ?? null,
+    workspace_dependency: edge.workspace_dependency ?? false,
     line: edge.line,
   }));
   const missingInputs = statusKeys(artifactStatus, "missing");
@@ -58,6 +61,8 @@ export function measureArchitectureMap(config: Config, command: string, context:
     summary: {
       nodes: nodes.length,
       edges: edges.length,
+      workspaces: project.workspaces.length,
+      cross_workspace_edges: edges.filter((edge) => edge.workspace_dependency).length,
       entrypoint_nodes: nodes.filter((node) => node.entrypoint_roles.length > 0).length,
       high_risk_nodes: nodes.filter((node) => node.risk === "high").length,
       unknown_metric_nodes: nodes.filter((node) => node.unknown_metrics.length > 0).length,
@@ -78,6 +83,7 @@ export function measureArchitectureMap(config: Config, command: string, context:
     },
     groups: groupMapNodes(nodes),
     framework: project.frameworkDetails,
+    workspaces: project.workspaces,
     nodes,
     edges,
   };

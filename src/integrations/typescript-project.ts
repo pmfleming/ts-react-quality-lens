@@ -20,6 +20,65 @@ type ParsedConfigResult =
   | { parsed: tsTypes.ParsedCommandLine; failure?: never }
   | { parsed?: never; failure: TypeScriptProject };
 
+export function loadTypeScriptProjects(
+  config: Config,
+  sourceFiles: SourceFileRecord[],
+  projectConfigs: Array<{ workspaceId: string; path: string }>,
+): TypeScriptProject {
+  const uniqueConfigs = projectConfigs.filter((item, index, values) =>
+    values.findIndex((candidate) => path.resolve(candidate.path) === path.resolve(item.path)) === index);
+  if (!uniqueConfigs.length) return loadTypeScriptProject(config, sourceFiles);
+  const projects = uniqueConfigs.map((item) => ({
+    item,
+    project: loadTypeScriptProject({ ...config, tsconfig: item.path }, sourceFiles),
+  }));
+  const modules = new Map<string, TypedModuleRecord>();
+  const diagnostics = new Map<string, DiagnosticRecord>();
+  const coverageFiles = new Map<string, TypeCoverageFile>();
+  for (const { project } of projects) {
+    for (const [id, module] of project.modules) modules.set(id, module);
+    for (const diagnostic of project.diagnostics) {
+      diagnostics.set(`${diagnostic.code}:${diagnostic.file}:${diagnostic.line}:${diagnostic.character}:${diagnostic.message}`, diagnostic);
+    }
+    for (const file of project.type_coverage?.files ?? []) coverageFiles.set(file.file, file);
+  }
+  const files = [...coverageFiles.values()];
+  const totals = files.reduce((result, file) => ({
+    analyzed_symbols: result.analyzed_symbols + file.analyzed_symbols,
+    typed_symbols: result.typed_symbols + file.typed_symbols,
+    explicit_any: result.explicit_any + file.explicit_any,
+    inferred_any: result.inferred_any + file.inferred_any,
+    error_types: result.error_types + file.error_types,
+    unknown: result.unknown + file.unknown,
+  }), emptyCoverageCounts());
+  const loaded = projects.every(({ project }) => project.loaded);
+  return {
+    available: projects.every(({ project }) => project.available),
+    loaded,
+    reason: loaded ? null : projects.filter(({ project }) => !project.loaded).map(({ item, project }) =>
+      `${toPosix(path.relative(config.projectRoot, item.path))}: ${project.reason ?? "project did not load"}`).join("; "),
+    diagnostics: [...diagnostics.values()],
+    modules,
+    ...(projects.find(({ project }) => project.compiler_options)?.project.compiler_options
+      ? { compiler_options: projects.find(({ project }) => project.compiler_options)!.project.compiler_options }
+      : {}),
+    type_coverage: {
+      summary: {
+        files: files.length,
+        ...totals,
+        type_coverage_percent: coveragePercent(totals.typed_symbols, totals.analyzed_symbols),
+      },
+      files,
+    },
+    project_configs: projects.map(({ item, project }) => ({
+      tsconfig: toPosix(path.relative(config.projectRoot, item.path)),
+      workspace_id: item.workspaceId,
+      loaded: project.loaded,
+      reason: project.reason,
+    })),
+  };
+}
+
 export function loadTypeScriptProject(config: Config, sourceFiles: SourceFileRecord[]): TypeScriptProject {
   const ts = loadTypeScript();
   if (!ts) return unloadedProject(false, "typescript package is not installed");
@@ -56,7 +115,11 @@ function createTypedProject(
   sourceFiles: SourceFileRecord[],
   parsed: tsTypes.ParsedCommandLine,
 ): TypeScriptProject {
-  const program = ts.createProgram({ rootNames: parsed.fileNames, options: { ...parsed.options, noEmit: true } });
+  const program = ts.createProgram({
+    rootNames: parsed.fileNames,
+    options: { ...parsed.options, noEmit: true },
+    ...(parsed.projectReferences ? { projectReferences: parsed.projectReferences } : {}),
+  });
   const checker = program.getTypeChecker();
   return {
     available: true,

@@ -22,6 +22,7 @@ export function measureDependencyHealth(config: Config, command: string, context
   const barrelModules = project.modules.filter((module) => module.isBarrel);
   const layerByModule = new Map(project.modules.map((module) => [module.id, classifyLayer(module.file, config.layerRules)]));
   const layerViolations = internalEdges.filter((edge) => isLayerViolation(edge, layerByModule, config.layerRules));
+  const workspaceEdges = project.imports.filter((edge) => edge.workspace_dependency && edge.from_workspace && edge.to_workspace);
   const records = [
     ...cycles.map((cycle, index) => cycleRecord(cycle, `cycle:${index + 1}`, 18)),
     ...depcruiseCycles.map((cycle, index) =>
@@ -79,6 +80,9 @@ export function measureDependencyHealth(config: Config, command: string, context
       barrel_modules: barrelModules.length,
       layer_violations: layerViolations.length,
       unsupported_patterns: project.unsupportedPatterns.length,
+      workspaces: project.workspaces.length,
+      cross_workspace_edges: workspaceEdges.length,
+      incomplete_workspace_projects: project.workspaces.filter((workspace) => workspace.tsconfigs.length > 0 && !workspace.project_loaded).length,
     },
     tool_status: {
       dependency_cruiser: {
@@ -90,7 +94,22 @@ export function measureDependencyHealth(config: Config, command: string, context
     },
     records,
     graph: {
-      nodes: project.modules.map((module) => ({ id: module.id, file: module.file, layer: layerByModule.get(module.id) ?? null })),
+      nodes: project.modules.map((module) => ({
+        id: module.id,
+        file: module.file,
+        layer: layerByModule.get(module.id) ?? null,
+        workspace_id: module.workspace_id,
+      })),
+      workspaces: project.workspaces,
+      workspace_edges: workspaceEdges.map((edge) => ({
+        from: edge.from_workspace,
+        to: edge.to_workspace,
+        source_module: edge.from,
+        target_module: edge.to,
+        specifier: edge.specifier,
+        import_kind: edge.import_kind,
+        line: edge.line,
+      })),
       edges: depcruise.ran
         ? dependencyCruiserEdges(config, project, depcruise.modules)
         : project.imports.map((edge) => ({
@@ -98,6 +117,9 @@ export function measureDependencyHealth(config: Config, command: string, context
             to: edge.to,
             kind: edge.to_kind,
             import_kind: edge.import_kind,
+            from_workspace: edge.from_workspace ?? null,
+            to_workspace: edge.to_workspace ?? null,
+            workspace_dependency: edge.workspace_dependency ?? false,
             line: edge.line,
           })),
     },

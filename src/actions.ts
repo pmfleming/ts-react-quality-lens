@@ -1,4 +1,5 @@
 import { isRecord } from "./collections.js";
+import { discoverWorkspaces, workspaceForFile } from "./workspaces.js";
 import type {
   Config,
   EvidenceKind,
@@ -36,6 +37,7 @@ export function enrichFinding(config: Config, value: unknown): unknown {
   const actions = record.actions?.length ? record.actions : actionsForRecord(record, kind);
   const relatedLocations = record.related_locations ?? relatedLocationsFor(record);
   const fixGroupId = record.fix_group_id ?? (relatedLocations.length > 1 ? record.id : null);
+  const workspace = record.file ? workspaceForFile(cachedWorkspaces(config), record.file) : null;
   return {
     ...record,
     kind,
@@ -45,6 +47,7 @@ export function enrichFinding(config: Config, value: unknown): unknown {
     finding_confidence: record.finding_confidence ?? defaultFindingConfidence(record),
     message: record.message ?? defaultMessage(record, kind),
     reason_code: record.reason_code ?? ruleId,
+    ...(workspace ? { workspace_id: record.workspace_id ?? workspace.id, workspace_name: record.workspace_name ?? workspace.name } : {}),
     semantic_decision: record.semantic_decision ?? defaultSemanticDecision(record, evidenceKind, kind),
     estimated_effort: record.estimated_effort ?? defaultEstimatedEffort(disposition),
     ...(relatedLocations.length ? { related_locations: relatedLocations } : {}),
@@ -52,6 +55,16 @@ export function enrichFinding(config: Config, value: unknown): unknown {
     actions,
     ...(suppression ? { suppressed: true, suppression_reason: suppression.reason ?? "Configured suppression." } : {}),
   };
+}
+
+const workspaceCache = new WeakMap<Config, ReturnType<typeof discoverWorkspaces>["records"]>();
+
+function cachedWorkspaces(config: Config): ReturnType<typeof discoverWorkspaces>["records"] {
+  const cached = workspaceCache.get(config);
+  if (cached) return cached;
+  const records = discoverWorkspaces(config).records;
+  workspaceCache.set(config, records);
+  return records;
 }
 
 function isScoredRecord(value: unknown): value is ScoredRecord {

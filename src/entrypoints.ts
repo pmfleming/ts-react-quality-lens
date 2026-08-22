@@ -13,10 +13,15 @@ export function readPackageJson(packageJsonPath: string): PackageJson | null {
 
 export function projectEntrypoints(config: Config, packageJson = readPackageJson(path.join(config.projectRoot, "package.json"))): EntryPointReference[] {
   const entries = [
-    ...packageEntryReferences(config, packageJson),
+    ...packageEntryReferences(config, packageJson, config.projectRoot),
     ...configuredPublicApiReferences(config),
   ];
   return dedupeEntrypoints(entries);
+}
+
+export function workspacePackageEntrypoints(config: Config, workspaceRoot: string): EntryPointReference[] {
+  const packageRoot = path.resolve(config.projectRoot, workspaceRoot);
+  return dedupeEntrypoints(packageEntryReferences(config, readPackageJson(path.join(packageRoot, "package.json")), packageRoot));
 }
 
 export function packageEntryFiles(config: Config, packageJson = readPackageJson(path.join(config.projectRoot, "package.json"))): Set<string> {
@@ -31,18 +36,18 @@ export function isEntrypointFile(module: { file: string; entrypointRoles?: Entry
   return Boolean(module.entrypointRoles?.length) || entryFiles.has(module.file);
 }
 
-function packageEntryReferences(config: Config, packageJson: PackageJson | null): EntryPointReference[] {
+function packageEntryReferences(config: Config, packageJson: PackageJson | null, packageRoot: string): EntryPointReference[] {
   const packageBin = typeof packageJson?.bin === "string" ? [packageJson.bin] : Object.values(packageJson?.bin ?? {});
   return [
-    ...packageBin.flatMap((file) => sourceEntryReferences(config, file, "cli_bin", "package.json#bin")),
+    ...packageBin.flatMap((file) => sourceEntryReferences(config, file, "cli_bin", "package.json#bin", packageRoot)),
     ...Object.values(packageJson?.scripts ?? {}).flatMap((command) =>
-      scriptFileReferences(command).flatMap((file) => sourceEntryReferences(config, file, "npm_script", "package.json#scripts")),
+      scriptFileReferences(command).flatMap((file) => sourceEntryReferences(config, file, "npm_script", "package.json#scripts", packageRoot)),
     ),
-    ...sourceEntryReferences(config, packageJson?.main, "package_main", "package.json#main"),
-    ...sourceEntryReferences(config, packageJson?.module, "package_module", "package.json#module"),
-    ...sourceEntryReferences(config, packageJson?.types ?? packageJson?.typings, "package_types", "package.json#types"),
+    ...sourceEntryReferences(config, packageJson?.main, "package_main", "package.json#main", packageRoot),
+    ...sourceEntryReferences(config, packageJson?.module, "package_module", "package.json#module", packageRoot),
+    ...sourceEntryReferences(config, packageJson?.types ?? packageJson?.typings, "package_types", "package.json#types", packageRoot),
     ...packageExportFiles(packageJson?.exports).flatMap((file) =>
-      sourceEntryReferences(config, file, "package_export", "package.json#exports"),
+      sourceEntryReferences(config, file, "package_export", "package.json#exports", packageRoot),
     ),
   ];
 }
@@ -74,21 +79,26 @@ function sourceEntryReferences(
   file: string | undefined,
   role: EntryPointRole,
   source: string,
+  packageRoot = config.projectRoot,
 ): EntryPointReference[] {
   if (!file) return [];
-  return sourceEntryCandidates(config, file).map((candidate) => ({ file: candidate, role, source }));
+  return sourceEntryCandidates(config, file, packageRoot).map((candidate) => ({ file: candidate, role, source }));
 }
 
-function sourceEntryCandidates(config: Config, file: string): string[] {
+function sourceEntryCandidates(config: Config, file: string, packageRoot: string): string[] {
   const normalized = file.replace(/\\/g, "/").replace(/^\.\//, "");
   const candidates = [
     normalized,
     normalized.replace(/^dist\//, "").replace(/\.(?:mjs|cjs|js)$/, ".ts"),
     normalized.replace(/^dist\//, "").replace(/\.(?:jsx)$/, ".tsx"),
+    `src/${normalized.replace(/^dist\//, "").replace(/\.(?:mjs|cjs|js)$/, ".ts")}`,
+    `src/${normalized.replace(/^dist\//, "").replace(/\.(?:jsx)$/, ".tsx")}`,
     normalized.replace(/\.(?:mjs|cjs|js)$/, ".ts"),
     normalized.replace(/\.(?:jsx)$/, ".tsx"),
   ];
-  return candidates.filter((candidate) => fs.existsSync(path.join(config.projectRoot, candidate)));
+  return candidates
+    .filter((candidate) => fs.existsSync(path.join(packageRoot, candidate)))
+    .map((candidate) => path.relative(config.projectRoot, path.join(packageRoot, candidate)).replace(/\\/g, "/"));
 }
 
 function dedupeEntrypoints(entries: EntryPointReference[]): EntryPointReference[] {

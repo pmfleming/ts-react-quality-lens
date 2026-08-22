@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { toolPackageVersion } from "./integrations/tool-runner.js";
 import { LENS_NAME, SCHEMA_VERSION } from "./tasks.js";
+import { discoverWorkspaces } from "./workspaces.js";
 import type { AnalysisIdentity, Confidence, Config, ProjectAnalysis } from "./types.js";
 
 function provenance(command: string, sourceType = "static") {
@@ -76,20 +77,31 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
 
 function configClosureHash(config: Config): string {
   const hash = crypto.createHash("sha256");
-  const files = [
+  const files = new Map<string, string | null>([
     ["config", config.configPath],
     ["tsconfig", config.tsconfig],
     ["package", path.join(config.projectRoot, "package.json")],
     ...["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"]
       .map((name): [string, string] => [`lock:${name}`, path.join(config.projectRoot, name)]),
-  ] satisfies Array<[string, string | null]>;
-  for (const [label, file] of files) {
+  ]);
+  for (const file of workspaceConfigFiles(config)) {
+    files.set(`workspace:${path.relative(config.projectRoot, file).replace(/\\/g, "/")}`, file);
+  }
+  for (const [label, file] of [...files].sort(([left], [right]) => left.localeCompare(right))) {
     hash.update(label);
     hash.update("\0");
     hash.update(file && fs.existsSync(file) ? fs.readFileSync(file) : "missing");
     hash.update("\0");
   }
   return `sha256:${hash.digest("hex")}`;
+}
+
+function workspaceConfigFiles(config: Config): string[] {
+  const discovery = discoverWorkspaces(config);
+  return [...new Set(discovery.records.flatMap((workspace) => [
+    path.join(config.projectRoot, workspace.root, "package.json"),
+    ...workspace.tsconfigs.map((tsconfig) => path.join(config.projectRoot, tsconfig)),
+  ]))];
 }
 
 export function sourceSetHash(project: Pick<ProjectAnalysis, "sourceFiles">): string {

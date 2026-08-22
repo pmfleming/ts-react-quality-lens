@@ -25,6 +25,8 @@ export function mapNode(
     file: module.file,
     type: module.components.length ? "component" : module.file.includes("/hooks/") ? "hook" : "module",
     group: module.id.split("/").slice(0, -1).join("/") || ".",
+    workspace_id: module.workspace_id,
+    workspace_name: module.workspace_name,
     entrypoint_roles: module.entrypointRoles,
     risk_score: scores.risk_score,
     risk: riskForScore(scores.risk_score),

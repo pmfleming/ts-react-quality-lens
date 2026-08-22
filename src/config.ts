@@ -27,6 +27,7 @@ import type {
   SarifInputConfig,
   SuppressionConfig,
   TypeCoverageConfig,
+  WorkspacesConfig,
 } from "./types.js";
 
 type JsonCommentScanner = {
@@ -143,6 +144,7 @@ export function loadConfig(configArg?: string | null): Config {
     typeCoverage: normalizeTypeCoverage(configDir, rawConfig.type_coverage),
     packageHealth: normalizePackageHealth(rawConfig.package_health, rawConfig.policy?.profile),
     sarifInputs: normalizeSarifInputs(configDir, rawConfig.sarif_inputs),
+    workspaces: normalizeWorkspaces(rawConfig.workspaces),
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
@@ -169,6 +171,7 @@ export function createConfidence(config: Config, extra: Record<string, JsonValue
     "source_roots_exist",
     "package_json_found",
     "dependencies_installed",
+    ...(typeof base.workspaces_detected === "number" && base.workspaces_detected > 1 ? ["workspace_projects_complete"] : []),
   ];
   const observedInputs = stringArray(base.observed_inputs) ?? Object.entries(base)
     .filter(([, value]) => value === true)
@@ -421,6 +424,14 @@ function normalizeSarifInputs(configDir: string, value: SarifInputConfig[] | und
     name: input.name ?? `sarif-${index + 1}`,
     required: input.required === true,
   }));
+}
+
+function normalizeWorkspaces(value: WorkspacesConfig | undefined): Config["workspaces"] {
+  return {
+    enabled: value?.enabled !== false,
+    patterns: value?.patterns ?? [],
+    overrides: value?.overrides ?? [],
+  };
 }
 
 function normalizePolicy(value: PolicyConfig | undefined, hasTsconfig: boolean, hasTestCommand: boolean): Config["policy"] {

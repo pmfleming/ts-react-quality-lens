@@ -647,6 +647,102 @@ test("project analysis marks package tool entrypoints", () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("workspace discovery loads project references and preserves cross-package ownership", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-workspaces-`));
+  for (const workspace of ["a", "b"]) fs.mkdirSync(path.join(tempDir, "packages", workspace, "src"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempDir, "package.json"),
+    JSON.stringify({ name: "workspace-fixture", private: true, workspaces: ["packages/*"] }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ files: [], references: [{ path: "packages/a" }, { path: "packages/b" }] }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "packages", "a", "package.json"),
+    JSON.stringify({ name: "@fixture/a", type: "module", exports: "./dist/index.js" }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "packages", "b", "package.json"),
+    JSON.stringify({ name: "@fixture/b", type: "module", dependencies: { "@fixture/a": "workspace:*", react: "latest" }, exports: "./dist/index.js" }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "packages", "a", "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: { composite: true, strict: true, module: "NodeNext", moduleResolution: "NodeNext", rootDir: "src" },
+      include: ["src"],
+    }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "packages", "b", "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        composite: true,
+        strict: true,
+        module: "NodeNext",
+        moduleResolution: "NodeNext",
+        rootDir: "src",
+        baseUrl: ".",
+        paths: { "@fixture/a": ["../a/src/index.ts"] },
+      },
+      references: [{ path: "../a" }],
+      include: ["src"],
+    }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(tempDir, "packages", "a", "src", "index.ts"), "export const value = 42;\n", "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "packages", "b", "src", "index.ts"),
+    'import { value } from "@fixture/a";\nexport const doubled = value * 2;\n',
+    "utf8",
+  );
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
+  fs.writeFileSync(configPath, JSON.stringify({
+    project_root: ".",
+    source_roots: ["packages"],
+    output_dir: "target/analysis",
+    tsconfig: "tsconfig.json",
+    workspaces: {
+      enabled: true,
+      overrides: [{ workspace: "@fixture/b", framework: "react", policy_profile: "strict" }],
+    },
+  }), "utf8");
+
+  const config = loadConfig(configPath);
+  const analysis = createAnalysisContext(config).project();
+  const packageA = analysis.workspaces.find((workspace) => workspace.id === "@fixture/a");
+  const packageB = analysis.workspaces.find((workspace) => workspace.id === "@fixture/b");
+  const moduleB = analysis.modules.find((module) => module.file === "packages/b/src/index.ts");
+  const crossEdge = moduleB?.imports.find((edge) => edge.specifier === "@fixture/a");
+  assert.equal(analysis.workspaces.length, 3);
+  assert.equal(packageA?.project_loaded, true);
+  assert.equal(packageB?.project_loaded, true);
+  assert.equal(packageB?.framework, "react");
+  assert.equal(packageB?.policy_profile, "strict");
+  assert.equal(moduleB?.workspace_id, "@fixture/b");
+  assert.ok(moduleB?.entrypointRoles.includes("package_export"));
+  assert.equal(crossEdge?.from_workspace, "@fixture/b");
+  assert.equal(crossEdge?.to_workspace, "@fixture/a");
+  assert.equal(crossEdge?.workspace_dependency, true);
+
+  const [dependency] = runMeasure(config, "quality.dependency_health", "test workspace graph") as [Artifact];
+  const graph = dependency.graph as { workspace_edges?: Array<{ from: string; to: string }> };
+  assert.ok(graph.workspace_edges?.some((edge) => edge.from === "@fixture/b" && edge.to === "@fixture/a"));
+  const context = projectContext(config, "test workspace context") as unknown as {
+    summary: { workspaces: number; incomplete_workspace_projects: number };
+    workspaces: Array<{ id: string }>;
+  };
+  assert.equal(context.summary.workspaces, 3);
+  assert.equal(context.summary.incomplete_workspace_projects, 0);
+  assert.ok(context.workspaces.some((workspace) => workspace.id === "@fixture/a"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("clone measure reports same-purpose exports and hooks without clone-like bodies", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-same-purpose-`));
   fs.mkdirSync(path.join(tempDir, "src", "billing"), { recursive: true });
@@ -840,6 +936,7 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
     imports: [{ from: "src/a", to: "src/b", to_kind: "relative", specifier: "./b", import_kind: "static", line: 1 }],
     tsProject: { available: false, loaded: false, reason: null },
     frameworkDetails: { conventions: {} },
+    workspaces: [],
     unsupportedPatterns: [],
   } as unknown as ProjectAnalysis;
   const context: AnalysisContext = {

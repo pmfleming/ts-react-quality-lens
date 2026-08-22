@@ -46,6 +46,8 @@ export function analyzeModule(config: Config, file: SourceFileRecord, tsProject:
     text: file.text,
     sourceFile: file,
     entrypointRoles: [],
+    workspace_id: config.projectName,
+    workspace_name: config.projectName,
     unsupportedPatterns,
   };
   Object.defineProperty(record, "astSourceFile", {
