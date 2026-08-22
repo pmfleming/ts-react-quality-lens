@@ -5,8 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import * as ts from "typescript";
+import { complexityForNode, cognitiveComplexityForNode, halsteadMetricsForNode, maxNestingDepthForNode } from "../src/ast-metrics.js";
 import { loadConfig } from "../src/config.js";
-import { runCli, runMeasure } from "../src/cli.js";
+import { runCli } from "../src/cli.js";
+import { runMeasure } from "../src/measure-runner.js";
 import { auditMarkdown, runAudit } from "../src/audit.js";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { projectContext } from "../src/context.js";
@@ -24,6 +27,21 @@ function requiredToolStatus(artifact: ToolArtifact, name: string) {
   assert.ok(status, `Expected ${name} tool status`);
   return status;
 }
+
+test("complexity metrics exclude nested functions and count control nesting once", () => {
+  const source = ts.createSourceFile(
+    "metrics.ts",
+    "function outer(flag: boolean) { if (flag) { const inner = () => { if (flag) return 1; return 0; }; return inner; } return () => 0; }",
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const outer = source.statements.find(ts.isFunctionDeclaration);
+  assert.ok(outer);
+  assert.equal(complexityForNode(outer), 2);
+  assert.equal(cognitiveComplexityForNode(outer), 1);
+  assert.equal(maxNestingDepthForNode(outer), 1);
+  assert.ok(halsteadMetricsForNode(outer).effort > 0);
+});
 
 test("catalog exposes stable board task metadata", () => {
   const config = loadConfig(fixtureConfig);
@@ -166,8 +184,11 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(cleanup.records?.some((record) => record.source === "knip"));
   assert.ok(cleanup.records?.every((record) => typeof record.reason_code === "string"));
   assert.ok(cleanup.records?.every((record) => typeof record.estimated_effort === "number"));
-  assert.ok(cleanup.records?.some((record) => record.semantic_decision === "confirmed"));
-  assert.ok(cleanup.records?.some((record) => record.semantic_decision === "disagreed"));
+  assert.ok(cleanup.records?.some((record) =>
+    record.id === "cleanup:unused-export:src/format:formatPercent" &&
+    record.semantic_decision === "confirmed",
+  ));
+  assert.ok(cleanup.disagreements?.some((record) => record.semantic_decision === "disagreed"));
   assert.ok(cleanup.records?.some((record) => Array.isArray(record.actions) && record.actions.length > 0));
 
   assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "analysis-v2.json")));
@@ -910,7 +931,10 @@ test("analysis handles inline type imports and default export assignments", () =
 
   runMeasure(config, "quality.cleanup", "test syntax cleanup");
   const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
-  assert.ok(cleanup.records?.some((record) => record.id === "cleanup:type-only-production-dependency:react"));
+  assert.ok(cleanup.unconfirmed?.some((record) =>
+    record.id === "cleanup:type-only-production-dependency:react" &&
+    record.semantic_decision === "not-comparable",
+  ));
   assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/component:default"));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
@@ -942,7 +966,92 @@ test("cleanup honors configured public API exports", () => {
   runMeasure(config, "quality.cleanup", "test public api cleanup");
   const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
   assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
-  assert.ok(cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/lib:unusedHelper"));
+  assert.ok(!cleanup.disagreements?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
+  assert.ok(cleanup.disagreements?.some((record) =>
+    record.id === "cleanup:unused-export:src/lib:unusedHelper" &&
+    record.semantic_decision === "disagreed",
+  ));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("cleanup aligns script binaries, declaration-surface types, and canonical re-exports", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-cleanup-semantics-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "node_modules", "aliased-compiler"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempDir, "node_modules", "aliased-compiler", "package.json"),
+    JSON.stringify({ name: "compiler-implementation", version: "1.0.0", bin: { "fixture-tsc": "./bin/tsc.js" } }),
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "package.json"),
+    JSON.stringify({
+      name: "cleanup-semantics-fixture",
+      type: "module",
+      main: "./dist/index.js",
+      scripts: { build: "fixture-tsc -p tsconfig.json" },
+      devDependencies: { "aliased-compiler": "npm:compiler-implementation@1.0.0" },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" }, include: ["src"] }),
+  );
+  fs.writeFileSync(path.join(tempDir, "src", "runner.ts"), "export type Options = { strict: boolean };\nexport function run(options: Options): boolean { return options.strict; }\n");
+  fs.writeFileSync(path.join(tempDir, "src", "a.ts"), "export const shared = 'a';\n");
+  fs.writeFileSync(path.join(tempDir, "src", "b.ts"), "export const shared = 'b';\n");
+  fs.writeFileSync(path.join(tempDir, "src", "orphan.ts"), "export const orphan = true;\n");
+  fs.writeFileSync(
+    path.join(tempDir, "src", "index.ts"),
+    "export { run } from './runner.js';\nexport * from './a.js';\nexport * from './b.js';\n",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "ts-react-quality-lens.config.json"),
+    JSON.stringify({
+      project_name: "cleanup-semantics-fixture",
+      project_root: ".",
+      source_roots: ["src"],
+      output_dir: "target/analysis",
+      tsconfig: "tsconfig.json",
+      cleanup: { knip: false },
+    }),
+  );
+
+  const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
+  runMeasure(config, "quality.cleanup", "test cleanup semantics");
+  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-dependency:aliased-compiler"));
+  assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/runner:Options"));
+  assert.ok(!cleanup.records?.some((record) => record.kind === "duplicate_export" && record.name === "run"));
+  assert.ok(cleanup.records?.some((record) => record.kind === "duplicate_export" && record.name === "shared"));
+  assert.ok(cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/orphan:orphan"));
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("cleanup distinguishes Knip exclusions from semantic disagreements", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-cleanup-exclusion-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempDir, "package.json"),
+    JSON.stringify({
+      name: "cleanup-exclusion-fixture",
+      type: "module",
+      bin: { fixture: "src/index.ts" },
+      dependencies: { "ignored-package": "1.0.0" },
+      knip: { ignoreDependencies: ["ignored-package"] },
+    }),
+  );
+  fs.writeFileSync(path.join(tempDir, "src", "index.ts"), "export const value = 1;\n");
+  fs.writeFileSync(
+    path.join(tempDir, "ts-react-quality-lens.config.json"),
+    JSON.stringify({ project_name: "cleanup-exclusion-fixture", project_root: ".", source_roots: ["src"], output_dir: "target/analysis" }),
+  );
+
+  const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
+  runMeasure(config, "quality.cleanup", "test cleanup exclusion");
+  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  const excluded = cleanup.unconfirmed?.find((record) => record.id === "cleanup:unused-dependency:ignored-package");
+  assert.equal(excluded?.semantic_decision, "excluded-by-tool");
+  assert.equal(cleanup.disagreements?.length, 0);
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -1029,6 +1138,8 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
       issues: [],
       version: null,
       complete: false,
+      excluded_dependencies: [],
+      exclusions_complete: true,
     }),
     packageHealth: () => ({
       enabled: false,

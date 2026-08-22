@@ -1,4 +1,9 @@
-import { analysisConfidence, artifactBase, cloneGroup, cloneGroupFromBlocks, createAnalysisContext, groupBy, jscpdCloneGroup, normalizeCloneLine, riskForScore, sourceSetHash, stableHash, writeArtifact } from "../measure-shared.js";
+import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
+import { cloneGroup, cloneGroupFromBlocks, jscpdCloneGroup, normalizeCloneLine, stableHash } from "../clone-utils.js";
+import { groupBy } from "../collections.js";
+import { artifactBase, sourceSetHash } from "../provenance.js";
+import { riskForScore } from "../risk-model.js";
+import { writeArtifact } from "../writer.js";
 import * as ts from "typescript";
 import type { AnalysisContext, CloneBlock, CloneGroup, CloneInstance, Config, EntryPointRole, ModuleRecord, ProjectAnalysis, ScoredRecord } from "../types.js";
 

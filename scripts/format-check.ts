@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { parseJson } from "../src/collections.js";
 import { collectFiles } from "./file-walk.js";
 
 const checkedExtensions = new Set([".js", ".jsx", ".ts", ".tsx", ".json", ".md", ".html", ".yml", ".yaml"]);
@@ -18,7 +19,7 @@ for (const file of collectFiles(".", ignored)) {
   });
   if (extension === ".json") {
     try {
-      JSON.parse(text);
+      parseJson(text);
     } catch (error) {
       failures.push(`${file}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }

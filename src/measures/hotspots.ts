@@ -1,4 +1,7 @@
-import { analysisConfidence, artifactBase, createAnalysisContext, fileHotspotRecord, functionHotspotRecord, sourceSetHash, writeArtifact } from "../measure-shared.js";
+import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
+import { artifactBase, sourceSetHash } from "../provenance.js";
+import { fileHotspotRecord, functionHotspotRecord } from "../scoring.js";
+import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Artifact, Config, ScoredRecord } from "../types.js";
 
 export function measureHotspots(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)): Artifact {

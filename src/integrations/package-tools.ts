@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { isRecord } from "../collections.js";
+import { isRecord, parseJson } from "../collections.js";
 import type { AttwProblem, Config, PackageHealthResult, PackageToolStatus, PublintMessage } from "../types.js";
 import {
   runLocalTool,
@@ -41,7 +41,8 @@ export function runPackageHealth(config: Config): PackageHealthResult {
 }
 
 function runDeclarationEmit(config: Config, outputDir: string): PackageToolStatus {
-  if (!config.tsconfig || !fs.existsSync(config.tsconfig)) {
+  const tsconfig = config.tsconfig;
+  if (!tsconfig || !fs.existsSync(tsconfig)) {
     return {
       available: toolAvailable(config.projectRoot, "tsc", true),
       ran: false,
@@ -61,7 +62,7 @@ function runDeclarationEmit(config: Config, outputDir: string): PackageToolStatu
       fs.mkdirSync(outputDir, { recursive: true });
       runLocalTool(executable, [
         "-p",
-        config.tsconfig!,
+        tsconfig,
         "--declaration",
         "--emitDeclarationOnly",
         "--noEmit",
@@ -97,7 +98,7 @@ function packProject(config: Config, tempDir: string): {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: PACKAGE_TIMEOUT_MS,
     });
-    const parsed: unknown = JSON.parse(stdout);
+    const parsed = parseJson(stdout);
     const result = Array.isArray(parsed) && isRecord(parsed[0]) ? parsed[0] : null;
     if (!result || typeof result.filename !== "string") throw new Error("npm pack did not return a tarball filename");
     return {
@@ -146,7 +147,7 @@ function runPublint(config: Config, tempDir: string): PackageHealthResult["publi
       stdio: ["ignore", "pipe", "pipe"],
       timeout: PACKAGE_TIMEOUT_MS,
     });
-    const parsed: unknown = JSON.parse(stdout);
+    const parsed = parseJson(stdout);
     return {
       available: true,
       ran: true,
@@ -173,7 +174,7 @@ function runAttw(config: Config, tarball: string): PackageHealthResult["attw"] {
   const parse = (stdout: string) => ({
     complete: true,
     version: toolPackageVersion("@arethetypeswrong/cli"),
-    problems: normalizeAttwProblems(JSON.parse(stdout)),
+    problems: normalizeAttwProblems(parseJson(stdout), config.packageHealth.attwProfile),
     profile: config.packageHealth.attwProfile,
   });
   return runToolAdapter(
@@ -218,16 +219,22 @@ function normalizePublintMessages(value: unknown): PublintMessage[] {
   });
 }
 
-function normalizeAttwProblems(value: unknown): AttwProblem[] {
+function normalizeAttwProblems(
+  value: unknown,
+  profile: Config["packageHealth"]["attwProfile"],
+): AttwProblem[] {
   if (!isRecord(value) || !isRecord(value.problems)) return [];
   return Object.values(value.problems).flatMap((items): AttwProblem[] => {
     if (!Array.isArray(items)) return [];
     return items.flatMap((item): AttwProblem[] => {
       if (!isRecord(item) || typeof item.kind !== "string") return [];
+      const resolutionKind = typeof item.resolutionKind === "string" ? item.resolutionKind : undefined;
+      if (profile === "esm-only" && resolutionKind?.endsWith("-cjs")) return [];
+      if (profile === "node16" && resolutionKind === "node10") return [];
       return [{
         kind: item.kind,
         ...(typeof item.entrypoint === "string" ? { entrypoint: item.entrypoint } : {}),
-        ...(typeof item.resolutionKind === "string" ? { resolutionKind: item.resolutionKind } : {}),
+        ...(resolutionKind ? { resolutionKind } : {}),
       }];
     });
   });

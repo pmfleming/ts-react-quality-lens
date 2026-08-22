@@ -2,14 +2,14 @@ import childProcess from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isRecord } from "../collections.js";
+import { isRecord, parseJson } from "../collections.js";
 import { loadConfig } from "../config.js";
 import { createAnalysisContext } from "../analysis-context.js";
 import { analysisIdentity } from "../provenance.js";
 import { collectFindings, runAuditMeasurements } from "./findings.js";
 import type { AnalysisIdentity, AuditFinding, Config } from "../types.js";
 
-export type BaseSnapshot = {
+type BaseSnapshot = {
   findingIds: Set<string>;
   analysisIdentity: AnalysisIdentity;
 };
@@ -17,7 +17,7 @@ export type BaseSnapshot = {
 export function readBaselineIds(file: string | null | undefined): Set<string> {
   if (!file || !fs.existsSync(file)) return new Set();
   try {
-    return baselineIds(JSON.parse(fs.readFileSync(file, "utf8")));
+    return baselineIds(parseJson(fs.readFileSync(file, "utf8")));
   } catch {
     return new Set();
   }

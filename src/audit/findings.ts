@@ -6,7 +6,6 @@ import { readArtifact } from "../writer.js";
 import { findingTouchesChangedFile, findingTouchesChangedLine, stripSourceExtension, type LineRange } from "./change-set.js";
 import type {
   AnalysisContext,
-  Artifact,
   AuditFinding,
   AuditVerdict,
   Config,
@@ -58,7 +57,7 @@ export function collectFindings(config: Config, scope: FindingScope): AuditFindi
 
 function taskFindings(config: Config, taskId: string): Array<{ taskId: string; finding: ScoredRecord }> {
   const task = TASKS.find((candidate) => candidate.id === taskId);
-  const artifact = task ? readArtifact<Artifact>(config, task.artifact) : null;
+  const artifact = task ? readArtifact(config, task.artifact) : null;
   return [...findingRecords(artifact?.records), ...findingRecords(artifact?.groups)]
     .map((finding) => ({ taskId, finding }));
 }
@@ -140,18 +139,18 @@ export function auditVerdict(findings: AuditFinding[], incompleteReasons: string
 }
 
 const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = {
-  compiler: (config) => readArtifact<Artifact>(config, "type_health.json")?.confidence.typescript_program_loaded === true
+  compiler: (config) => readArtifact(config, "type_health.json")?.confidence.typescript_program_loaded === true
     ? null
     : "TypeScript compiler program did not load.",
   "typed-lint": (config) => {
-    const status = readArtifact<Artifact>(config, "lint_health.json")?.tool_status?.typed_eslint;
+    const status = readArtifact(config, "lint_health.json")?.tool_status?.typed_eslint;
     return status?.ran === true && status.complete === true ? null : "Required type-aware ESLint analysis did not complete.";
   },
   tests: testEvidenceReason,
-  "react-hooks": (config) => readArtifact<Artifact>(config, "react_health.json")?.tool_status?.eslint_react_hooks?.ran === true
+  "react-hooks": (config) => readArtifact(config, "react_health.json")?.tool_status?.eslint_react_hooks?.ran === true
     ? null
     : "Required React Hooks analysis did not run.",
-  package: (config) => readArtifact<Artifact>(config, "package_health.json")?.summary.complete === true
+  package: (config) => readArtifact(config, "package_health.json")?.summary.complete === true
     ? null
     : "Required package health analysis did not complete.",
 };
@@ -162,7 +161,7 @@ export function requiredEvidenceReasons(config: Config): string[] {
 
 function testEvidenceReason(config: Config): string | null {
   if (!config.testCommand) return "Tests are required but no test command is configured.";
-  const execution = readArtifact<Artifact & { execution?: { status?: string } }>(config, "correctness_review.json")?.execution;
+  const execution = readArtifact(config, "correctness_review.json")?.execution;
   return execution && ["passed", "failed"].includes(execution.status ?? "") ? null : "Required test execution did not complete.";
 }
 

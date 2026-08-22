@@ -1,4 +1,8 @@
-import { analysisConfidence, artifactBase, createAnalysisContext, groupMapNodes, mapNode, readArtifact, sourceSetHash, writeArtifact } from "../measure-shared.js";
+import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
+import { groupMapNodes, mapNode } from "../graph.js";
+import { artifactBase, sourceSetHash } from "../provenance.js";
+import { readArtifact, writeArtifact } from "../writer.js";
+import { isRecord, parseJson } from "../collections.js";
 import { RISK_MODEL, type ArtifactFreshness, type ArtifactFreshnessLookup, type RiskArtifact } from "../risk-model.js";
 import type { AnalysisContext, Config, JsonValue } from "../types.js";
 import fs from "node:fs";
@@ -121,8 +125,8 @@ function readPerformanceInputs(config: Config): MapInputArtifact | null {
 
 function readBundleStats(file: string | null) {
   const modules = readJsonArray(file, "modules");
-  return modules.flatMap((item, index) => {
-    const record = item as Record<string, unknown>;
+  return modules.flatMap((record, index) => {
+    if (!isRecord(record)) return [];
     const fileName = typeof record.file === "string" ? record.file : typeof record.name === "string" ? record.name : null;
     const bytes = typeof record.bytes === "number" ? record.bytes : typeof record.size === "number" ? record.size : null;
     if (!fileName || bytes === null) return [];
@@ -140,8 +144,8 @@ function readBundleStats(file: string | null) {
 
 function readRenderCosts(file: string | null) {
   const modules = readJsonArray(file, "modules");
-  return modules.flatMap((item, index) => {
-    const record = item as Record<string, unknown>;
+  return modules.flatMap((record, index) => {
+    if (!isRecord(record)) return [];
     const fileName = typeof record.file === "string" ? record.file : null;
     const milliseconds = typeof record.ms === "number" ? record.ms : typeof record.render_ms === "number" ? record.render_ms : null;
     if (!fileName || milliseconds === null) return [];
@@ -160,9 +164,11 @@ function readRenderCosts(file: string | null) {
 function readJsonArray(file: string | null, property: string): unknown[] {
   if (!file || !fs.existsSync(file)) return [];
   try {
-    const value = JSON.parse(fs.readFileSync(file, "utf8"));
+    const value = parseJson(fs.readFileSync(file, "utf8"));
     if (Array.isArray(value)) return value;
-    return Array.isArray(value?.[property]) ? value[property] : [];
+    if (!isRecord(value)) return [];
+    const nested = value[property];
+    return Array.isArray(nested) ? nested : [];
   } catch {
     return [];
   }

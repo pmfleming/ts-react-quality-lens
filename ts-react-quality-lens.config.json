@@ -1,0 +1,19 @@
+{
+  "$schema": "./ts-react-quality-lens.config.schema.json",
+  "project_name": "ts-react-quality-lens",
+  "project_root": ".",
+  "source_roots": ["src", "bin", "scripts"],
+  "test_roots": ["test"],
+  "output_dir": "target/self-analysis",
+  "tsconfig": "tsconfig.json",
+  "framework": "auto",
+  "test_runner": "node",
+  "test_command": "npm test",
+  "react": { "ruleset": "recommended-v2" },
+  "accessibility": { "enabled": true },
+  "cleanup": { "knip": true, "production": false },
+  "package_health": { "enabled": true, "attw_profile": "esm-only" },
+  "cache": { "enabled": true },
+  "policy": { "profile": "strict" },
+  "audit": { "base": "HEAD", "gate": "new-only" }
+}

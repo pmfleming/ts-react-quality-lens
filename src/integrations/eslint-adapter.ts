@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isRecord, parseJson } from "../collections.js";
 import { packageJsonUrl } from "../package-root.js";
 import type { Config, EslintAccessibilityResult, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult, ReactRuleset } from "../types.js";
 import {
@@ -105,7 +106,7 @@ function runEslint(config: Config, configPath: string, rulePrefix: string | unde
     "--no-error-on-unmatched-pattern",
     ...existingRelativeRoots(config),
   ];
-  const parse = (stdout: string) => ({ messages: normalizeEslintMessages(JSON.parse(stdout), config, rulePrefix) });
+  const parse = (stdout: string) => ({ messages: normalizeEslintMessages(parseJson(stdout), config, rulePrefix) });
   return runToolAdapter(
     config,
     "eslint",
@@ -205,39 +206,32 @@ export default [{
 `;
 }
 
-function normalizeEslintMessages(
-  results: Array<{
-    filePath: string;
-    messages: Array<{
-      ruleId?: string | null;
-      fatal?: boolean;
-      line?: number;
-      column?: number;
-      endLine?: number;
-      endColumn?: number;
-      severity?: number;
-      message: string;
-    }>;
-  }>,
-  config: Config,
-  rulePrefix?: string,
-): EslintMessage[] {
-  return results.flatMap((result) =>
-    result.messages
-      .filter((message) => rulePrefix
-        ? Boolean(message.ruleId?.startsWith(rulePrefix) || message.fatal)
-        : Boolean(message.ruleId || message.fatal))
-      .map((message) => ({
-        file: relativePath(config.projectRoot, result.filePath),
-        line: message.line ?? null,
-        column: message.column ?? null,
-        end_line: message.endLine ?? null,
-        end_column: message.endColumn ?? null,
-        rule_id: message.ruleId ?? "eslint/parser",
+function normalizeEslintMessages(value: unknown, config: Config, rulePrefix?: string): EslintMessage[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((result): EslintMessage[] => {
+    if (!isRecord(result) || typeof result.filePath !== "string" || !Array.isArray(result.messages)) return [];
+    const filePath = result.filePath;
+    return result.messages.flatMap((message): EslintMessage[] => {
+      if (!isRecord(message) || typeof message.message !== "string") return [];
+      const ruleId = typeof message.ruleId === "string" ? message.ruleId : null;
+      const fatal = message.fatal === true;
+      if (rulePrefix ? !ruleId?.startsWith(rulePrefix) && !fatal : !ruleId && !fatal) return [];
+      return [{
+        file: relativePath(config.projectRoot, filePath),
+        line: numberOrNull(message.line),
+        column: numberOrNull(message.column),
+        end_line: numberOrNull(message.endLine),
+        end_column: numberOrNull(message.endColumn),
+        rule_id: ruleId ?? "eslint/parser",
         severity: message.severity === 2 ? "error" : "warning",
         message: message.message,
-      })),
-  );
+      }];
+    });
+  });
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
 }
 
 function relativePath(projectRoot: string, file: string): string {

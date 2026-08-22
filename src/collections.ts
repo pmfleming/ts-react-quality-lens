@@ -1,3 +1,12 @@
+export function parseJson(text: string): unknown {
+  const value: unknown = JSON.parse(text);
+  return value;
+}
+
+export function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

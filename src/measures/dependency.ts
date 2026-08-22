@@ -1,14 +1,7 @@
-import {
-  analysisConfidence,
-  artifactBase,
-  createAnalysisContext,
-  dependencyCruiserCycles,
-  dependencyCruiserEdges,
-  findCycles,
-  sourceSetHash,
-  uniqueCycleCount,
-  writeArtifact,
-} from "../measure-shared.js";
+import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
+import { dependencyCruiserCycles, dependencyCruiserEdges, findCycles, uniqueCycleCount } from "../graph.js";
+import { artifactBase, sourceSetHash } from "../provenance.js";
+import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, ImportRecord, LayerRule } from "../types.js";
 
 export function measureDependencyHealth(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
@@ -111,7 +104,7 @@ export function measureDependencyHealth(config: Config, command: string, context
         line: edge.line,
       })),
       edges: depcruise.ran
-        ? dependencyCruiserEdges(config, project, depcruise.modules)
+        ? dependencyCruiserEdges(project, depcruise.modules)
         : project.imports.map((edge) => ({
             from: edge.from,
             to: edge.to,

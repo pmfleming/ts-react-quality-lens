@@ -14,7 +14,6 @@ const CYCLOMATIC_CHECKS = [
 ];
 
 const NESTING_CHECKS = [
-  ts.isBlock,
   ts.isIfStatement,
   ts.isForStatement,
   ts.isForInStatement,
@@ -53,7 +52,11 @@ export function complexityForNode(node: ts.Node): number {
 }
 
 function cyclomaticComplexityForNode(node: ts.Node): number {
-  return 1 + countMatchingNodes(node, (current) => CYCLOMATIC_CHECKS.some((check) => check(current)));
+  let complexity = 1;
+  visitChildrenOutsideNestedFunctions(node, (current) => {
+    if (CYCLOMATIC_CHECKS.some((check) => check(current))) complexity += 1;
+  });
+  return complexity;
 }
 
 export function cognitiveComplexityForNode(node: ts.Node): number {
@@ -99,13 +102,13 @@ export function halsteadMetricsForNode(node: ts.Node): HalsteadMetrics {
 
 export function maxNestingDepthForNode(node: ts.Node): number {
   let max = 0;
-  function visit(current: ts.Node, depth: number): void {
-    const nested = NESTING_CHECKS.some((check) => check(current));
-    const nextDepth = nested ? depth + 1 : depth;
+  function visit(current: ts.Node, depth: number, root: boolean): void {
+    if (!root && isFunctionLike(current)) return;
+    const nextDepth = NESTING_CHECKS.some((check) => check(current)) ? depth + 1 : depth;
     max = Math.max(max, nextDepth);
-    ts.forEachChild(current, (child) => visit(child, nextDepth));
+    ts.forEachChild(current, (child) => visit(child, nextDepth, false));
   }
-  visit(node, 0);
+  visit(node, 0, true);
   return max;
 }
 
@@ -141,6 +144,15 @@ export function countUnionMembers(node: ts.Node): number {
   }
   visit(node);
   return count;
+}
+
+function visitChildrenOutsideNestedFunctions(node: ts.Node, visitNode: (node: ts.Node) => void): void {
+  function visit(current: ts.Node, root: boolean): void {
+    if (!root && isFunctionLike(current)) return;
+    visitNode(current);
+    ts.forEachChild(current, (child) => visit(child, false));
+  }
+  visit(node, true);
 }
 
 function countMatchingNodes(node: ts.Node, predicate: (node: ts.Node) => boolean): number {

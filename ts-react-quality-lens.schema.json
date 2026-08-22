@@ -81,6 +81,14 @@
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }
     },
+    "disagreements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "unconfirmed": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
     "findings": {
       "type": "array",
       "items": {
@@ -149,7 +157,7 @@
         "related_locations": { "type": "array", "items": { "$ref": "#/$defs/relatedLocation" } },
         "fix_group_id": { "type": "string" },
         "estimated_effort": { "type": "number", "minimum": 0 },
-        "semantic_decision": { "enum": ["confirmed", "contract-preserved", "disagreed", "unresolved", "abstained", "unavailable"] },
+        "semantic_decision": { "enum": ["confirmed", "contract-preserved", "disagreed", "not-comparable", "excluded-by-tool", "unresolved", "abstained", "unavailable"] },
         "reason_code": { "type": "string" },
         "score": { "type": "number" },
         "risk": { "type": "string" },

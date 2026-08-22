@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { isRecord } from "../src/collections.js";
+import { isRecord, parseJson } from "../src/collections.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const schema = readJson(path.join(root, "rule-contracts.schema.json"));
@@ -68,5 +68,5 @@ function requiredString(value: Record<string, unknown>, key: string): string {
 }
 
 function readJson(file: string): unknown {
-  return JSON.parse(fs.readFileSync(file, "utf8"));
+  return parseJson(fs.readFileSync(file, "utf8"));
 }

@@ -44,99 +44,29 @@ export type RawConfig = {
   audit?: AuditConfig;
 };
 
-export type PolicyConfig = {
-  profile?: PolicyProfile;
-  required_checks?: PolicyCheck[];
-};
-
-export type PublicApiConfig = {
-  entry?: string[];
-  exports?: Array<{ file: string; names: string[] }>;
-};
-
-type CacheConfig = {
-  enabled?: boolean;
-};
-
-export type ReactConfig = {
-  ruleset?: ReactRuleset;
-};
-
+export type PolicyConfig = { profile?: PolicyProfile; required_checks?: PolicyCheck[] };
+export type PublicApiConfig = { entry?: string[]; exports?: Array<{ file: string; names: string[] }> };
+type CacheConfig = { enabled?: boolean };
+export type ReactConfig = { ruleset?: ReactRuleset };
 export type AccessibilityConfig = {
-  enabled?: boolean;
-  components?: Record<string, string>;
-  polymorphic_prop_name?: string;
+  enabled?: boolean; components?: Record<string, string>; polymorphic_prop_name?: string;
 };
-
-export type CleanupConfig = {
-  knip?: boolean;
-  production?: boolean;
-};
-
+export type CleanupConfig = { knip?: boolean; production?: boolean };
 export type TypeCoverageConfig = {
-  minimum_percent?: number;
-  per_file_minimum_percent?: number;
-  changed_file_minimum_percent?: number;
-  baseline?: string;
+  minimum_percent?: number; per_file_minimum_percent?: number; changed_file_minimum_percent?: number; baseline?: string;
 };
-
-export type PackageHealthConfig = {
-  enabled?: boolean;
-  attw_profile?: "strict" | "node16" | "esm-only";
-};
-
-export type SarifInputConfig = {
-  path: string;
-  name?: string;
-  required?: boolean;
-};
-
-export type WorkspaceOverrideConfig = {
-  workspace: string;
-  framework?: string;
-  policy_profile?: PolicyProfile;
-};
-
+export type PackageHealthConfig = { enabled?: boolean; attw_profile?: "strict" | "node16" | "esm-only" };
+export type SarifInputConfig = { path: string; name?: string; required?: boolean };
+type WorkspaceOverrideConfig = { workspace: string; framework?: string; policy_profile?: PolicyProfile };
 export type WorkspacesConfig = {
-  enabled?: boolean;
-  patterns?: string[];
-  overrides?: WorkspaceOverrideConfig[];
+  enabled?: boolean; patterns?: string[]; overrides?: WorkspaceOverrideConfig[];
 };
-
-export type RuntimeInputConfig = {
-  react_profiler?: string;
-  axe?: string;
-  react_doctor?: string;
-};
-
-export type SuppressionConfig = {
-  id?: string;
-  file?: string;
-  kind?: string;
-  reason?: string;
-};
-
-export type AuditConfig = {
-  base?: string;
-  changed_since?: string;
-  gate?: "new-only" | "all";
-  baseline?: string;
-};
-
-export type LayerRule = {
-  layer: string;
-  patterns: string[];
-};
-
-export type PerformanceInputConfig = {
-  bundle_stats?: string;
-  render_costs?: string;
-};
-
-export type PathAliasRule = {
-  pattern: string;
-  replacements: string[];
-};
+export type RuntimeInputConfig = { react_profiler?: string; axe?: string; react_doctor?: string };
+export type SuppressionConfig = { id?: string; file?: string; kind?: string; reason?: string };
+export type AuditConfig = { base?: string; changed_since?: string; gate?: "new-only" | "all"; baseline?: string };
+export type LayerRule = { layer: string; patterns: string[] };
+export type PerformanceInputConfig = { bundle_stats?: string; render_costs?: string };
+export type PathAliasRule = { pattern: string; replacements: string[] };
 
 export type PackageJson = {
   name?: string;
@@ -154,6 +84,7 @@ export type PackageJson = {
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  knip?: { ignoreDependencies?: string[] };
 };
 
 export type EntryPointRole =
@@ -357,6 +288,7 @@ export type TypedModuleRecord = {
   file: string;
   exports: TypedExport[];
   declarations: TypedDeclaration[];
+  surface_type_references?: string[];
   sourceFile?: ts.SourceFile;
 };
 
@@ -375,7 +307,7 @@ export type TypeCoverageSummary = Omit<TypeCoverageFile, "file"> & {
   files: number;
 };
 
-export type TypeScriptProjectConfig = {
+type TypeScriptProjectConfig = {
   tsconfig: string;
   workspace_id: string;
   loaded: boolean;
@@ -519,6 +451,8 @@ export type SemanticDecision =
   | "confirmed"
   | "contract-preserved"
   | "disagreed"
+  | "not-comparable"
+  | "excluded-by-tool"
   | "unresolved"
   | "abstained"
   | "unavailable";
@@ -578,7 +512,10 @@ export type Artifact = {
   confidence: Confidence;
   summary: Record<string, unknown>;
   records?: ScoredRecord[];
+  disagreements?: ScoredRecord[];
+  unconfirmed?: ScoredRecord[];
   tests?: TestRecord[];
+  execution?: TestExecution;
   tool_status?: Record<string, { available?: boolean; ran?: boolean; [key: string]: unknown }>;
   graph?: { edges?: Array<Record<string, unknown>>; [key: string]: unknown };
   [key: string]: unknown;
@@ -679,120 +616,58 @@ export type JscpdDuplicate = {
   hash?: string;
 };
 
-type ToolResult = {
-  available: boolean;
-  ran: boolean;
-  reason: string | null;
-  duration_ms?: number;
-};
+type ToolResult = { available: boolean; ran: boolean; reason: string | null; duration_ms?: number };
 
-export type JscpdResult = ToolResult & {
-  duplicates: JscpdDuplicate[];
-  statistics: Record<string, unknown>;
-};
+export type JscpdResult = ToolResult & { duplicates: JscpdDuplicate[]; statistics: Record<string, unknown> };
 
 export type DependencyCruiserDependency = {
-  module?: string;
-  resolved?: string;
-  coreModule?: boolean;
-  npm?: boolean;
-  dependencyTypes?: string[];
+  module?: string; resolved?: string; coreModule?: boolean; npm?: boolean; dependencyTypes?: string[];
   cycle?: boolean | string | Array<string | { name?: string }>;
 };
-
-export type DependencyCruiserModule = {
-  source?: string;
-  dependencies?: DependencyCruiserDependency[];
-};
-
+export type DependencyCruiserModule = { source?: string; dependencies?: DependencyCruiserDependency[] };
 export type DependencyCruiserResult = ToolResult & {
-  modules: DependencyCruiserModule[];
-  summary: Record<string, unknown>;
+  modules: DependencyCruiserModule[]; summary: Record<string, unknown>;
 };
 
-export type KnipIssueItem = {
-  name: string;
-  namespace?: string;
-  kind?: string;
-  specifier?: string;
-  line?: number;
-  col?: number;
-};
-
+type KnipIssueItem = { name: string; namespace?: string; kind?: string; specifier?: string; line?: number; col?: number };
 export type KnipIssueEntry = {
-  file: string;
-  [issueType: string]: string | KnipIssueItem[] | KnipIssueItem[][] | undefined;
+  file: string; [issueType: string]: string | KnipIssueItem[] | KnipIssueItem[][] | undefined;
 };
-
 export type KnipResult = ToolResult & {
   issues: KnipIssueEntry[];
   version: string | null;
   complete: boolean;
+  excluded_dependencies: string[];
+  exclusions_complete: boolean;
 };
 
-export type PackageToolStatus = ToolResult & {
-  complete: boolean;
-  version?: string | null;
-};
-
+export type PackageToolStatus = ToolResult & { complete: boolean; version?: string | null };
 export type PublintMessage = {
-  code: string;
-  type: "suggestion" | "warning" | "error";
-  path: string[];
-  args: Record<string, unknown>;
+  code: string; type: "suggestion" | "warning" | "error"; path: string[]; args: Record<string, unknown>;
 };
-
-export type AttwProblem = {
-  kind: string;
-  entrypoint?: string;
-  resolutionKind?: string;
-};
-
+export type AttwProblem = { kind: string; entrypoint?: string; resolutionKind?: string };
 export type PackageHealthResult = {
-  enabled: boolean;
-  declaration: PackageToolStatus;
+  enabled: boolean; declaration: PackageToolStatus;
   pack: PackageToolStatus & { files: number; size: number | null };
   publint: PackageToolStatus & { messages: PublintMessage[] };
   attw: PackageToolStatus & { problems: AttwProblem[]; profile: "strict" | "node16" | "esm-only" };
 };
 
 export type EslintMessage = {
-  file: string;
-  line: number | null;
-  column: number | null;
-  end_line: number | null;
-  end_column: number | null;
-  rule_id: string;
-  severity: "error" | "warning";
-  message: string;
+  file: string; line: number | null; column: number | null; end_line: number | null; end_column: number | null;
+  rule_id: string; severity: "error" | "warning"; message: string;
 };
-
 export type EslintReactHooksResult = ToolResult & {
-  messages: EslintMessage[];
-  version: string | null;
-  ruleset: ReactRuleset;
-  complete: boolean;
+  messages: EslintMessage[]; version: string | null; ruleset: ReactRuleset; complete: boolean;
 };
-
 export type EslintAccessibilityResult = ToolResult & {
-  messages: EslintMessage[];
-  version: string | null;
-  complete: boolean;
+  messages: EslintMessage[]; version: string | null; complete: boolean;
 };
-
 export type EslintTypeAwareResult = ToolResult & {
-  messages: EslintMessage[];
-  version: string | null;
-  complete: boolean;
+  messages: EslintMessage[]; version: string | null; complete: boolean;
 };
 
 export type DiagnosticRecord = {
-  code: number;
-  category: string;
-  file: string | null;
-  line: number | null;
-  character: number | null;
-  end_line: number | null;
-  end_character: number | null;
-  message: string;
+  code: number; category: string; file: string | null; line: number | null; character: number | null;
+  end_line: number | null; end_character: number | null; message: string;
 };

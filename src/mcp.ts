@@ -1,15 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isRecord } from "./collections.js";
+import { isRecord, isUnknownArray, parseJson } from "./collections.js";
 import { runAudit } from "./audit.js";
-import { runMeasure } from "./cli.js";
+import { runMeasure } from "./measure-runner.js";
 import { projectContext } from "./context.js";
 import { packageRootFrom } from "./package-root.js";
 import { catalogForConfig, TASKS } from "./tasks.js";
 import { readArtifact } from "./writer.js";
-import type { Artifact, Config, ScoredRecord } from "./types.js";
+import type { Config, ScoredRecord } from "./types.js";
 
 type JsonRpcRequest = { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
+type McpTool = { name: string; description: string; inputSchema: Record<string, unknown> };
 
 const TOOLS = [
   { name: "catalog", description: "Return the quality task catalog.", inputSchema: { type: "object", properties: {} } },
@@ -29,7 +30,7 @@ const TOOLS = [
     description: "Return an emitted finding and its rule contract when available.",
     inputSchema: { type: "object", required: ["finding_id"], properties: { finding_id: { type: "string" } } },
   },
-] as const;
+] satisfies readonly McpTool[];
 
 export function runMcpServer(config: Config): void {
   let buffer = "";
@@ -46,10 +47,8 @@ export function runMcpServer(config: Config): void {
 }
 
 function handleLine(config: Config, line: string): void {
-  let request: JsonRpcRequest;
-  try {
-    request = JSON.parse(line) as JsonRpcRequest;
-  } catch {
+  const request = parseRequest(line);
+  if (!request) {
     writeError(null, -32700, "Parse error");
     return;
   }
@@ -58,6 +57,15 @@ function handleLine(config: Config, line: string): void {
     writeResult(request.id, dispatch(config, request));
   } catch (error) {
     writeError(request.id, -32603, error instanceof Error ? error.message : String(error));
+  }
+}
+
+function parseRequest(line: string): JsonRpcRequest | null {
+  try {
+    const value = parseJson(line);
+    return isRecord(value) ? value : null;
+  } catch {
+    return null;
   }
 }
 
@@ -77,25 +85,33 @@ function dispatch(config: Config, request: JsonRpcRequest): unknown {
   throw new Error(`Unsupported MCP method ${request.method ?? "unknown"}`);
 }
 
+type ToolHandler = (config: Config, args: Record<string, unknown>) => unknown;
+
+const TOOL_HANDLERS: Record<string, ToolHandler> = {
+  catalog: (config) => catalogForConfig(config),
+  context: (config) => projectContext(config, "mcp context"),
+  measure: (config, args) => {
+    const taskId = requiredString(args, "task_id", "measure");
+    return runMeasure(config, taskId, `mcp measure ${taskId}`);
+  },
+  audit: (config, args) => runAudit(config, "mcp audit", {
+    base: typeof args.base === "string" ? args.base : null,
+    gate: args.gate === "all" || args.gate === "new-only" ? args.gate : null,
+  }),
+  explain: (config, args) => explainFinding(config, requiredString(args, "finding_id", "explain")),
+};
+
 function callTool(config: Config, params: unknown): unknown {
   if (!isRecord(params) || typeof params.name !== "string") throw new Error("tools/call requires a tool name");
-  const args = isRecord(params.arguments) ? params.arguments : {};
-  let value: unknown;
-  if (params.name === "catalog") value = catalogForConfig(config);
-  else if (params.name === "context") value = projectContext(config, "mcp context");
-  else if (params.name === "measure") {
-    if (typeof args.task_id !== "string") throw new Error("measure requires task_id");
-    value = runMeasure(config, args.task_id, `mcp measure ${args.task_id}`);
-  } else if (params.name === "audit") {
-    value = runAudit(config, "mcp audit", {
-      base: typeof args.base === "string" ? args.base : null,
-      gate: args.gate === "all" || args.gate === "new-only" ? args.gate : null,
-    });
-  } else if (params.name === "explain") {
-    if (typeof args.finding_id !== "string") throw new Error("explain requires finding_id");
-    value = explainFinding(config, args.finding_id);
-  } else throw new Error(`Unknown MCP tool ${params.name}`);
-  return toolContent(value);
+  const handler = TOOL_HANDLERS[params.name];
+  if (!handler) throw new Error(`Unknown MCP tool ${params.name}`);
+  return toolContent(handler(config, isRecord(params.arguments) ? params.arguments : {}));
+}
+
+function requiredString(args: Record<string, unknown>, name: string, tool: string): string {
+  const value = args[name];
+  if (typeof value !== "string") throw new Error(`${tool} requires ${name}`);
+  return value;
 }
 
 function readResource(config: Config, params: unknown): unknown {
@@ -111,13 +127,13 @@ function readResource(config: Config, params: unknown): unknown {
 function explainFinding(config: Config, findingId: string): unknown {
   let finding: ScoredRecord | null = null;
   for (const task of TASKS) {
-    const artifact = readArtifact<Artifact>(config, task.artifact);
+    const artifact = readArtifact(config, task.artifact);
     finding = artifact?.records?.find((record) => record.id === findingId) ?? finding;
   }
   if (!finding) throw new Error(`Finding ${findingId} was not found in measured artifacts`);
   const contractsPath = path.join(packageRootFrom(import.meta.url), "rule-contracts.json");
-  const contracts: unknown = fs.existsSync(contractsPath) ? JSON.parse(fs.readFileSync(contractsPath, "utf8")) : null;
-  const rules = isRecord(contracts) && Array.isArray(contracts.rules) ? contracts.rules : [];
+  const contracts = fs.existsSync(contractsPath) ? parseJson(fs.readFileSync(contractsPath, "utf8")) : null;
+  const rules = isRecord(contracts) && isUnknownArray(contracts.rules) ? contracts.rules : [];
   const contract = rules.find((rule) => isRecord(rule) && rule.id === finding?.rule_id) ?? null;
   return { finding, contract };
 }

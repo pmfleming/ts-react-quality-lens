@@ -42,7 +42,7 @@ Architecture-map total-score category weights:
 | `performance` | 0.5 |
 | `quality` | 1 |
 
-Hotspot scoring weights are centralized in `src/risk-model.ts`:
+Hotspot scoring weights are centralized in `src/risk-model.ts`. Function metrics stop at nested function boundaries, so an outer callback does not inherit decisions from inner callbacks. Nesting depth counts control structures rather than counting both a control structure and its block:
 
 | Signal | Weight |
 | --- | ---: |

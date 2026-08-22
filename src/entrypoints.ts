@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isRecord, parseJson } from "./collections.js";
 import type { Config, EntryPointReference, EntryPointRole, PackageJson } from "./types.js";
 
 export function readPackageJson(packageJsonPath: string): PackageJson | null {
   if (!fs.existsSync(packageJsonPath)) return null;
   try {
-    return JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    const value = parseJson(fs.readFileSync(packageJsonPath, "utf8"));
+    return isRecord(value) ? value : null;
   } catch {
     return null;
   }

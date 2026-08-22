@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { loadConfig } from "../src/config.js";
-import { runMeasure } from "../src/cli.js";
+import { runMeasure } from "../src/measure-runner.js";
 
 const sizes = [10, 50, 100];
 const results = [];

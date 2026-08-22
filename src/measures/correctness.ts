@@ -1,4 +1,7 @@
-import { analysisConfidence, artifactBase, createAnalysisContext, runTestCommand, sourceSetHash, testRecord, writeArtifact } from "../measure-shared.js";
+import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
+import { runTestCommand, testRecord } from "../correctness.js";
+import { artifactBase, sourceSetHash } from "../provenance.js";
+import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, ScoredRecord, TestExecution } from "../types.js";
 
 export function measureCorrectnessCatalog(

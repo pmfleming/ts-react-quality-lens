@@ -3,23 +3,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { isRecord } from "../src/collections.js";
+import { isRecord, parseJson } from "../src/collections.js";
 import { TASKS } from "../src/tasks.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const artifactSchema = readJson(path.join(root, "ts-react-quality-lens.schema.json"));
-const configSchema = readJson(path.join(root, "ts-react-quality-lens.config.schema.json"));
-const packageJson = readJson(path.join(root, "package.json"));
-
-const taskEnum = artifactSchema.properties?.task_id?.enum;
-assert.ok(Array.isArray(taskEnum), "artifact schema must expose properties.task_id.enum");
+const artifactSchema = requiredRecord(readJson(path.join(root, "ts-react-quality-lens.schema.json")), "artifact schema");
+const configSchema = requiredRecord(readJson(path.join(root, "ts-react-quality-lens.config.schema.json")), "config schema");
+const packageJson = requiredRecord(readJson(path.join(root, "package.json")), "package manifest");
+const artifactProperties = requiredRecord(artifactSchema.properties, "artifact schema properties");
+const taskIdSchema = requiredRecord(artifactProperties.task_id, "artifact task id schema");
+const taskEnum = stringArray(taskIdSchema.enum);
+assert.ok(taskEnum, "artifact schema must expose properties.task_id.enum");
 for (const task of TASKS) {
   assert.ok(taskEnum.includes(task.id), `artifact schema is missing task id ${task.id}`);
 }
 assert.ok(taskEnum.includes("audit"), "artifact schema is missing audit task id");
 assert.ok(taskEnum.includes("context.project"), "artifact schema is missing context.project task id");
 
-const configProperties = configSchema.properties ?? {};
+const configProperties = requiredRecord(configSchema.properties, "config schema properties");
 for (const key of [
   "$schema",
   "project_name",
@@ -52,10 +53,12 @@ for (const key of [
   assert.ok(configProperties[key], `config schema is missing ${key}`);
 }
 
-assert.ok(packageJson.files.includes("ts-react-quality-lens.schema.json"), "package files must include artifact schema");
-assert.ok(packageJson.files.includes("ts-react-quality-lens.config.schema.json"), "package files must include config schema");
-assert.ok(packageJson.files.includes("rule-contracts.json"), "package files must include rule contracts");
-assert.ok(packageJson.files.includes("rule-contracts.schema.json"), "package files must include rule contract schema");
+const packageFiles = stringArray(packageJson.files) ?? [];
+const dependencies = requiredRecord(packageJson.dependencies, "package dependencies");
+assert.ok(packageFiles.includes("ts-react-quality-lens.schema.json"), "package files must include artifact schema");
+assert.ok(packageFiles.includes("ts-react-quality-lens.config.schema.json"), "package files must include config schema");
+assert.ok(packageFiles.includes("rule-contracts.json"), "package files must include rule contracts");
+assert.ok(packageFiles.includes("rule-contracts.schema.json"), "package files must include rule contract schema");
 for (const runtimeDependency of [
   "ajv",
   "@arethetypeswrong/cli",
@@ -70,7 +73,7 @@ for (const runtimeDependency of [
   "knip",
   "dependency-cruiser",
 ]) {
-  assert.ok(packageJson.dependencies?.[runtimeDependency], `package dependencies must include ${runtimeDependency}`);
+  assert.ok(dependencies[runtimeDependency], `package dependencies must include ${runtimeDependency}`);
 }
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
@@ -179,6 +182,15 @@ function assertValid(ajv: Ajv2020, schema: unknown, value: unknown, message: str
   assert.ok(validate(value), `${message}: ${ajv.errorsText(validate.errors)}`);
 }
 
-function readJson(file: string) {
-  return JSON.parse(fs.readFileSync(file, "utf8"));
+function requiredRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error(`${label} must be an object`);
+  return value;
+}
+
+function stringArray(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : null;
+}
+
+function readJson(file: string): unknown {
+  return parseJson(fs.readFileSync(file, "utf8"));
 }

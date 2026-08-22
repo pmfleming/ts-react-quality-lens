@@ -17,10 +17,18 @@ export function enrichArtifactFindings(config: Config, value: unknown): unknown 
   if (!isRecord(value)) return value;
   const records = Array.isArray(value.records) ? value.records.map((record) => enrichFinding(config, record)) : value.records;
   const groups = Array.isArray(value.groups) ? value.groups.map((record) => enrichFinding(config, record)) : value.groups;
+  const disagreements = Array.isArray(value.disagreements)
+    ? value.disagreements.map((record) => enrichFinding(config, record))
+    : value.disagreements;
+  const unconfirmed = Array.isArray(value.unconfirmed)
+    ? value.unconfirmed.map((record) => enrichFinding(config, record))
+    : value.unconfirmed;
   return {
     ...value,
     ...(Array.isArray(value.records) ? { records } : {}),
     ...(Array.isArray(value.groups) ? { groups } : {}),
+    ...(Array.isArray(value.disagreements) ? { disagreements } : {}),
+    ...(Array.isArray(value.unconfirmed) ? { unconfirmed } : {}),
   };
 }
 
@@ -113,6 +121,8 @@ function defaultFindingConfidence(record: ScoredRecord): FindingConfidence {
 function defaultSemanticDecision(record: ScoredRecord, evidence: EvidenceKind, kind: string): SemanticDecision {
   if (record.tool_validation === "confirmed") return "confirmed";
   if (record.tool_validation === "disagreed") return "disagreed";
+  if (record.tool_validation === "not_comparable") return "not-comparable";
+  if (record.tool_validation === "excluded_by_tool") return "excluded-by-tool";
   if (record.tool_validation === "unavailable") return "unavailable";
   if (kind === "storybook_evidence" || kind.includes("contract")) return "contract-preserved";
   if (kind === "unsupported_pattern") return "abstained";
@@ -128,25 +138,30 @@ function defaultEstimatedEffort(disposition: FindingDisposition): number {
 }
 
 function relatedLocationsFor(record: ScoredRecord): RelatedLocation[] {
-  const locations: RelatedLocation[] = [];
-  if (Array.isArray(record.instances)) {
-    for (const instance of record.instances) {
-      if (!isRecord(instance) || typeof instance.file !== "string") continue;
-      locations.push({
-        file: instance.file,
-        start_line: typeof instance.start_line === "number" ? instance.start_line : 1,
-        ...(typeof instance.start_column === "number" ? { start_column: instance.start_column } : {}),
-        ...(typeof instance.end_line === "number" ? { end_line: instance.end_line } : {}),
-        ...(typeof instance.end_column === "number" ? { end_column: instance.end_column } : {}),
-        role: "duplicate",
-      });
-    }
-  }
-  for (const file of record.files ?? []) {
-    if (locations.some((location) => location.file === file) || file === record.file) continue;
-    locations.push({ file, start_line: 1, role: "related" });
-  }
-  return locations;
+  const instances = instanceLocations(record.instances);
+  return [...instances, ...fileLocations(record, instances)];
+}
+
+function instanceLocations(value: unknown): RelatedLocation[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((instance): RelatedLocation[] => {
+    if (!isRecord(instance) || typeof instance.file !== "string") return [];
+    return [{
+      file: instance.file,
+      start_line: typeof instance.start_line === "number" ? instance.start_line : 1,
+      ...(typeof instance.start_column === "number" ? { start_column: instance.start_column } : {}),
+      ...(typeof instance.end_line === "number" ? { end_line: instance.end_line } : {}),
+      ...(typeof instance.end_column === "number" ? { end_column: instance.end_column } : {}),
+      role: "duplicate",
+    }];
+  });
+}
+
+function fileLocations(record: ScoredRecord, instances: RelatedLocation[]): RelatedLocation[] {
+  return (record.files ?? []).flatMap((file): RelatedLocation[] =>
+    file === record.file || instances.some((location) => location.file === file)
+      ? []
+      : [{ file, start_line: 1, role: "related" }]);
 }
 
 function defaultMessage(record: ScoredRecord, kind: string): string {

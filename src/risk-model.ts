@@ -221,7 +221,7 @@ function maxScoreFor(records: ScoredRecord[] = [], file: string): number | null 
   return Math.max(0, ...candidates.map((record) => severityScore(record.severity) ?? record.score ?? 0));
 }
 
-export function severityScore(severity: unknown): number | null {
+function severityScore(severity: unknown): number | null {
   if (severity === "high") return 75;
   if (severity === "medium") return 45;
   if (severity === "low") return 20;

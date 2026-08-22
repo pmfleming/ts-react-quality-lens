@@ -45,6 +45,8 @@ node ./dist/bin/ts-react-quality-lens.js measure all --config ./ts-react-quality
 
 Artifacts are written under `output_dir`.
 
+The repository ships `ts-react-quality-lens.config.json` for dogfooding. Run `npm run self:measure` to measure the lens itself or `npm run self:audit` for its changed-code gate.
+
 Run a changed-code audit:
 
 ```sh
@@ -77,7 +79,7 @@ The implementation combines deterministic built-in analysis with richer optional
 - `quality.locality_leverage` writes `leverage_metrics.json`, separating positive reuse leverage from public-surface risk.
 - `quality.react_health` writes `react_health.json` with component heuristics, framework conventions, a versioned managed `eslint-plugin-react-hooks` ruleset, and managed `eslint-plugin-jsx-a11y` evidence. The default `recommended-v2` React ruleset includes official React Compiler diagnostics; `classic-v1` preserves only Rules of Hooks and exhaustive dependencies. Accessibility falls back to explicitly labeled heuristics only when the standards-based adapter cannot complete.
 - `quality.dependency_health` writes `dependency_health.json` with `dependency-cruiser` graph data when available, plus built-in import parsing fallback.
-- `quality.cleanup` writes `cleanup.json` with unused files, exports, dependency hygiene, unresolved imports, cycles, catalog issues, and staged cleanup candidates. Managed Knip evidence is normalized and reconciled with the built-in fallback instead of silently replacing disagreements.
+- `quality.cleanup` writes `cleanup.json` with unused files, exports, dependency hygiene, unresolved imports, cycles, catalog issues, and staged cleanup candidates. Managed Knip evidence is reconciled only where rule semantics and configuration scope match. True comparable disagreements, non-comparable heuristics, and tool-excluded candidates are reported separately; script binaries, declaration-surface types, and canonical re-exports are treated as usage rather than suppressed.
 - `quality.package_health` writes `package_health.json` with isolated declaration emit, lifecycle-script-free package packing, publint metadata/file checks, and Are The Types Wrong resolution matrices. It is enabled by the `library` policy profile or explicit config.
 - `quality.sarif` writes `sarif_findings.json` for CodeQL, Semgrep, or any SARIF 2.1 producer while retaining tool/rule metadata, partial fingerprints, primary and related ranges, source-to-sink code flows, proposed fixes, automation details, and invocation failures.
 - `quality.runtime` writes `runtime_health.json` from React Profiler commit summaries, rendered axe results, and optional independently generated React Doctor JSON.
@@ -159,7 +161,7 @@ Audit also reports stale configured suppressions as `stale_suppression` findings
 
 `npm run ci` runs type checking, build, schema and rule-contract checks, formatting checks, tests, a smoke performance gate over `examples/basic`, and package smoke validation. Override the generous default performance threshold with `TSRQLENS_PERF_MAX_MS` when a CI environment needs a different budget.
 
-Development uses TypeScript 7's native `tsc` for faster parallel builds. TypeScript 7.0 does not expose the compiler API yet, so the runtime analyzer and typescript-eslint use Microsoft's `@typescript/typescript6` compatibility package through the standard `typescript` package alias. This supported side-by-side setup preserves AST and typed-lint functionality until the new TypeScript API is available.
+Development uses TypeScript 7's native `tsc` for faster parallel builds. The project also enables `erasableSyntaxOnly`, `verbatimModuleSyntax`, `moduleDetection: force`, `noUncheckedSideEffectImports`, unused-symbol checks, and the existing strict indexed/optional-property controls. Managed React analysis uses the latest official React Hooks/Compiler ruleset and current React 19 type declarations. TypeScript 7.0 does not expose the compiler API yet, so the runtime analyzer and typescript-eslint use Microsoft's `@typescript/typescript6` compatibility package through the standard `typescript` package alias. This supported side-by-side setup preserves AST and typed-lint functionality until the new TypeScript API is available.
 
 Run `npm run bench` for a synthetic multi-size benchmark harness. When `cache.enabled` is not `false`, the analyzer writes a content-addressed reusable project snapshot under `output_dir/.cache/analysis-v2.json`. The key includes source/test contents, compiler and integration versions, rulesets, manifests, lockfiles, workspace tsconfigs, and config; incomplete project analyses are never cached.
 

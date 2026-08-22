@@ -158,7 +158,8 @@ Recommended use:
 - Add an optional Knip JSON adapter to `quality.cleanup`.
 - Normalize Knip issue types into stable lens rule IDs while retaining original tool/rule/version fields.
 - Use Knip as authoritative tool evidence only when its run is complete; retain built-in cleanup as explainable fallback and cross-check evidence.
-- Represent disagreements rather than deleting one result silently. For example, mark a built-in candidate `tool_confirmed`, `tool_disagreed`, or `tool_unavailable`.
+- Represent disagreements rather than deleting one result silently. Reconcile only rules with equivalent semantics and configuration scope: `confirmed` and `disagreed` are comparable outcomes, while `not_comparable`, `excluded_by_tool`, and `unavailable` describe candidates Knip did not evaluate equivalently.
+- Resolve script commands through declared package `bin` metadata, follow declaration-surface type references, and collapse re-exports to canonical declarations before cross-checking. These are usage semantics, not suppression cases.
 - Add workspace identity to findings before claiming monorepo support.
 - Import Knip configuration hints as remediation suggestions, not automatic suppressions.
 
@@ -333,7 +334,7 @@ Proposed additions:
 - tool status for Knip;
 - workspace and package fields;
 - issue types for unlisted dependencies/binaries, optional peers, enum/namespace members, catalogs, and unresolved imports;
-- semantic decision fields (`confirmed`, `disagreed`, `abstained`, `unavailable`);
+- semantic decision fields (`confirmed`, `disagreed`, `not-comparable`, `excluded-by-tool`, `abstained`, `unavailable`);
 - stable mapping from Knip issue types to lens rule IDs.
 
 The adapter should never run `--fix`.

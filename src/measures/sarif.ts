@@ -1,8 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isRecord } from "../collections.js";
-import { analysisConfidence, artifactBase, createAnalysisContext, sourceSetHash, stableHash, writeArtifact } from "../measure-shared.js";
+import { isRecord, parseJson } from "../collections.js";
+import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
+import { stableHash } from "../clone-utils.js";
+import { artifactBase, sourceSetHash } from "../provenance.js";
+import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, FindingDisposition, RelatedLocation, ScoredRecord } from "../types.js";
 
 type SarifInputStatus = {
@@ -57,7 +60,7 @@ export function measureSarif(config: Config, command: string, context: AnalysisC
 function parseSarifInput(config: Config, input: Config["sarifInputs"][number]): ParsedInput {
   if (!fs.existsSync(input.path)) return unavailableInput(input, "SARIF input file does not exist");
   try {
-    const document: unknown = JSON.parse(fs.readFileSync(input.path, "utf8"));
+    const document = parseJson(fs.readFileSync(input.path, "utf8"));
     if (!isRecord(document) || document.version !== "2.1.0" || !Array.isArray(document.runs)) {
       return unavailableInput(input, "SARIF input is not a SARIF 2.1.0 document", true);
     }
@@ -249,12 +252,24 @@ function sarifRules(value: unknown): Map<string, Record<string, unknown>> {
     isRecord(rule) && typeof rule.id === "string" ? [[rule.id, rule]] : []));
 }
 
-function sarifLevel(value: unknown, defaultConfiguration: unknown): "error" | "warning" | "note" | "none" {
-  if (["error", "warning", "note", "none"].includes(String(value))) return value as "error" | "warning" | "note" | "none";
-  if (isRecord(defaultConfiguration) && ["error", "warning", "note", "none"].includes(String(defaultConfiguration.level))) {
-    return defaultConfiguration.level as "error" | "warning" | "note" | "none";
+type SarifLevel = "error" | "warning" | "note" | "none";
+
+function sarifLevel(value: unknown, defaultConfiguration: unknown): SarifLevel {
+  const direct = asSarifLevel(value);
+  if (direct) return direct;
+  return isRecord(defaultConfiguration) ? asSarifLevel(defaultConfiguration.level) ?? "warning" : "warning";
+}
+
+function asSarifLevel(value: unknown): SarifLevel | null {
+  switch (value) {
+    case "error":
+    case "warning":
+    case "note":
+    case "none":
+      return value;
+    default:
+      return null;
   }
-  return "warning";
 }
 
 function dispositionForLevel(level: "error" | "warning" | "note" | "none"): FindingDisposition {
@@ -282,6 +297,7 @@ function physicalLocation(config: Config, value: unknown): RelatedLocation | nul
   const physical = isRecord(locationRecord.physicalLocation) ? locationRecord.physicalLocation : null;
   if (!physical || !isRecord(physical.artifactLocation) || typeof physical.artifactLocation.uri !== "string") return null;
   const region = isRecord(physical.region) ? physical.region : {};
+  const message = isRecord(locationRecord.message) ? sarifMessage(locationRecord.message) : null;
   return {
     file: normalizeSarifPath(config, physical.artifactLocation.uri),
     start_line: typeof region.startLine === "number" ? region.startLine : 1,
@@ -289,9 +305,7 @@ function physicalLocation(config: Config, value: unknown): RelatedLocation | nul
     ...(typeof region.endLine === "number" ? { end_line: region.endLine } : {}),
     ...(typeof region.endColumn === "number" ? { end_column: region.endColumn } : {}),
     role: "related",
-    ...(isRecord(locationRecord.message) && sarifMessage(locationRecord.message)
-      ? { message: sarifMessage(locationRecord.message)! }
-      : {}),
+    ...(message ? { message } : {}),
   };
 }
 
@@ -305,10 +319,15 @@ function sarifRelatedLocations(config: Config, value: unknown): RelatedLocation[
 
 function sarifCodeFlowLocations(config: Config, value: unknown): RelatedLocation[] {
   const flows = normalizeCodeFlows(config, value);
-  return flows.flatMap((flow) => flow.map((location, index) => ({
+  return flows.flatMap((flow) => flow.map((location, index): RelatedLocation => ({
     ...location,
-    role: index === 0 ? "source" as const : index === flow.length - 1 ? "sink" as const : "related" as const,
+    role: codeFlowRole(index, flow.length),
   })));
+}
+
+function codeFlowRole(index: number, length: number): RelatedLocation["role"] {
+  if (index === 0) return "source";
+  return index === length - 1 ? "sink" : "related";
 }
 
 function normalizeCodeFlows(config: Config, value: unknown): RelatedLocation[][] {

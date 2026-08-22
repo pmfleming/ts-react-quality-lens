@@ -105,12 +105,14 @@ function workspaceConfigFiles(config: Config): string[] {
 }
 
 export function sourceSetHash(project: Pick<ProjectAnalysis, "sourceFiles">): string {
+  return contentHash(project.sourceFiles);
+}
+
+export function contentHash(files: Array<{ relativePath: string; text: string }>, seeds: string[] = []): string {
   const hash = crypto.createHash("sha256");
-  for (const file of [...project.sourceFiles].sort((left, right) => left.relativePath.localeCompare(right.relativePath))) {
-    hash.update(file.relativePath);
-    hash.update("\0");
-    hash.update(file.text);
-    hash.update("\0");
+  for (const seed of seeds) hash.update(seed).update("\0");
+  for (const file of [...files].sort((left, right) => left.relativePath.localeCompare(right.relativePath))) {
+    hash.update(file.relativePath).update("\0").update(file.text).update("\0");
   }
   return `sha256:${hash.digest("hex")}`;
 }

@@ -79,36 +79,26 @@ function workspaceAnalysisRecords(
 }
 
 export function createAnalysisContext(config: Config): AnalysisContext {
-  const cache = new Map<keyof AnalysisContext, ReturnType<AnalysisContext[keyof AnalysisContext]>>();
-  const loaders: AnalysisContext = {
-    project: () => analyzeProject(config),
-    jscpd: () => runJscpd(config),
-    dependencyCruiser: () => runDependencyCruiser(config),
-    knip: () => runKnip(config),
-    packageHealth: () => runPackageHealth(config),
-    reactHooksLint: () => runReactHooksLint(config),
-    jsxA11yLint: () => runJsxA11yLint(config),
-    typedLint: () => runTypedLint(config),
-  };
   return {
-    project: () => cached(cache, "project", loaders.project),
-    jscpd: () => cached(cache, "jscpd", loaders.jscpd),
-    dependencyCruiser: () => cached(cache, "dependencyCruiser", loaders.dependencyCruiser),
-    knip: () => cached(cache, "knip", loaders.knip),
-    packageHealth: () => cached(cache, "packageHealth", loaders.packageHealth),
-    reactHooksLint: () => cached(cache, "reactHooksLint", loaders.reactHooksLint),
-    jsxA11yLint: () => cached(cache, "jsxA11yLint", loaders.jsxA11yLint),
-    typedLint: () => cached(cache, "typedLint", loaders.typedLint),
+    project: memoize(() => analyzeProject(config)),
+    jscpd: memoize(() => runJscpd(config)),
+    dependencyCruiser: memoize(() => runDependencyCruiser(config)),
+    knip: memoize(() => runKnip(config)),
+    packageHealth: memoize(() => runPackageHealth(config)),
+    reactHooksLint: memoize(() => runReactHooksLint(config)),
+    jsxA11yLint: memoize(() => runJsxA11yLint(config)),
+    typedLint: memoize(() => runTypedLint(config)),
   };
 }
 
-function cached<K extends keyof AnalysisContext>(
-  cache: Map<keyof AnalysisContext, ReturnType<AnalysisContext[keyof AnalysisContext]>>,
-  key: K,
-  load: AnalysisContext[K],
-): ReturnType<AnalysisContext[K]> {
-  if (!cache.has(key)) cache.set(key, load());
-  return cache.get(key) as ReturnType<AnalysisContext[K]>;
+function memoize<T>(load: () => T): () => T {
+  let state: { value: T } | null = null;
+  return () => {
+    if (state) return state.value;
+    const value = load();
+    state = { value };
+    return value;
+  };
 }
 
 export function analysisConfidence(config: Config, project: ProjectAnalysis, extra: Confidence = {}): Confidence {

@@ -1,6 +1,6 @@
 import * as ts from "typescript";
 import { lineForIndex } from "./files.js";
-import { RISK_MODEL, riskForScore, severityScore } from "./risk-model.js";
+import { RISK_MODEL, riskForScore } from "./risk-model.js";
 import { callExpressionName, lineForNode } from "./ts-ast.js";
 import type { FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, Severity, Signal, TypeRecord, TypedDeclaration, TypedExport } from "./types.js";
 
@@ -311,17 +311,6 @@ export function hiddenCouplingSignals(module: ModuleRecord): Array<{ kind: strin
   }
   visit(sourceFile);
   return records;
-}
-
-function maxScoreFor(records: ScoredRecord[] = [], file: string, mode: "score" | "severity" = "score"): number {
-  const candidates = records.filter((record) => record.file === file || record.files?.includes(file));
-  if (mode === "severity") {
-    return Math.max(
-      0,
-      ...candidates.map((record) => severityScore(record.severity) ?? record.score ?? 0),
-    );
-  }
-  return Math.max(0, ...candidates.map((record) => record.score ?? 0));
 }
 
 function isWeakType(type: string | null): boolean {

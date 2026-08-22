@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { enrichArtifactFindings } from "./actions.js";
+import { isRecord, parseJson } from "./collections.js";
 import type { Artifact, Config } from "./types.js";
 
 export function writeArtifact(config: Config, artifactName: string, value: unknown): string {
@@ -15,15 +16,26 @@ export function writeArtifact(config: Config, artifactName: string, value: unkno
   return target;
 }
 
-export function readArtifact<T = Artifact>(config: Config, artifactName: string): T | null {
+export function readArtifact(config: Config, artifactName: string): Artifact | null {
   const target = path.join(config.outputDir, artifactName);
   if (!fs.existsSync(target)) return null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return JSON.parse(fs.readFileSync(target, "utf8"));
+      const value = parseJson(fs.readFileSync(target, "utf8"));
+      return isArtifact(value) ? value : null;
     } catch (error) {
       if (attempt === 2) throw error;
     }
   }
   return null;
+}
+
+function isArtifact(value: unknown): value is Artifact {
+  return isRecord(value) &&
+    typeof value.schema_version === "string" &&
+    typeof value.task_id === "string" &&
+    isRecord(value.project) &&
+    isRecord(value.provenance) &&
+    isRecord(value.confidence) &&
+    isRecord(value.summary);
 }

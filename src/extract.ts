@@ -26,7 +26,7 @@ export function analyzeModule(config: Config, file: SourceFileRecord, tsProject:
   const sourceFile = typed?.sourceFile ?? parseSourceFile(file);
   const { imports, unsupportedPatterns } = extractImports(config, file, id, sourceFile);
   const functions = extractFunctions(file, sourceFile);
-  const types = extractTypes(file, sourceFile);
+  const types = extractTypes(sourceFile);
   const exports = extractExports(sourceFile);
   const components = functions.filter((fn) => fn.kind === "component");
   const escapeCounts = countAstEscapeHatches(file, sourceFile);
@@ -268,7 +268,7 @@ function extractFunctions(file: SourceFileRecord, sourceFile: ts.SourceFile): Fu
   return dedupeBy(records, (record) => record.id);
 }
 
-function extractTypes(file: SourceFileRecord, sourceFile: ts.SourceFile): TypeRecord[] {
+function extractTypes(sourceFile: ts.SourceFile): TypeRecord[] {
   const records: TypeRecord[] = [];
 
   function addType(

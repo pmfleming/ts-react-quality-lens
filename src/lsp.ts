@@ -1,11 +1,11 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createAnalysisContext } from "./analysis-context.js";
-import { isRecord } from "./collections.js";
-import { runMeasure } from "./cli.js";
+import { isRecord, isUnknownArray, parseJson } from "./collections.js";
+import { runMeasure } from "./measure-runner.js";
 import { TASKS } from "./tasks.js";
 import { readArtifact } from "./writer.js";
-import type { Artifact, Config, ScoredRecord } from "./types.js";
+import type { Config, ScoredRecord } from "./types.js";
 
 type LspRequest = { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
 const LSP_TASKS = [
@@ -39,7 +39,8 @@ export function runLspServer(config: Config): void {
       const body = buffer.subarray(bodyStart, bodyStart + length).toString("utf8");
       buffer = buffer.subarray(bodyStart + length);
       try {
-        const request = JSON.parse(body) as LspRequest;
+        const request = lspRequest(parseJson(body));
+        if (!request) throw new Error("LSP body must be a JSON-RPC object");
         if (request.method === "textDocument/didSave" || request.method === "workspace/didChangeConfiguration") findings = null;
         const response = handleRequest(config, request, () => findings ??= measureFindings(config), shutdown);
         if (request.method === "shutdown") shutdown = true;
@@ -92,9 +93,19 @@ function measureFindings(config: Config): ScoredRecord[] {
   for (const taskId of LSP_TASKS) runMeasure(config, taskId, `lsp ${taskId}`, { context });
   return LSP_TASKS.flatMap((taskId) => {
     const task = TASKS.find((candidate) => candidate.id === taskId);
-    const artifact = task ? readArtifact<Artifact>(config, task.artifact) : null;
-    return [...(artifact?.records ?? []), ...((artifact?.groups as ScoredRecord[] | undefined) ?? [])];
+    const artifact = task ? readArtifact(config, task.artifact) : null;
+    return [...(artifact?.records ?? []), ...findingGroups(artifact?.groups)];
   });
+}
+
+function lspRequest(value: unknown): LspRequest | null {
+  return isRecord(value) ? value : null;
+}
+
+function findingGroups(value: unknown): ScoredRecord[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is ScoredRecord => isRecord(item) && typeof item.id === "string")
+    : [];
 }
 
 function publishDiagnostics(config: Config, findings: ScoredRecord[]): void {
@@ -182,7 +193,7 @@ function codeActions(params: unknown): unknown[] {
 }
 
 function executeCommand(params: unknown, findings: ScoredRecord[]): unknown {
-  if (!isRecord(params) || params.command !== "tsrqlens.explainFinding" || !Array.isArray(params.arguments)) return null;
+  if (!isRecord(params) || params.command !== "tsrqlens.explainFinding" || !isUnknownArray(params.arguments)) return null;
   const id = params.arguments[0];
   return typeof id === "string" ? findings.find((finding) => finding.id === id) ?? null : null;
 }

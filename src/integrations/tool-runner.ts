@@ -2,7 +2,7 @@ import childProcess from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { isRecord } from "../collections.js";
+import { isRecord, parseJson } from "../collections.js";
 import { toPosix } from "../files.js";
 import { packageJsonUrl, packageRootFrom } from "../package-root.js";
 import type { Config } from "../types.js";
@@ -82,7 +82,7 @@ function packageVersionFromResolvedEntry(name: string): string | null {
     while (directory !== path.dirname(directory)) {
       const manifestPath = path.join(directory, "package.json");
       if (fs.existsSync(manifestPath)) {
-        const manifest: unknown = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        const manifest = parseJson(fs.readFileSync(manifestPath, "utf8"));
         if (isRecord(manifest) && manifest.name === name && typeof manifest.version === "string") return manifest.version;
       }
       directory = path.dirname(directory);

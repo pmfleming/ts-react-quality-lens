@@ -1,4 +1,7 @@
-import { analysisConfidence, artifactBase, createAnalysisContext, sourceSetHash, stableHash, writeArtifact } from "../measure-shared.js";
+import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
+import { stableHash } from "../clone-utils.js";
+import { artifactBase, sourceSetHash } from "../provenance.js";
+import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, AttwProblem, Config, PackageToolStatus, PublintMessage, ScoredRecord } from "../types.js";
 
 export function measurePackageHealth(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {

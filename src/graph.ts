@@ -76,6 +76,7 @@ export function findCycles(edges: ImportRecord[]): string[][] {
 }
 
 class TarjanCycleFinder {
+  private readonly graph: Map<string, string[]>;
   private readonly indexes = new Map<string, number>();
   private readonly lowlinks = new Map<string, number>();
   private readonly stack: string[] = [];
@@ -83,7 +84,9 @@ class TarjanCycleFinder {
   private readonly cycles: string[][] = [];
   private index = 0;
 
-  constructor(private readonly graph: Map<string, string[]>) {}
+  constructor(graph: Map<string, string[]>) {
+    this.graph = graph;
+  }
 
   run(): string[][] {
     for (const node of this.graph.keys()) {
@@ -133,7 +136,7 @@ class TarjanCycleFinder {
   }
 }
 
-export function dependencyCruiserEdges(config: Config, project: { imports: ImportRecord[] }, modules: DependencyCruiserModule[]) {
+export function dependencyCruiserEdges(project: { imports: ImportRecord[] }, modules: DependencyCruiserModule[]) {
   const lineIndex = new Map<string, number>();
   const targetIndex = new Map<string, string>();
   for (const edge of project.imports) {

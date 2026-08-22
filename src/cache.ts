@@ -1,8 +1,8 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import * as ts from "typescript";
-import { analysisIdentity, sourceSetHash } from "./provenance.js";
+import { parseJson } from "./collections.js";
+import { analysisIdentity, contentHash, sourceSetHash } from "./provenance.js";
 import type { Config, ProjectAnalysis, SourceFileRecord, TypedModuleRecord } from "./types.js";
 
 const CACHE_FORMAT = 2;
@@ -26,7 +26,7 @@ export function readAnalysisCache(
   const file = cacheFile(config);
   if (!fs.existsSync(file)) return null;
   try {
-    const payload: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+    const payload = parseJson(fs.readFileSync(file, "utf8"));
     if (!isCachePayload(payload) || payload.key !== analysisCacheKey(config, sourceFiles, testFiles)) return null;
     return hydrateProject(payload.project, file);
   } catch {
@@ -94,18 +94,7 @@ function hydrateProject(project: CachePayload["project"], file: string): Project
 }
 
 function analysisCacheKey(config: Config, sourceFiles: SourceFileRecord[], testFiles: SourceFileRecord[]): string {
-  const hash = crypto.createHash("sha256");
-  hash.update(String(CACHE_FORMAT));
-  hash.update("\0");
-  hash.update(analysisIdentity(config).id);
-  hash.update("\0");
-  for (const file of [...sourceFiles, ...testFiles].sort((left, right) => left.relativePath.localeCompare(right.relativePath))) {
-    hash.update(file.relativePath);
-    hash.update("\0");
-    hash.update(file.text);
-    hash.update("\0");
-  }
-  return `sha256:${hash.digest("hex")}`;
+  return contentHash([...sourceFiles, ...testFiles], [String(CACHE_FORMAT), analysisIdentity(config).id]);
 }
 
 function cacheableProject(config: Config, project: Omit<ProjectAnalysis, "cache">): boolean {
@@ -126,6 +115,6 @@ function disabledCache(): ProjectAnalysis["cache"] {
 
 function isCachePayload(value: unknown): value is CachePayload {
   if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<CachePayload>;
-  return candidate.cache_format === CACHE_FORMAT && typeof candidate.key === "string" && Boolean(candidate.project);
+  if (!("cache_format" in value) || !("key" in value) || !("project" in value)) return false;
+  return value.cache_format === CACHE_FORMAT && typeof value.key === "string" && Boolean(value.project);
 }

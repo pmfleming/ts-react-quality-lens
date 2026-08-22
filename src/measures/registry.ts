@@ -7,14 +7,9 @@ import { measureHotspots } from "./hotspots.js";
 import { measurePackageHealth } from "./package-health.js";
 import { measureSarif } from "./sarif.js";
 import { measureRuntime } from "./runtime.js";
-import {
-  measureEscapeHatches,
-  measureLeverage,
-  measureLint,
-  measureLocality,
-  measureReactHealth,
-  measureTypeHealth,
-} from "./quality.js";
+import { measureLeverage, measureLocality } from "./locality.js";
+import { measureReactHealth } from "./react-health.js";
+import { measureEscapeHatches, measureLint, measureTypeHealth } from "./type-quality.js";
 import type { AnalysisContext, Artifact, Config } from "../types.js";
 
 type MeasureTask = {
@@ -39,7 +34,7 @@ export const MEASURE_ORDER = [
   "quality.runtime",
   "correctness.all",
   "map.architecture",
-] as const;
+] satisfies readonly string[];
 
 export const MEASURE_TASKS = new Map<string, MeasureTask>(
   [

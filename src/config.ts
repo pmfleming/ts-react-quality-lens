@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
-import { isRecord } from "./collections.js";
+import { isRecord, parseJson } from "./collections.js";
 import { readPackageJson } from "./entrypoints.js";
 import { packageRootFrom } from "./package-root.js";
 import type {
@@ -85,7 +85,8 @@ const getConfigValidator = (() => {
   return (): ValidateFunction<RawConfig> => {
     if (validator) return validator;
     const schemaPath = path.join(packageRoot(), "ts-react-quality-lens.config.schema.json");
-    const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+    const schema = parseJson(fs.readFileSync(schemaPath, "utf8"));
+    if (!isRecord(schema)) throw new Error("Config schema must be a JSON object.");
     validator = new Ajv2020({ allErrors: true, strict: false }).compile<RawConfig>(schema);
     return validator;
   };
@@ -219,7 +220,7 @@ function configErrorMessage(error: ErrorObject): string {
 }
 
 function parseJsonConfig(text: string): unknown {
-  return JSON.parse(stripJsonComments(text));
+  return parseJson(stripJsonComments(text));
 }
 
 function stripJsonComments(text: string): string {

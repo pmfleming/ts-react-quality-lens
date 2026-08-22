@@ -20,7 +20,7 @@ export function changedLineRangesSince(config: Config, base: string): Map<string
     ["diff", "--unified=0", "--no-ext-diff", `${base}...HEAD`],
     ["diff", "--unified=0", "--no-ext-diff", base],
   ]);
-  return diff ? parseChangedLineRanges(diff) : new Map();
+  return diff ? parseChangedLineRanges(diff) : new Map<string, LineRange[]>();
 }
 
 export function defaultBase(config: Config): string | null {

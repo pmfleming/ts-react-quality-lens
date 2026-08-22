@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isRecord } from "../collections.js";
-import { analysisConfidence, artifactBase, createAnalysisContext, sourceSetHash, stableHash, writeArtifact } from "../measure-shared.js";
+import { isRecord, parseJson } from "../collections.js";
+import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
+import { stableHash } from "../clone-utils.js";
+import { artifactBase, sourceSetHash } from "../provenance.js";
+import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, RelatedLocation, ScoredRecord } from "../types.js";
-
 type RuntimeInput = { name: string; file: string | null; parse: (config: Config, value: unknown) => ScoredRecord[] };
-
 type RuntimeStatus = {
   available: boolean;
   ran: boolean;
@@ -14,7 +15,6 @@ type RuntimeStatus = {
   path: string | null;
   records: number;
 };
-
 export function measureRuntime(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const inputs: RuntimeInput[] = [
@@ -48,7 +48,6 @@ export function measureRuntime(config: Config, command: string, context: Analysi
   writeArtifact(config, "runtime_health.json", artifact);
   return artifact;
 }
-
 function parseRuntimeInput(config: Config, input: RuntimeInput): { name: string; status: RuntimeStatus; records: ScoredRecord[] } {
   if (!input.file) return {
     name: input.name,
@@ -61,7 +60,7 @@ function parseRuntimeInput(config: Config, input: RuntimeInput): { name: string;
     records: [runtimeInputFailure(input.name, input.file, "Configured runtime input file does not exist.")],
   };
   try {
-    const records = input.parse(config, JSON.parse(fs.readFileSync(input.file, "utf8")));
+    const records = input.parse(config, parseJson(fs.readFileSync(input.file, "utf8")));
     return {
       name: input.name,
       status: { available: true, ran: true, complete: true, reason: null, path: input.file, records: records.length },
@@ -76,125 +75,146 @@ function parseRuntimeInput(config: Config, input: RuntimeInput): { name: string;
     };
   }
 }
-
 function profilerRecords(config: Config, value: unknown): ScoredRecord[] {
   const commits = Array.isArray(value) ? value : isRecord(value) && Array.isArray(value.commits) ? value.commits : [];
-  return commits.flatMap((commit, index): ScoredRecord[] => {
-    if (!isRecord(commit)) return [];
-    const duration = numberValue(commit.duration_ms, commit.actualDuration, commit.duration);
-    if (duration === null) return [];
-    const component = stringValue(commit.component, commit.componentName, commit.name) ?? `commit-${index + 1}`;
-    const file = typeof commit.file === "string" ? normalizePath(config, commit.file) : null;
-    const renderCount = numberValue(commit.render_count, commit.renderCount) ?? 1;
-    const score = Math.min(100, Math.round(duration * 2 + Math.max(0, renderCount - 1) * 5));
-    return [{
-      id: `runtime:profiler:${stableHash(`${component}:${index}:${duration}`)}`,
-      rule_id: "react-profiler/expensive-commit",
-      kind: "react_render_cost",
-      evidence_kind: "metric",
-      disposition: duration > 50 || renderCount > 10 ? "warn" : "review",
-      finding_confidence: "high",
-      scope: file ? "file" : "project",
-      ...(file ? { file } : {}),
-      ...(typeof commit.line === "number" ? { line: commit.line } : {}),
-      score,
-      risk: score >= 70 ? "high" : score >= 35 ? "medium" : "low",
-      source: "react-profiler",
-      message: `${component} committed in ${duration}ms across ${renderCount} observed render${renderCount === 1 ? "" : "s"}.`,
-      component,
-      duration_ms: duration,
-      render_count: renderCount,
-      phase: typeof commit.phase === "string" ? commit.phase : null,
-      signals: [{ kind: "commit_duration_ms", value: duration }, { kind: "render_count", value: renderCount }],
-    }];
-  });
+  return commits.flatMap((commit, index) => optionalRecord(profilerRecord(config, commit, index)));
 }
-
+function profilerRecord(config: Config, value: unknown, index: number): ScoredRecord | null {
+  if (!isRecord(value)) return null;
+  const duration = numberValue(value.duration_ms, value.actualDuration, value.duration);
+  if (duration === null) return null;
+  const component = stringValue(value.component, value.componentName, value.name) ?? `commit-${index + 1}`;
+  const file = typeof value.file === "string" ? normalizePath(config, value.file) : null;
+  const renderCount = numberValue(value.render_count, value.renderCount) ?? 1;
+  const score = Math.min(100, Math.round(duration * 2 + Math.max(0, renderCount - 1) * 5));
+  return {
+    id: `runtime:profiler:${stableHash(`${component}:${index}:${duration}`)}`,
+    rule_id: "react-profiler/expensive-commit",
+    kind: "react_render_cost",
+    evidence_kind: "metric",
+    disposition: duration > 50 || renderCount > 10 ? "warn" : "review",
+    finding_confidence: "high",
+    scope: file ? "file" : "project",
+    ...(file ? { file } : {}),
+    ...(typeof value.line === "number" ? { line: value.line } : {}),
+    score,
+    risk: score >= 70 ? "high" : score >= 35 ? "medium" : "low",
+    source: "react-profiler",
+    message: `${component} committed in ${duration}ms across ${renderCount} observed render${renderCount === 1 ? "" : "s"}.`,
+    component,
+    duration_ms: duration,
+    render_count: renderCount,
+    phase: typeof value.phase === "string" ? value.phase : null,
+    signals: [{ kind: "commit_duration_ms", value: duration }, { kind: "render_count", value: renderCount }],
+  };
+}
 function axeRecords(_config: Config, value: unknown): ScoredRecord[] {
   const violations = isRecord(value) && Array.isArray(value.violations) ? value.violations : [];
-  return violations.flatMap((violation, violationIndex): ScoredRecord[] => {
-    if (!isRecord(violation)) return [];
-    const nodes = Array.isArray(violation.nodes) && violation.nodes.length ? violation.nodes : [{}];
-    return nodes.flatMap((node, nodeIndex): ScoredRecord[] => {
-      if (!isRecord(node)) return [];
-      const id = typeof violation.id === "string" ? violation.id : `violation-${violationIndex + 1}`;
-      const impact = typeof node.impact === "string" ? node.impact : typeof violation.impact === "string" ? violation.impact : "unknown";
-      const targets = Array.isArray(node.target) ? node.target.filter((item): item is string => typeof item === "string") : [];
-      return [{
-        id: `runtime:axe:${id}:${nodeIndex + 1}:${stableHash(targets.join("|"))}`,
-        rule_id: `axe/${id}`,
-        kind: "runtime_accessibility_violation",
-        evidence_kind: "tool-rule",
-        disposition: impact === "critical" ? "block" : impact === "serious" ? "warn" : "review",
-        finding_confidence: "high",
-        scope: "project",
-        score: impact === "critical" ? 100 : impact === "serious" ? 75 : impact === "moderate" ? 50 : 25,
-        risk: impact === "critical" ? "high" : impact === "serious" || impact === "moderate" ? "medium" : "low",
-        source: "axe",
-        message: stringValue(node.failureSummary, violation.help, violation.description) ?? `axe reported ${id}.`,
-        impact,
-        targets,
-        html: typeof node.html === "string" ? node.html : null,
-        help_url: typeof violation.helpUrl === "string" ? violation.helpUrl : null,
-        signals: [{ kind: id, value: impact }],
-      }];
-    });
-  });
+  return violations.flatMap((violation, violationIndex) => axeViolationRecords(violation, violationIndex));
 }
-
+function axeViolationRecords(value: unknown, violationIndex: number): ScoredRecord[] {
+  if (!isRecord(value)) return [];
+  const nodes = Array.isArray(value.nodes) && value.nodes.length ? value.nodes : [{}];
+  return nodes.flatMap((node, nodeIndex) => optionalRecord(axeNodeRecord(value, node, violationIndex, nodeIndex)));
+}
+function axeNodeRecord(violation: Record<string, unknown>, value: unknown, violationIndex: number, nodeIndex: number): ScoredRecord | null {
+  if (!isRecord(value)) return null;
+  const id = typeof violation.id === "string" ? violation.id : `violation-${violationIndex + 1}`;
+  const impact = stringValue(value.impact, violation.impact) ?? "unknown";
+  const targets = Array.isArray(value.target) ? value.target.filter((item): item is string => typeof item === "string") : [];
+  const score = axeScore(impact);
+  return {
+    id: `runtime:axe:${id}:${nodeIndex + 1}:${stableHash(targets.join("|"))}`,
+    rule_id: `axe/${id}`,
+    kind: "runtime_accessibility_violation",
+    evidence_kind: "tool-rule",
+    disposition: impact === "critical" ? "block" : impact === "serious" ? "warn" : "review",
+    finding_confidence: "high",
+    scope: "project",
+    score,
+    risk: score >= 70 ? "high" : score >= 35 ? "medium" : "low",
+    source: "axe",
+    message: stringValue(value.failureSummary, violation.help, violation.description) ?? `axe reported ${id}.`,
+    impact,
+    targets,
+    html: typeof value.html === "string" ? value.html : null,
+    help_url: typeof violation.helpUrl === "string" ? violation.helpUrl : null,
+    signals: [{ kind: id, value: impact }],
+  };
+}
+function axeScore(impact: string): number {
+  return { critical: 100, serious: 75, moderate: 50, minor: 25 }[impact] ?? 25;
+}
 function reactDoctorRecords(config: Config, value: unknown): ScoredRecord[] {
-  const diagnostics = isRecord(value) && Array.isArray(value.diagnostics)
-    ? value.diagnostics
-    : isRecord(value) && Array.isArray(value.projects)
-      ? value.projects.flatMap((project) => isRecord(project) && Array.isArray(project.diagnostics) ? project.diagnostics : [])
-      : [];
-  return diagnostics.flatMap((diagnostic, index): ScoredRecord[] => {
-    if (!isRecord(diagnostic)) return [];
-    const plugin = typeof diagnostic.plugin === "string" ? diagnostic.plugin : "react-doctor";
-    const rule = typeof diagnostic.rule === "string" ? diagnostic.rule : `diagnostic-${index + 1}`;
-    const file = stringValue(diagnostic.normalizedFilePath, diagnostic.filePath);
-    const related = Array.isArray(diagnostic.relatedLocations)
-      ? diagnostic.relatedLocations.flatMap((location): RelatedLocation[] => {
-          if (!isRecord(location) || typeof location.filePath !== "string" || typeof location.line !== "number") return [];
-          return [{
-            file: normalizePath(config, location.filePath),
-            start_line: location.line,
-            ...(typeof location.column === "number" ? { start_column: location.column } : {}),
-            ...(typeof location.endLine === "number" ? { end_line: location.endLine } : {}),
-            ...(typeof location.endColumn === "number" ? { end_column: location.endColumn } : {}),
-            role: "related",
-            ...(typeof location.message === "string" ? { message: location.message } : {}),
-          }];
-        })
-      : [];
-    const error = diagnostic.severity === "error";
-    return [{
-      id: typeof diagnostic.id === "string" ? `react-doctor:${diagnostic.id}` : `react-doctor:${stableHash(`${file}:${rule}:${index}`)}`,
-      rule_id: `${plugin}/${rule}`,
-      kind: "react_doctor_finding",
-      evidence_kind: "tool-rule",
-      disposition: error ? "warn" : "review",
-      finding_confidence: "high",
-      scope: file ? "file" : "project",
-      ...(file ? { file: normalizePath(config, file) } : {}),
-      ...(typeof diagnostic.line === "number" ? { line: diagnostic.line } : {}),
-      ...(typeof diagnostic.column === "number" ? { column: diagnostic.column } : {}),
-      ...(typeof diagnostic.endLine === "number" ? { end_line: diagnostic.endLine } : {}),
-      ...(typeof diagnostic.endColumn === "number" ? { end_column: diagnostic.endColumn } : {}),
-      ...(related.length ? { related_locations: related } : {}),
-      ...(typeof diagnostic.fixGroupId === "string" ? { fix_group_id: diagnostic.fixGroupId } : {}),
-      score: error ? 75 : 50,
-      risk: error ? "high" : "medium",
-      source: "react-doctor",
-      message: stringValue(diagnostic.message, diagnostic.title) ?? `${plugin}/${rule}`,
-      category: typeof diagnostic.category === "string" ? diagnostic.category : null,
-      help: typeof diagnostic.help === "string" ? diagnostic.help : null,
-      url: typeof diagnostic.url === "string" ? diagnostic.url : null,
-      signals: [{ kind: rule }],
-    }];
-  });
+  return reactDoctorDiagnostics(value).flatMap((diagnostic, index) =>
+    optionalRecord(reactDoctorRecord(config, diagnostic, index)));
 }
-
+function reactDoctorDiagnostics(value: unknown): unknown[] {
+  if (!isRecord(value)) return [];
+  if (Array.isArray(value.diagnostics)) return value.diagnostics;
+  if (!Array.isArray(value.projects)) return [];
+  return value.projects.flatMap((project): unknown[] =>
+    isRecord(project) && Array.isArray(project.diagnostics) ? project.diagnostics : []);
+}
+function reactDoctorRecord(config: Config, value: unknown, index: number): ScoredRecord | null {
+  if (!isRecord(value)) return null;
+  const plugin = typeof value.plugin === "string" ? value.plugin : "react-doctor";
+  const rule = typeof value.rule === "string" ? value.rule : `diagnostic-${index + 1}`;
+  const file = stringValue(value.normalizedFilePath, value.filePath);
+  const error = value.severity === "error";
+  return {
+    id: typeof value.id === "string" ? `react-doctor:${value.id}` : `react-doctor:${stableHash(`${file}:${rule}:${index}`)}`,
+    rule_id: `${plugin}/${rule}`,
+    kind: "react_doctor_finding",
+    evidence_kind: "tool-rule",
+    disposition: error ? "warn" : "review",
+    finding_confidence: "high",
+    scope: file ? "file" : "project",
+    ...(file ? { file: normalizePath(config, file) } : {}),
+    ...sourceRange(value),
+    ...reactDoctorRelations(config, value),
+    score: error ? 75 : 50,
+    risk: error ? "high" : "medium",
+    source: "react-doctor",
+    message: stringValue(value.message, value.title) ?? `${plugin}/${rule}`,
+    category: typeof value.category === "string" ? value.category : null,
+    help: typeof value.help === "string" ? value.help : null,
+    url: typeof value.url === "string" ? value.url : null,
+    signals: [{ kind: rule }],
+  };
+}
+function sourceRange(value: Record<string, unknown>): Pick<ScoredRecord, "line" | "column" | "end_line" | "end_column"> {
+  return {
+    ...(typeof value.line === "number" ? { line: value.line } : {}),
+    ...(typeof value.column === "number" ? { column: value.column } : {}),
+    ...(typeof value.endLine === "number" ? { end_line: value.endLine } : {}),
+    ...(typeof value.endColumn === "number" ? { end_column: value.endColumn } : {}),
+  };
+}
+function reactDoctorRelations(config: Config, value: Record<string, unknown>): Pick<ScoredRecord, "related_locations" | "fix_group_id"> {
+  const related = Array.isArray(value.relatedLocations)
+    ? value.relatedLocations.flatMap((location) => optionalRecord(reactDoctorLocation(config, location)))
+    : [];
+  return {
+    ...(related.length ? { related_locations: related } : {}),
+    ...(typeof value.fixGroupId === "string" ? { fix_group_id: value.fixGroupId } : {}),
+  };
+}
+function reactDoctorLocation(config: Config, value: unknown): RelatedLocation | null {
+  if (!isRecord(value) || typeof value.filePath !== "string" || typeof value.line !== "number") return null;
+  return {
+    file: normalizePath(config, value.filePath),
+    start_line: value.line,
+    ...(typeof value.column === "number" ? { start_column: value.column } : {}),
+    ...(typeof value.endLine === "number" ? { end_line: value.endLine } : {}),
+    ...(typeof value.endColumn === "number" ? { end_column: value.endColumn } : {}),
+    role: "related",
+    ...(typeof value.message === "string" ? { message: value.message } : {}),
+  };
+}
+function optionalRecord<T>(value: T | null): T[] {
+  return value === null ? [] : [value];
+}
 function runtimeInputFailure(name: string, file: string, reason: string): ScoredRecord {
   return {
     id: `runtime:input-incomplete:${name}`,
@@ -213,18 +233,15 @@ function runtimeInputFailure(name: string, file: string, reason: string): Scored
     signals: [{ kind: "runtime_input_incomplete", value: name }],
   };
 }
-
 function normalizePath(config: Config, file: string): string {
   const absolute = path.isAbsolute(file) ? file : path.resolve(config.projectRoot, file);
   const relative = path.relative(config.projectRoot, absolute).replace(/\\/g, "/");
   return relative && !relative.startsWith("../") ? relative : file.replace(/\\/g, "/");
 }
-
 function numberValue(...values: unknown[]): number | null {
   const value = values.find((item) => typeof item === "number" && Number.isFinite(item));
   return typeof value === "number" ? value : null;
 }
-
 function stringValue(...values: unknown[]): string | null {
   const value = values.find((item) => typeof item === "string" && item.length > 0);
   return typeof value === "string" ? value : null;

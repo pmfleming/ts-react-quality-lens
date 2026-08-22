@@ -64,7 +64,7 @@ function auditScope(config: Config, options: AuditOptions): AuditScope {
     base,
     gate: options.gate ?? config.audit.gate,
     changedFiles: base ? changedFilesSince(config, base) : [],
-    changedLines: base ? changedLineRangesSince(config, base) : new Map(),
+    changedLines: base ? changedLineRangesSince(config, base) : new Map<string, LineRange[]>(),
   };
 }
 

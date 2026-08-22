@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
-import type * as tsTypes from "typescript";
+import * as tsTypes from "typescript";
+import { isRecord } from "../collections.js";
 import { relativeModuleId, toPosix } from "../files.js";
 import type {
   Config,
@@ -14,7 +14,10 @@ import type {
   TypeScriptProject,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
+type LoadedWorkspaceProject = {
+  item: { workspaceId: string; path: string };
+  project: TypeScriptProject;
+};
 
 type ParsedConfigResult =
   | { parsed: tsTypes.ParsedCommandLine; failure?: never }
@@ -28,7 +31,7 @@ export function loadTypeScriptProjects(
   const uniqueConfigs = projectConfigs.filter((item, index, values) =>
     values.findIndex((candidate) => path.resolve(candidate.path) === path.resolve(item.path)) === index);
   if (!uniqueConfigs.length) return loadTypeScriptProject(config, sourceFiles);
-  const projects = uniqueConfigs.map((item) => ({
+  const projects: LoadedWorkspaceProject[] = uniqueConfigs.map((item) => ({
     item,
     project: loadTypeScriptProject({ ...config, tsconfig: item.path }, sourceFiles),
   }));
@@ -59,9 +62,7 @@ export function loadTypeScriptProjects(
       `${toPosix(path.relative(config.projectRoot, item.path))}: ${project.reason ?? "project did not load"}`).join("; "),
     diagnostics: [...diagnostics.values()],
     modules,
-    ...(projects.find(({ project }) => project.compiler_options)?.project.compiler_options
-      ? { compiler_options: projects.find(({ project }) => project.compiler_options)!.project.compiler_options }
-      : {}),
+    ...firstCompilerOptions(projects),
     type_coverage: {
       summary: {
         files: files.length,
@@ -79,9 +80,13 @@ export function loadTypeScriptProjects(
   };
 }
 
-export function loadTypeScriptProject(config: Config, sourceFiles: SourceFileRecord[]): TypeScriptProject {
-  const ts = loadTypeScript();
-  if (!ts) return unloadedProject(false, "typescript package is not installed");
+function firstCompilerOptions(projects: LoadedWorkspaceProject[]): Pick<TypeScriptProject, "compiler_options"> | {} {
+  const options = projects.find(({ project }) => project.compiler_options)?.project.compiler_options;
+  return options ? { compiler_options: options } : {};
+}
+
+function loadTypeScriptProject(config: Config, sourceFiles: SourceFileRecord[]): TypeScriptProject {
+  const ts = tsTypes;
   if (!config.tsconfig || !fs.existsSync(config.tsconfig)) return unloadedProject(true, "tsconfig was not found");
   try {
     const result = parseCompilerConfig(ts, config);
@@ -214,7 +219,7 @@ function classifyIdentifier(
     const type = checker.getTypeAtLocation(node);
     counts.analyzed_symbols += 1;
     if ((type.flags & ts.TypeFlags.Any) !== 0) {
-      const intrinsicName = (type as tsTypes.Type & { intrinsicName?: string }).intrinsicName;
+      const intrinsicName = isRecord(type) && typeof type.intrinsicName === "string" ? type.intrinsicName : null;
       if (intrinsicName === "error") counts.error_types += 1;
       else if (symbolHasExplicitAny(ts, checker.getSymbolAtLocation(node))) counts.explicit_any += 1;
       else counts.inferred_any += 1;
@@ -230,9 +235,17 @@ function classifyIdentifier(
 
 function symbolHasExplicitAny(ts: typeof tsTypes, symbol: tsTypes.Symbol | undefined): boolean {
   return symbol?.declarations?.some((declaration) => {
-    const typed = declaration as tsTypes.Declaration & { type?: tsTypes.TypeNode };
-    return typed.type ? containsAnyKeyword(ts, typed.type) : false;
+    const typeNode = declarationTypeNode(ts, declaration);
+    return typeNode ? containsAnyKeyword(ts, typeNode) : false;
   }) ?? false;
+}
+
+function declarationTypeNode(ts: typeof tsTypes, declaration: tsTypes.Declaration): tsTypes.TypeNode | undefined {
+  if (ts.isVariableDeclaration(declaration) || ts.isParameter(declaration) || ts.isPropertyDeclaration(declaration) ||
+      ts.isPropertySignature(declaration) || ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration)) {
+    return declaration.type;
+  }
+  return undefined;
 }
 
 function containsAnyKeyword(ts: typeof tsTypes, node: tsTypes.Node): boolean {
@@ -244,19 +257,19 @@ function containsAnyKeyword(ts: typeof tsTypes, node: tsTypes.Node): boolean {
   return found;
 }
 
+const IGNORED_IDENTIFIER_PARENTS = new Set<tsTypes.SyntaxKind>([
+  tsTypes.SyntaxKind.ImportSpecifier, tsTypes.SyntaxKind.ExportSpecifier, tsTypes.SyntaxKind.ImportClause,
+  tsTypes.SyntaxKind.NamespaceImport, tsTypes.SyntaxKind.TypeReference, tsTypes.SyntaxKind.TypeQuery,
+  tsTypes.SyntaxKind.QualifiedName, tsTypes.SyntaxKind.TypeParameter, tsTypes.SyntaxKind.JsxOpeningElement,
+  tsTypes.SyntaxKind.JsxClosingElement, tsTypes.SyntaxKind.JsxSelfClosingElement, tsTypes.SyntaxKind.JsxAttribute,
+]);
+
 function countableIdentifier(ts: typeof tsTypes, node: tsTypes.Identifier): boolean {
   const parent = node.parent;
-  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
-  if ((ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) && parent.name === node) {
-    return false;
-  }
-  if (ts.isImportSpecifier(parent) || ts.isExportSpecifier(parent) || ts.isImportClause(parent) || ts.isNamespaceImport(parent)) return false;
-  if (ts.isTypeReferenceNode(parent) || ts.isTypeQueryNode(parent) || ts.isQualifiedName(parent) || ts.isTypeParameterDeclaration(parent)) return false;
-  if (ts.isInterfaceDeclaration(parent) || ts.isTypeAliasDeclaration(parent) || ts.isClassDeclaration(parent)) return parent.name !== node;
-  if (ts.isJsxOpeningElement(parent) || ts.isJsxClosingElement(parent) || ts.isJsxSelfClosingElement(parent) || ts.isJsxAttribute(parent)) {
-    return false;
-  }
-  return true;
+  if (IGNORED_IDENTIFIER_PARENTS.has(parent.kind)) return false;
+  if (ts.isPropertyAccessExpression(parent)) return parent.name !== node;
+  if (ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) return parent.name !== node;
+  return !(ts.isInterfaceDeclaration(parent) || ts.isTypeAliasDeclaration(parent) || ts.isClassDeclaration(parent)) || parent.name !== node;
 }
 
 function coveragePercent(typed: number, analyzed: number): number {
@@ -276,13 +289,40 @@ function typedModuleRecord(
   const exports = moduleExports(checker, sourceFile);
   const declarations: TypedDeclaration[] = [];
   visit(sourceFile);
-  const record = { file: toPosix(path.relative(config.projectRoot, sourceFile.fileName)), exports, declarations };
+  const record = {
+    file: toPosix(path.relative(config.projectRoot, sourceFile.fileName)),
+    exports,
+    declarations,
+    surface_type_references: moduleSurfaceTypeReferences(checker, sourceFile),
+  };
   Object.defineProperty(record, "sourceFile", { value: sourceFile, enumerable: false });
   return record;
 
   function visit(node: tsTypes.Node): void {
     if (isNamedDeclarationNode(ts, node)) declarations.push(typedDeclaration(ts, checker, sourceFile, node));
     ts.forEachChild(node, visit);
+  }
+}
+
+function moduleSurfaceTypeReferences(checker: tsTypes.TypeChecker, sourceFile: tsTypes.SourceFile): string[] {
+  const references = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (!hasModifier(tsTypes, statement, tsTypes.SyntaxKind.ExportKeyword)) continue;
+    visit(statement);
+  }
+  return [...references].sort();
+
+  function visit(node: tsTypes.Node): void {
+    if (tsTypes.isBlock(node)) return;
+    if (tsTypes.isTypeReferenceNode(node)) addLocalSymbol(node.typeName);
+    if (tsTypes.isExpressionWithTypeArguments(node)) addLocalSymbol(node.expression);
+    if (tsTypes.isTypeQueryNode(node)) addLocalSymbol(node.exprName);
+    tsTypes.forEachChild(node, visit);
+  }
+
+  function addLocalSymbol(node: tsTypes.Node): void {
+    const symbol = checker.getSymbolAtLocation(node);
+    if (symbol?.declarations?.some((declaration) => declaration.getSourceFile() === sourceFile)) references.add(symbol.getName());
   }
 }
 
@@ -374,10 +414,12 @@ function compilerOptionSummary(options: tsTypes.CompilerOptions) {
     noFallthroughCasesInSwitch: Boolean(options.noFallthroughCasesInSwitch),
     forceConsistentCasingInFileNames: Boolean(options.forceConsistentCasingInFileNames),
     noPropertyAccessFromIndexSignature: Boolean(options.noPropertyAccessFromIndexSignature),
+    noUncheckedSideEffectImports: Boolean(options.noUncheckedSideEffectImports),
     useUnknownInCatchVariables: Boolean(options.useUnknownInCatchVariables || options.strict),
+    verbatimModuleSyntax: Boolean(options.verbatimModuleSyntax),
+    erasableSyntaxOnly: Boolean(options.erasableSyntaxOnly),
     declaration: Boolean(options.declaration),
     isolatedDeclarations: Boolean(options.isolatedDeclarations),
-    verbatimModuleSyntax: Boolean(options.verbatimModuleSyntax),
     jsx: options.jsx,
     moduleResolution: options.moduleResolution,
     target: options.target,
@@ -386,12 +428,4 @@ function compilerOptionSummary(options: tsTypes.CompilerOptions) {
 
 function flattenMessage(ts: typeof tsTypes, message: string | tsTypes.DiagnosticMessageChain): string {
   return ts.flattenDiagnosticMessageText(message, "\n");
-}
-
-function loadTypeScript(): typeof tsTypes | null {
-  try {
-    return require("typescript");
-  } catch {
-    return null;
-  }
 }

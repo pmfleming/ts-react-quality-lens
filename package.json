@@ -4,6 +4,15 @@
   "description": "Reusable TypeScript and React quality measurement artifacts for project-management-board.",
   "type": "module",
   "main": "./dist/src/cli.js",
+  "types": "./dist/src/cli.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/cli.d.ts",
+      "import": "./dist/src/cli.js",
+      "default": "./dist/src/cli.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "ts-react-quality-lens": "./dist/bin/ts-react-quality-lens.js"
   },
@@ -21,6 +30,8 @@
     "test": "npm run build && node --test \"dist/test/*.test.js\"",
     "catalog": "npm run build && node ./dist/bin/ts-react-quality-lens.js catalog --config ./examples/basic/ts-react-quality-lens.config.json",
     "measure": "npm run build && node ./dist/bin/ts-react-quality-lens.js measure all --config ./examples/basic/ts-react-quality-lens.config.json",
+    "self:measure": "npm run build && node ./dist/bin/ts-react-quality-lens.js measure all --config ./ts-react-quality-lens.config.json",
+    "self:audit": "npm run build && node ./dist/bin/ts-react-quality-lens.js audit --config ./ts-react-quality-lens.config.json",
     "prepack": "npm run build"
   },
   "engines": {
@@ -38,9 +49,37 @@
     "rule-contracts.schema.json"
   ],
   "license": "MIT",
+  "knip": {
+    "entry": [
+      "bin/*.ts",
+      "scripts/*.ts"
+    ],
+    "project": [
+      "src/**/*.ts",
+      "bin/**/*.ts",
+      "scripts/**/*.ts",
+      "test/**/*.ts"
+    ],
+    "ignore": [
+      "examples/**",
+      "test/fixtures/**"
+    ],
+    "ignoreDependencies": [
+      "@arethetypeswrong/cli",
+      "@types/react",
+      "@typescript-eslint/eslint-plugin",
+      "@typescript-eslint/parser",
+      "dependency-cruiser",
+      "eslint",
+      "eslint-plugin-jsx-a11y",
+      "eslint-plugin-react-hooks",
+      "jscpd",
+      "publint"
+    ]
+  },
   "devDependencies": {
     "@types/node": "^25.9.1",
-    "@types/react": "^19.2.15",
+    "@types/react": "^19.2.18",
     "@typescript/native": "npm:typescript@^7.0.2"
   },
   "dependencies": {

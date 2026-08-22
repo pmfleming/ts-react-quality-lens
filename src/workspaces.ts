@@ -1,12 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
-import type * as tsTypes from "typescript";
+import * as tsTypes from "typescript";
+import { isRecord } from "./collections.js";
 import { readPackageJson } from "./entrypoints.js";
 import { toPosix } from "./files.js";
 import type { Config, PackageJson, SourceFileRecord, WorkspaceRecord } from "./types.js";
 
-const require = createRequire(import.meta.url);
 const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", "dist", "build", "target", "coverage", ".next", ".turbo"]);
 
 type WorkspaceDiscovery = {
@@ -135,12 +134,11 @@ function collectProjectReferences(tsconfig: string, result: Set<string>): void {
   const normalized = path.resolve(tsconfig);
   if (result.has(normalized) || !fs.existsSync(normalized)) return;
   result.add(normalized);
-  const ts = loadTypeScript();
-  if (!ts) return;
-  const read = ts.readConfigFile(normalized, ts.sys.readFile);
-  if (read.error || !read.config || !Array.isArray(read.config.references)) return;
-  for (const reference of read.config.references) {
-    if (!reference || typeof reference.path !== "string") continue;
+  const read = tsTypes.readConfigFile(normalized, tsTypes.sys.readFile);
+  const configValue: unknown = read.config;
+  if (read.error || !isRecord(configValue) || !Array.isArray(configValue.references)) return;
+  for (const reference of configValue.references) {
+    if (!isRecord(reference) || typeof reference.path !== "string") continue;
     const candidate = path.resolve(path.dirname(normalized), reference.path);
     const referencedConfig = fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()
       ? path.join(candidate, "tsconfig.json")
@@ -172,12 +170,4 @@ function detectWorkspaceFramework(manifest: PackageJson | null): string {
 
 function fileInWorkspace(file: string, root: string): boolean {
   return root === "." || file === root || file.startsWith(`${root}/`);
-}
-
-function loadTypeScript(): typeof tsTypes | null {
-  try {
-    return require("typescript");
-  } catch {
-    return null;
-  }
 }
