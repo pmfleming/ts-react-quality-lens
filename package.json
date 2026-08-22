@@ -24,7 +24,7 @@
     "prepack": "npm run build"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19"
   },
   "files": [
     "dist/",
@@ -52,6 +52,7 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jscpd": "^4.2.5",
+    "knip": "^6.32.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

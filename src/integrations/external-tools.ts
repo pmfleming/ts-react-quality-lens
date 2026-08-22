@@ -6,8 +6,9 @@ import {
   runLocalTool,
   runToolAdapter,
   toolRunOptions,
+  toolPackageVersion,
 } from "./tool-runner.js";
-import type { Config, DependencyCruiserResult, JscpdResult } from "../types.js";
+import type { Config, DependencyCruiserResult, JscpdResult, KnipResult } from "../types.js";
 
 export function runDependencyCruiser(config: Config): DependencyCruiserResult {
   const args = [
@@ -31,6 +32,43 @@ export function runDependencyCruiser(config: Config): DependencyCruiserResult {
       return { modules: json.modules ?? [], summary: json.summary ?? {} };
     },
   );
+}
+
+export function runKnip(config: Config): KnipResult {
+  const version = toolPackageVersion("knip");
+  if (!config.cleanup.knip) {
+    return {
+      available: version !== null,
+      ran: false,
+      reason: "Knip cleanup analysis is disabled",
+      duration_ms: 0,
+      issues: [],
+      version,
+      complete: false,
+    };
+  }
+  const args = [
+    "--reporter",
+    "json",
+    "--no-exit-code",
+    "--no-progress",
+    "--no-config-hints",
+    "--no-tag-hints",
+    ...(config.cleanup.production ? ["--production"] : []),
+  ];
+  const result = runToolAdapter(
+    config,
+    "knip",
+    "Knip executable was not found",
+    { issues: [] },
+    (executable) => {
+      const json = JSON.parse(runLocalTool(executable, args, toolRunOptions(config)));
+      return { issues: Array.isArray(json.issues) ? json.issues : [] };
+    },
+    null,
+    true,
+  );
+  return { ...result, version, complete: result.ran };
 }
 
 export function runJscpd(config: Config): JscpdResult {

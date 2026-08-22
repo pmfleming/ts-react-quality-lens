@@ -82,6 +82,14 @@
         "polymorphic_prop_name": { "type": "string" }
       }
     },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "knip": { "type": "boolean" },
+        "production": { "type": "boolean" }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,

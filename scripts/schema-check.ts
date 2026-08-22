@@ -39,6 +39,7 @@ for (const key of [
   "cache",
   "react",
   "accessibility",
+  "cleanup",
   "policy",
   "suppressions",
   "audit",
@@ -59,6 +60,7 @@ for (const runtimeDependency of [
   "eslint-plugin-jsx-a11y",
   "eslint-plugin-react-hooks",
   "jscpd",
+  "knip",
   "dependency-cruiser",
 ]) {
   assert.ok(packageJson.dependencies?.[runtimeDependency], `package dependencies must include ${runtimeDependency}`);
@@ -123,6 +125,7 @@ function representativeConfig() {
     cache: { enabled: true },
     react: { ruleset: "recommended-v2" },
     accessibility: { enabled: true, components: { Image: "img" }, polymorphic_prop_name: "as" },
+    cleanup: { knip: true, production: false },
     policy: { profile: "recommended", required_checks: ["compiler", "typed-lint", "tests"] },
     suppressions: [{ id: "fixture:finding", reason: "schema fixture" }],
     audit: { base: "origin/main", gate: "new-only" },

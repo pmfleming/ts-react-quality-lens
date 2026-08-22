@@ -4,7 +4,7 @@ import { analyzeModule } from "./extract.js";
 import { entrypointRolesForFile, projectEntrypoints } from "./entrypoints.js";
 import { updateAnalysisCache } from "./cache.js";
 import { runJsxA11yLint, runReactHooksLint, runTypedLint } from "./integrations/eslint-adapter.js";
-import { runDependencyCruiser, runJscpd } from "./integrations/external-tools.js";
+import { runDependencyCruiser, runJscpd, runKnip } from "./integrations/external-tools.js";
 import { loadTypeScriptProject } from "./integrations/typescript-project.js";
 import { detectFrameworkDetails } from "./framework-adapters.js";
 import type { AnalysisContext, Config, Confidence, ProjectAnalysis } from "./types.js";
@@ -30,6 +30,7 @@ export function createAnalysisContext(config: Config): AnalysisContext {
     project: () => analyzeProject(config),
     jscpd: () => runJscpd(config),
     dependencyCruiser: () => runDependencyCruiser(config),
+    knip: () => runKnip(config),
     reactHooksLint: () => runReactHooksLint(config),
     jsxA11yLint: () => runJsxA11yLint(config),
     typedLint: () => runTypedLint(config),
@@ -38,6 +39,7 @@ export function createAnalysisContext(config: Config): AnalysisContext {
     project: () => cached(cache, "project", loaders.project),
     jscpd: () => cached(cache, "jscpd", loaders.jscpd),
     dependencyCruiser: () => cached(cache, "dependencyCruiser", loaders.dependencyCruiser),
+    knip: () => cached(cache, "knip", loaders.knip),
     reactHooksLint: () => cached(cache, "reactHooksLint", loaders.reactHooksLint),
     jsxA11yLint: () => cached(cache, "jsxA11yLint", loaders.jsxA11yLint),
     typedLint: () => cached(cache, "typedLint", loaders.typedLint),

@@ -15,6 +15,7 @@ const TOOL_ADAPTER_DEPENDENCIES = new Set([
   "eslint-plugin-jsx-a11y",
   "eslint-plugin-react-hooks",
   "jscpd",
+  "knip",
   "typescript",
 ]);
 
@@ -28,6 +29,7 @@ type CleanupUsage = {
 
 export function measureCleanup(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
+  const knip = context.knip();
   const packageJson = readPackageJson(path.join(config.projectRoot, "package.json"));
   const dependencySets = dependencySetsFor(packageJson);
   const entryFiles = packageEntryFiles(config, packageJson);
@@ -38,7 +40,7 @@ export function measureCleanup(config: Config, command: string, context: Analysi
     dependencySets.allDeclared,
   );
 
-  const records: ScoredRecord[] = [
+  const builtInRecords: ScoredRecord[] = [
     ...unusedFileRecords(config, project.modules, internalInbound, entryFiles),
     ...unusedExportRecords(config, project.modules, internalInbound, importedNamesByModule, opaqueExportUsage, entryFiles),
     ...unusedDependencyRecords(dependencySets.allDeclared, externalImports),
@@ -47,9 +49,15 @@ export function measureCleanup(config: Config, command: string, context: Analysi
     ...testOnlyProductionDependencyRecords(dependencySets.dependencies, externalImports),
     ...duplicateExportRecords(project.modules),
   ];
+  const knipRecords = normalizeKnipRecords(knip.issues);
+  const records = reconcileCleanupRecords(builtInRecords, knipRecords, knip.complete);
 
   const artifact = {
-    ...artifactBase(config, "quality.cleanup", command, analysisConfidence(config, project), sourceSetHash(project)),
+    ...artifactBase(config, "quality.cleanup", command, analysisConfidence(config, project, {
+      knip_available: knip.available,
+      knip_ran: knip.ran,
+      knip_complete: knip.complete,
+    }), sourceSetHash(project)),
     summary: {
       records: records.length,
       unused_files: records.filter((record) => record.kind === "unused_file").length,
@@ -60,11 +68,122 @@ export function measureCleanup(config: Config, command: string, context: Analysi
       test_only_production_dependencies: records.filter((record) => record.kind === "test_only_production_dependency").length,
       duplicate_exports: records.filter((record) => record.kind === "duplicate_export").length,
       entrypoint_files: entryFiles.size,
+      knip_findings: records.filter((record) => record.source === "knip").length,
+      tool_confirmed: records.filter((record) => record.tool_validation === "confirmed").length,
+      tool_disagreed: records.filter((record) => record.tool_validation === "disagreed").length,
+    },
+    tool_status: {
+      knip: {
+        available: knip.available,
+        ran: knip.ran,
+        complete: knip.complete,
+        reason: knip.reason,
+        version: knip.version,
+        production: config.cleanup.production,
+      },
     },
     records,
   };
   writeArtifact(config, "cleanup.json", artifact);
   return artifact;
+}
+
+const KNIP_KIND_BY_TYPE: Record<string, string> = {
+  files: "unused_file",
+  dependencies: "unused_dependency",
+  devDependencies: "unused_dev_dependency",
+  optionalPeerDependencies: "unused_optional_peer_dependency",
+  unlisted: "unlisted_dependency",
+  binaries: "unlisted_binary",
+  unresolved: "unresolved_import",
+  exports: "unused_export",
+  nsExports: "unused_namespace_export",
+  types: "unused_type",
+  nsTypes: "unused_namespace_type",
+  enumMembers: "unused_enum_member",
+  namespaceMembers: "unused_namespace_member",
+  duplicates: "duplicate_export",
+  catalog: "unused_catalog_entry",
+  catalogReferences: "unused_catalog_reference",
+  cycles: "dependency_cycle",
+};
+
+function normalizeKnipRecords(issues: ReturnType<AnalysisContext["knip"]>["issues"]): ScoredRecord[] {
+  return issues.flatMap((entry) => Object.entries(KNIP_KIND_BY_TYPE).flatMap(([issueType, kind]) => {
+    const items = flattenKnipItems(entry[issueType]);
+    return items.map((item, index) => {
+      const file = issueType === "files" ? item.name : entry.file;
+      const name = issueType === "files" ? null : item.name;
+      return {
+        id: `knip:${issueType}:${file}:${name ?? index}:${item.line ?? 0}`,
+        rule_id: `knip/${issueType}`,
+        kind,
+        evidence_kind: "tool-rule" as const,
+        disposition: ["unlisted_dependency", "unresolved_import"].includes(kind) ? "warn" as const : "review" as const,
+        finding_confidence: "high" as const,
+        scope: file === "package.json" ? "project" as const : "file" as const,
+        ...(file ? { file } : {}),
+        ...(name ? { name } : {}),
+        ...(item.line !== undefined ? { line: item.line } : {}),
+        ...(item.col !== undefined ? { column: item.col } : {}),
+        score: ["unlisted_dependency", "unresolved_import"].includes(kind) ? 75 : 50,
+        risk: ["unlisted_dependency", "unresolved_import"].includes(kind) ? "high" : "medium",
+        source: "knip",
+        message: `Knip reported ${kind.replaceAll("_", " ")}${name ? `: ${name}` : ""}.`,
+        issue_type: issueType,
+        signals: [{ kind: `knip_${issueType}`, ...(name ? { value: name } : {}) }],
+      };
+    });
+  }));
+}
+
+function flattenKnipItems(value: unknown): Array<{ name: string; line?: number; col?: number }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): Array<{ name: string; line?: number; col?: number }> => {
+    if (Array.isArray(item)) return flattenKnipItems(item);
+    if (!isRecord(item) || typeof item.name !== "string") return [];
+    return [{
+      name: item.name,
+      ...(typeof item.line === "number" ? { line: item.line } : {}),
+      ...(typeof item.col === "number" ? { col: item.col } : {}),
+    }];
+  });
+}
+
+function reconcileCleanupRecords(builtIn: ScoredRecord[], knip: ScoredRecord[], complete: boolean): ScoredRecord[] {
+  const matchedKnipIds = new Set<string>();
+  const reconciled = builtIn.map((record) => {
+    const match = knip.find((candidate) => cleanupRecordsMatch(record, candidate));
+    if (match) {
+      matchedKnipIds.add(match.id);
+      return {
+        ...record,
+        rule_id: match.rule_id ?? "knip/unknown",
+        evidence_kind: "tool-rule" as const,
+        disposition: match.disposition ?? "review",
+        finding_confidence: "high" as const,
+        source: "knip",
+        upstream_finding_id: match.id,
+        tool_validation: "confirmed",
+      };
+    }
+    return {
+      ...record,
+      evidence_kind: "heuristic" as const,
+      disposition: "review" as const,
+      finding_confidence: complete ? "low" as const : "medium" as const,
+      source: "ts-react-quality-lens-cleanup",
+      tool_validation: complete ? "disagreed" : "unavailable",
+    };
+  });
+  return [...reconciled, ...knip.filter((record) => !matchedKnipIds.has(record.id))];
+}
+
+function cleanupRecordsMatch(left: ScoredRecord, right: ScoredRecord): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.file && right.file && left.file !== right.file) return false;
+  if (left.name && right.name && left.name !== right.name) return false;
+  return Boolean(left.file || left.name);
 }
 
 function cleanupUsage(
@@ -290,6 +409,7 @@ function scriptDependencyNames(scripts: PackageJson["scripts"]): string[] {
     ["dependency-cruiser", "dependency-cruiser"],
     ["eslint", "eslint"],
     ["jscpd", "jscpd"],
+    ["knip", "knip"],
     ["tsc", "typescript"],
     ["tsserver", "typescript"],
   ]);

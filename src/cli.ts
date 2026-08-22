@@ -203,6 +203,9 @@ function writeInitialConfig(config: Config, force: boolean): void {
     accessibility: {
       enabled: true,
     },
+    cleanup: {
+      knip: true,
+    },
     policy: {
       profile: "recommended",
     },

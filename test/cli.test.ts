@@ -148,7 +148,12 @@ test("measure all writes MVP artifacts", () => {
   assert.equal(correctness.summary.execution_status, "passed");
   assert.ok(correctness.tests.some((testRecord: { source_mapping?: string[] }) => testRecord.source_mapping?.includes("src/format.ts")));
 
-  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as ToolArtifact;
+  const knip = requiredToolStatus(cleanup, "knip");
+  assert.equal(knip.available, true);
+  assert.equal(knip.ran, true);
+  assert.equal(knip.complete, true);
+  assert.ok(cleanup.records?.some((record) => record.source === "knip"));
   assert.ok(cleanup.records?.some((record) => Array.isArray(record.actions) && record.actions.length > 0));
 
   assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "analysis.json")));
@@ -261,6 +266,7 @@ test("init writes a starter schema-backed config", async () => {
   assert.equal(raw.policy.profile, "recommended");
   assert.equal(raw.react.ruleset, "recommended-v2");
   assert.equal(raw.accessibility.enabled, true);
+  assert.equal(raw.cleanup.knip, true);
   assert.equal(raw.audit.gate, "new-only");
   await assert.rejects(() => runCli(["init", "--config", configPath]), /Config already exists/);
   fs.rmSync(tempDir, { recursive: true, force: true });
@@ -425,7 +431,8 @@ test("project analysis marks package tool entrypoints", () => {
 
   runMeasure(config, "quality.cleanup", "test entrypoint cleanup");
   const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
-  assert.ok(!cleanup.records?.some((record) => record.kind === "unused_file"));
+  assert.ok(!cleanup.records?.some((record) => record.kind === "unused_file" && record.id.startsWith("cleanup:")));
+  assert.ok(cleanup.records?.some((record) => record.kind === "unused_file" && record.source === "knip"));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -636,6 +643,14 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
         { source: "src/b.ts", dependencies: [{ resolved: "src/a.ts", cycle: [{ name: "src/a.ts" }] }] },
       ],
       summary: {},
+    }),
+    knip: () => ({
+      available: false,
+      ran: false,
+      reason: "not used",
+      issues: [],
+      version: null,
+      complete: false,
     }),
     reactHooksLint: () => ({
       available: false,

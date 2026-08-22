@@ -77,7 +77,7 @@ The implementation combines deterministic built-in analysis with richer optional
 - `quality.locality_leverage` writes `leverage_metrics.json`, separating positive reuse leverage from public-surface risk.
 - `quality.react_health` writes `react_health.json` with component heuristics, framework conventions, a versioned managed `eslint-plugin-react-hooks` ruleset, and managed `eslint-plugin-jsx-a11y` evidence. The default `recommended-v2` React ruleset includes official React Compiler diagnostics; `classic-v1` preserves only Rules of Hooks and exhaustive dependencies. Accessibility falls back to explicitly labeled heuristics only when the standards-based adapter cannot complete.
 - `quality.dependency_health` writes `dependency_health.json` with `dependency-cruiser` graph data when available, plus built-in import parsing fallback.
-- `quality.cleanup` writes `cleanup.json` with unused files, unused exports, dependency hygiene issues, duplicate exports, and staged cleanup candidates.
+- `quality.cleanup` writes `cleanup.json` with unused files, exports, dependency hygiene, unresolved imports, cycles, catalog issues, and staged cleanup candidates. Managed Knip evidence is normalized and reconciled with the built-in fallback instead of silently replacing disagreements.
 - `correctness.catalog` writes `correctness_review.json` and `test_catalog.json`.
 - `correctness.all` writes `correctness_review.json` with test execution status when `test_command` is configured.
 - `map.architecture` writes `map.json`.
@@ -131,6 +131,7 @@ Supported config fields:
 | `cache` | Enable or disable analysis cache metadata. |
 | `react` | Select the managed React ruleset: `recommended-v2` (default) or compatibility `classic-v1`. |
 | `accessibility` | Enable managed jsx-a11y analysis and configure custom component mappings or a polymorphic prop name. |
+| `cleanup` | Enable Knip-backed cleanup evidence and optionally use Knip production mode. |
 | `policy` | Select `baseline`, `recommended`, `strict`, or `react` evidence requirements and optionally list required checks. |
 | `suppressions` | Narrow intentional findings by `id`, `file`, or `kind`, with an optional reason. |
 | `audit` | Default audit `base`, `changed_since`, `gate`, and `baseline` settings. |

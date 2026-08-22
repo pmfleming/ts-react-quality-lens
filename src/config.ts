@@ -10,6 +10,7 @@ import type {
   Config,
   Confidence,
   ConfidenceSignal,
+  CleanupConfig,
   JsonValue,
   LayerRule,
   PackageJson,
@@ -135,6 +136,7 @@ export function loadConfig(configArg?: string | null): Config {
     cache: normalizeCache(outputDir, rawConfig.cache),
     react: normalizeReact(rawConfig.react),
     accessibility: normalizeAccessibility(rawConfig.accessibility),
+    cleanup: normalizeCleanup(rawConfig.cleanup),
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
@@ -381,6 +383,13 @@ function normalizeAccessibility(value: AccessibilityConfig | undefined): Config[
     enabled: value?.enabled !== false,
     components: value?.components ?? {},
     polymorphicPropName: value?.polymorphic_prop_name ?? null,
+  };
+}
+
+function normalizeCleanup(value: CleanupConfig | undefined): Config["cleanup"] {
+  return {
+    knip: value?.knip !== false,
+    production: value?.production === true,
   };
 }
 

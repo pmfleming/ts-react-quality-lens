@@ -72,8 +72,25 @@ export function toolPackageVersion(name: string): string | null {
     const manifest: unknown = require(`${name}/package.json`);
     return isRecord(manifest) && typeof manifest.version === "string" ? manifest.version : null;
   } catch {
+    return packageVersionFromResolvedEntry(name);
+  }
+}
+
+function packageVersionFromResolvedEntry(name: string): string | null {
+  try {
+    let directory = path.dirname(require.resolve(name));
+    while (directory !== path.dirname(directory)) {
+      const manifestPath = path.join(directory, "package.json");
+      if (fs.existsSync(manifestPath)) {
+        const manifest: unknown = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        if (isRecord(manifest) && manifest.name === name && typeof manifest.version === "string") return manifest.version;
+      }
+      directory = path.dirname(directory);
+    }
+  } catch {
     return null;
   }
+  return null;
 }
 
 function toolResult<T extends Record<string, unknown>>(

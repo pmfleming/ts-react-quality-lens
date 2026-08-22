@@ -33,6 +33,7 @@ export type RawConfig = {
   cache?: CacheConfig;
   react?: ReactConfig;
   accessibility?: AccessibilityConfig;
+  cleanup?: CleanupConfig;
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -60,6 +61,11 @@ export type AccessibilityConfig = {
   enabled?: boolean;
   components?: Record<string, string>;
   polymorphic_prop_name?: string;
+};
+
+export type CleanupConfig = {
+  knip?: boolean;
+  production?: boolean;
 };
 
 export type SuppressionConfig = {
@@ -161,6 +167,10 @@ export type Config = {
     enabled: boolean;
     components: Record<string, string>;
     polymorphicPropName: string | null;
+  };
+  cleanup: {
+    knip: boolean;
+    production: boolean;
   };
   policy: {
     profile: PolicyProfile;
@@ -336,6 +346,7 @@ export type AnalysisContext = {
   project: () => ProjectAnalysis;
   jscpd: () => JscpdResult;
   dependencyCruiser: () => DependencyCruiserResult;
+  knip: () => KnipResult;
   reactHooksLint: () => EslintReactHooksResult;
   jsxA11yLint: () => EslintAccessibilityResult;
   typedLint: () => EslintTypeAwareResult;
@@ -540,6 +551,26 @@ export type DependencyCruiserModule = {
 export type DependencyCruiserResult = ToolResult & {
   modules: DependencyCruiserModule[];
   summary: Record<string, unknown>;
+};
+
+export type KnipIssueItem = {
+  name: string;
+  namespace?: string;
+  kind?: string;
+  specifier?: string;
+  line?: number;
+  col?: number;
+};
+
+export type KnipIssueEntry = {
+  file: string;
+  [issueType: string]: string | KnipIssueItem[] | KnipIssueItem[][] | undefined;
+};
+
+export type KnipResult = ToolResult & {
+  issues: KnipIssueEntry[];
+  version: string | null;
+  complete: boolean;
 };
 
 export type EslintMessage = {
