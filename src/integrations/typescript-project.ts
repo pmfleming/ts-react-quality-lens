@@ -9,6 +9,8 @@ import type {
   SourceFileRecord,
   TypedDeclaration,
   TypedModuleRecord,
+  TypeCoverageFile,
+  TypeCoverageSummary,
   TypeScriptProject,
 } from "../types.js";
 
@@ -63,6 +65,7 @@ function createTypedProject(
     compiler_options: compilerOptionSummary(parsed.options),
     diagnostics: ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnosticRecord(ts, diagnostic, config.projectRoot)),
     modules: collectTypedModules(ts, config, sourceFiles, program, checker),
+    type_coverage: collectTypeCoverage(ts, config, sourceFiles, program, checker),
   };
 }
 
@@ -83,6 +86,118 @@ function collectTypedModules(
     );
   }
   return modules;
+}
+
+function collectTypeCoverage(
+  ts: typeof tsTypes,
+  config: Config,
+  sourceFiles: SourceFileRecord[],
+  program: tsTypes.Program,
+  checker: tsTypes.TypeChecker,
+): { summary: TypeCoverageSummary; files: TypeCoverageFile[] } {
+  const wanted = new Set(sourceFiles.map((file) => path.resolve(file.path).toLowerCase()));
+  const files = program.getSourceFiles()
+    .filter((sourceFile) => !sourceFile.isDeclarationFile && wanted.has(path.resolve(sourceFile.fileName).toLowerCase()))
+    .map((sourceFile) => typeCoverageForFile(ts, checker, config, sourceFile));
+  const totals = files.reduce((result, file) => ({
+    analyzed_symbols: result.analyzed_symbols + file.analyzed_symbols,
+    typed_symbols: result.typed_symbols + file.typed_symbols,
+    explicit_any: result.explicit_any + file.explicit_any,
+    inferred_any: result.inferred_any + file.inferred_any,
+    error_types: result.error_types + file.error_types,
+    unknown: result.unknown + file.unknown,
+  }), emptyCoverageCounts());
+  return {
+    summary: {
+      files: files.length,
+      ...totals,
+      type_coverage_percent: coveragePercent(totals.typed_symbols, totals.analyzed_symbols),
+    },
+    files,
+  };
+}
+
+function typeCoverageForFile(
+  ts: typeof tsTypes,
+  checker: tsTypes.TypeChecker,
+  config: Config,
+  sourceFile: tsTypes.SourceFile,
+): TypeCoverageFile {
+  const counts = emptyCoverageCounts();
+  visit(sourceFile);
+  return {
+    file: toPosix(path.relative(config.projectRoot, sourceFile.fileName)),
+    ...counts,
+    type_coverage_percent: coveragePercent(counts.typed_symbols, counts.analyzed_symbols),
+  };
+
+  function visit(node: tsTypes.Node): void {
+    if (ts.isIdentifier(node) && countableIdentifier(ts, node)) classifyIdentifier(ts, checker, node, counts);
+    ts.forEachChild(node, visit);
+  }
+}
+
+function emptyCoverageCounts() {
+  return { analyzed_symbols: 0, typed_symbols: 0, explicit_any: 0, inferred_any: 0, error_types: 0, unknown: 0 };
+}
+
+function classifyIdentifier(
+  ts: typeof tsTypes,
+  checker: tsTypes.TypeChecker,
+  node: tsTypes.Identifier,
+  counts: ReturnType<typeof emptyCoverageCounts>,
+): void {
+  try {
+    const type = checker.getTypeAtLocation(node);
+    counts.analyzed_symbols += 1;
+    if ((type.flags & ts.TypeFlags.Any) !== 0) {
+      const intrinsicName = (type as tsTypes.Type & { intrinsicName?: string }).intrinsicName;
+      if (intrinsicName === "error") counts.error_types += 1;
+      else if (symbolHasExplicitAny(ts, checker.getSymbolAtLocation(node))) counts.explicit_any += 1;
+      else counts.inferred_any += 1;
+      return;
+    }
+    counts.typed_symbols += 1;
+    if ((type.flags & ts.TypeFlags.Unknown) !== 0) counts.unknown += 1;
+  } catch {
+    counts.analyzed_symbols += 1;
+    counts.error_types += 1;
+  }
+}
+
+function symbolHasExplicitAny(ts: typeof tsTypes, symbol: tsTypes.Symbol | undefined): boolean {
+  return symbol?.declarations?.some((declaration) => {
+    const typed = declaration as tsTypes.Declaration & { type?: tsTypes.TypeNode };
+    return typed.type ? containsAnyKeyword(ts, typed.type) : false;
+  }) ?? false;
+}
+
+function containsAnyKeyword(ts: typeof tsTypes, node: tsTypes.Node): boolean {
+  if (node.kind === ts.SyntaxKind.AnyKeyword) return true;
+  let found = false;
+  ts.forEachChild(node, (child) => {
+    if (!found && containsAnyKeyword(ts, child)) found = true;
+  });
+  return found;
+}
+
+function countableIdentifier(ts: typeof tsTypes, node: tsTypes.Identifier): boolean {
+  const parent = node.parent;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+  if ((ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) && parent.name === node) {
+    return false;
+  }
+  if (ts.isImportSpecifier(parent) || ts.isExportSpecifier(parent) || ts.isImportClause(parent) || ts.isNamespaceImport(parent)) return false;
+  if (ts.isTypeReferenceNode(parent) || ts.isTypeQueryNode(parent) || ts.isQualifiedName(parent) || ts.isTypeParameterDeclaration(parent)) return false;
+  if (ts.isInterfaceDeclaration(parent) || ts.isTypeAliasDeclaration(parent) || ts.isClassDeclaration(parent)) return parent.name !== node;
+  if (ts.isJsxOpeningElement(parent) || ts.isJsxClosingElement(parent) || ts.isJsxSelfClosingElement(parent) || ts.isJsxAttribute(parent)) {
+    return false;
+  }
+  return true;
+}
+
+function coveragePercent(typed: number, analyzed: number): number {
+  return analyzed === 0 ? 100 : Math.round((typed / analyzed) * 10_000) / 100;
 }
 
 function unloadedProject(available: boolean, reason: string, diagnostics: DiagnosticRecord[] = []): TypeScriptProject {

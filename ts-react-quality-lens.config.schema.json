@@ -90,6 +90,16 @@
         "production": { "type": "boolean" }
       }
     },
+    "type_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minimum_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "per_file_minimum_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "changed_file_minimum_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "baseline": { "type": "string" }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,

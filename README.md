@@ -71,7 +71,7 @@ The implementation combines deterministic built-in analysis with richer optional
 - `quality.hotspots` writes `hotspots.json` with cyclomatic complexity, cognitive complexity, nesting, and Halstead effort evidence.
 - `quality.clones` writes `clones.json` using `jscpd` when available, plus built-in normalized line-window and AST structural clone detection. It also derives module-level duplication pressure records from clone density and cross-file repetition, and same-purpose export/component/hook records from naming and type-shape evidence.
 - `quality.escape_hatches` writes `ts_escape_hatches.json`.
-- `quality.type_health` writes `type_health.json` with TypeScript compiler API diagnostics, inferred symbols, exports, effective compiler-safety options, and fallback structural records.
+- `quality.type_health` writes `type_health.json` with TypeScript compiler API diagnostics, inferred symbols, exports, effective compiler-safety options, fallback structural records, and per-file type coverage. Coverage distinguishes explicit `any`, inferred `any`, unresolved/error types, and safe `unknown`, with optional project, file, changed-file, and baseline ratchets.
 - `quality.lint` writes `lint_health.json` using a versioned, managed type-aware typescript-eslint ruleset when a tsconfig is available.
 - `quality.locality_dynamic` writes `locality_metrics.json`.
 - `quality.locality_leverage` writes `leverage_metrics.json`, separating positive reuse leverage from public-surface risk.
@@ -132,6 +132,7 @@ Supported config fields:
 | `react` | Select the managed React ruleset: `recommended-v2` (default) or compatibility `classic-v1`. |
 | `accessibility` | Enable managed jsx-a11y analysis and configure custom component mappings or a polymorphic prop name. |
 | `cleanup` | Enable Knip-backed cleanup evidence and optionally use Knip production mode. |
+| `type_coverage` | Configure project, per-file, or changed-file minimum percentages and an earlier `type_health.json` ratchet baseline. |
 | `policy` | Select `baseline`, `recommended`, `strict`, or `react` evidence requirements and optionally list required checks. |
 | `suppressions` | Narrow intentional findings by `id`, `file`, or `kind`, with an optional reason. |
 | `audit` | Default audit `base`, `changed_since`, `gate`, and `baseline` settings. |

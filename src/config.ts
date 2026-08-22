@@ -24,6 +24,7 @@ import type {
   RawConfig,
   ReactConfig,
   SuppressionConfig,
+  TypeCoverageConfig,
 } from "./types.js";
 
 type JsonCommentScanner = {
@@ -137,6 +138,7 @@ export function loadConfig(configArg?: string | null): Config {
     react: normalizeReact(rawConfig.react),
     accessibility: normalizeAccessibility(rawConfig.accessibility),
     cleanup: normalizeCleanup(rawConfig.cleanup),
+    typeCoverage: normalizeTypeCoverage(configDir, rawConfig.type_coverage),
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
@@ -390,6 +392,15 @@ function normalizeCleanup(value: CleanupConfig | undefined): Config["cleanup"] {
   return {
     knip: value?.knip !== false,
     production: value?.production === true,
+  };
+}
+
+function normalizeTypeCoverage(configDir: string, value: TypeCoverageConfig | undefined): Config["typeCoverage"] {
+  return {
+    minimumPercent: value?.minimum_percent ?? null,
+    perFileMinimumPercent: value?.per_file_minimum_percent ?? null,
+    changedFileMinimumPercent: value?.changed_file_minimum_percent ?? null,
+    baseline: value?.baseline ? path.resolve(configDir, value.baseline) : null,
   };
 }
 

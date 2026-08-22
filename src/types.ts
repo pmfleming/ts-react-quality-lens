@@ -34,6 +34,7 @@ export type RawConfig = {
   react?: ReactConfig;
   accessibility?: AccessibilityConfig;
   cleanup?: CleanupConfig;
+  type_coverage?: TypeCoverageConfig;
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -66,6 +67,13 @@ export type AccessibilityConfig = {
 export type CleanupConfig = {
   knip?: boolean;
   production?: boolean;
+};
+
+export type TypeCoverageConfig = {
+  minimum_percent?: number;
+  per_file_minimum_percent?: number;
+  changed_file_minimum_percent?: number;
+  baseline?: string;
 };
 
 export type SuppressionConfig = {
@@ -171,6 +179,12 @@ export type Config = {
   cleanup: {
     knip: boolean;
     production: boolean;
+  };
+  typeCoverage: {
+    minimumPercent: number | null;
+    perFileMinimumPercent: number | null;
+    changedFileMinimumPercent: number | null;
+    baseline: string | null;
   };
   policy: {
     profile: PolicyProfile;
@@ -288,6 +302,21 @@ export type TypedModuleRecord = {
   sourceFile?: ts.SourceFile;
 };
 
+export type TypeCoverageFile = {
+  file: string;
+  analyzed_symbols: number;
+  typed_symbols: number;
+  explicit_any: number;
+  inferred_any: number;
+  error_types: number;
+  unknown: number;
+  type_coverage_percent: number;
+};
+
+export type TypeCoverageSummary = Omit<TypeCoverageFile, "file"> & {
+  files: number;
+};
+
 export type TypeScriptProject = {
   available: boolean;
   loaded: boolean;
@@ -295,6 +324,10 @@ export type TypeScriptProject = {
   diagnostics: DiagnosticRecord[];
   modules: Map<string, TypedModuleRecord>;
   compiler_options?: Record<string, JsonValue | undefined>;
+  type_coverage?: {
+    summary: TypeCoverageSummary;
+    files: TypeCoverageFile[];
+  };
 };
 
 export type ModuleRecord = {

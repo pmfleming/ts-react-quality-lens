@@ -105,6 +105,8 @@ test("measure all writes MVP artifacts", () => {
   assert.equal(typeHealth.confidence.typescript_compiler_api_available, true);
   assert.equal(typeHealth.confidence.typescript_program_loaded, true);
   assert.ok(typeHealth.records?.some((record: ScoredRecord) => record.source === "typescript-compiler-api"));
+  assert.equal(typeof typeHealth.summary.type_coverage_percent, "number");
+  assert.ok(Array.isArray((typeHealth.type_coverage as { files?: unknown[] } | undefined)?.files));
 
   const lintHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "lint_health.json"), "utf8")) as ToolArtifact;
   const typedEslint = requiredToolStatus(lintHealth, "typed_eslint");
@@ -253,6 +255,69 @@ test("unknown is not treated as an escape hatch and TypeScript directives are di
   assert.ok(!artifact.records?.some((record) => record.kind === "unknown_without_narrowing"));
   assert.equal(artifact.records?.find((record) => record.kind === "ts_expect_error")?.disposition, "info");
   assert.equal(artifact.records?.find((record) => record.kind === "ts_ignore")?.disposition, "warn");
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("type coverage distinguishes unsafe any, error types, and safe unknown with ratcheting", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-type-coverage-`));
+  fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "type-coverage-fixture", type: "module" }), "utf8");
+  fs.writeFileSync(
+    path.join(tempDir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { strict: false, module: "NodeNext", moduleResolution: "NodeNext" }, include: ["src"] }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "src", "coverage.ts"),
+    [
+      "export function explicit(value: any) { return value; }",
+      "export function inferred(value) { return value; }",
+      "export function safe(value: unknown): string { return typeof value === 'string' ? value : ''; }",
+      "export const broken = missingSymbol;",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const configPath = path.join(tempDir, "ts-react-quality-lens.config.json");
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({
+      project_root: ".",
+      source_roots: ["src"],
+      output_dir: "target/analysis",
+      tsconfig: "tsconfig.json",
+      type_coverage: { minimum_percent: 100, per_file_minimum_percent: 100 },
+    }),
+    "utf8",
+  );
+
+  const config = loadConfig(configPath);
+  const [artifact] = runMeasure(config, "quality.type_health", "test type coverage") as [Artifact];
+  const coverage = artifact.type_coverage as {
+    summary: { type_coverage_percent: number };
+    files: Array<{ file: string; explicit_any: number; inferred_any: number; error_types: number; unknown: number }>;
+  };
+  const file = coverage.files.find((item) => item.file === "src/coverage.ts");
+  assert.ok(coverage.summary.type_coverage_percent < 100);
+  assert.ok(file && file.explicit_any > 0);
+  assert.ok(file && file.inferred_any > 0);
+  assert.ok(file && file.error_types > 0);
+  assert.ok(file && file.unknown > 0);
+  assert.ok(artifact.records?.some((record) => record.reason === "configured_project_floor"));
+  assert.ok(artifact.records?.some((record) => record.reason === "configured_file_floor"));
+
+  const baselinePath = path.join(tempDir, "type-health-baseline.json");
+  const baseline = structuredClone(artifact) as Artifact & {
+    type_coverage: { summary: { type_coverage_percent: number }; files: Array<{ type_coverage_percent: number }> };
+  };
+  baseline.type_coverage.summary.type_coverage_percent = 100;
+  for (const baselineFile of baseline.type_coverage.files) baselineFile.type_coverage_percent = 100;
+  fs.writeFileSync(baselinePath, JSON.stringify(baseline), "utf8");
+  config.typeCoverage.minimumPercent = null;
+  config.typeCoverage.perFileMinimumPercent = null;
+  config.typeCoverage.baseline = baselinePath;
+  const [ratcheted] = runMeasure(config, "quality.type_health", "test type coverage ratchet") as [Artifact];
+  assert.ok(ratcheted.records?.some((record) => record.reason === "ratchet_regression"));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 

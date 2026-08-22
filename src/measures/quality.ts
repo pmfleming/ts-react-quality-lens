@@ -1,5 +1,8 @@
+import fs from "node:fs";
+import { changedFilesSince, defaultBase } from "../audit/change-set.js";
+import { isRecord } from "../collections.js";
 import { analysisConfidence, artifactBase, countBy, createAnalysisContext, escapeRecords, frameworkRiskRecords, gitHistory, hiddenCouplingSignals, readArtifact, riskForScore, sourceSetHash, stableHash, typeHealthRecords, writeArtifact } from "../measure-shared.js";
-import type { AnalysisContext, Artifact, Config, DiagnosticRecord, EslintMessage, FindingDisposition, FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, TestRecord } from "../types.js";
+import type { AnalysisContext, Artifact, Config, DiagnosticRecord, EslintMessage, FindingDisposition, FunctionRecord, ModuleRecord, ProjectAnalysis, ScoredRecord, TestRecord, TypeCoverageFile } from "../types.js";
 
 export function measureEscapeHatches(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
@@ -17,9 +20,11 @@ export function measureEscapeHatches(config: Config, command: string, context: A
 export function measureTypeHealth(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const diagnostics = project.tsProject.diagnostics ?? [];
+  const coverage = project.tsProject.type_coverage;
   const records = [
     ...project.modules.flatMap((module) => typeHealthRecords(module)),
     ...typeSafetyPostureRecords(config, project),
+    ...typeCoverageRecords(config, coverage),
     ...diagnostics.map(compilerDiagnosticFinding),
   ];
   return writeQualityArtifact(config, "type_health.json", "quality.type_health", command, project, {
@@ -27,11 +32,17 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
     high_risk_records: records.filter((record) => record.risk === "high").length,
     wide_types: records.filter((record) => record.signals?.some((signal) => signal.kind === "wide_surface")).length,
     compiler_diagnostics: diagnostics.length,
+    type_coverage_percent: coverage?.summary.type_coverage_percent ?? null,
+    typed_symbols: coverage?.summary.typed_symbols ?? null,
+    untyped_symbols: coverage
+      ? coverage.summary.explicit_any + coverage.summary.inferred_any + coverage.summary.error_types
+      : null,
   },
     records,
     {
       compiler_options: project.tsProject.compiler_options ?? null,
       diagnostics,
+      type_coverage: coverage ?? null,
     },
   );
 }
@@ -404,6 +415,103 @@ function typedLintRecord(message: EslintMessage): ScoredRecord {
     message: message.message,
     column: message.column,
     signals: [{ kind: message.rule_id, message: message.message }],
+  };
+}
+
+function typeCoverageRecords(
+  config: Config,
+  coverage: ProjectAnalysis["tsProject"]["type_coverage"],
+): ScoredRecord[] {
+  if (!coverage) return [];
+  const records: ScoredRecord[] = [];
+  if (config.typeCoverage.minimumPercent !== null && coverage.summary.type_coverage_percent < config.typeCoverage.minimumPercent) {
+    records.push(typeCoverageFinding("project", null, coverage.summary.type_coverage_percent, config.typeCoverage.minimumPercent, "configured_project_floor"));
+  }
+  if (config.typeCoverage.perFileMinimumPercent !== null) {
+    for (const file of coverage.files.filter((item) => item.type_coverage_percent < config.typeCoverage.perFileMinimumPercent!)) {
+      records.push(typeCoverageFinding("file", file, file.type_coverage_percent, config.typeCoverage.perFileMinimumPercent, "configured_file_floor"));
+    }
+  }
+  addChangedFileCoverageRecords(config, coverage.files, records);
+  addBaselineCoverageRecords(config, coverage, records);
+  return records;
+}
+
+function addChangedFileCoverageRecords(config: Config, files: TypeCoverageFile[], records: ScoredRecord[]): void {
+  const minimum = config.typeCoverage.changedFileMinimumPercent;
+  if (minimum === null) return;
+  const base = config.audit.changedSince ?? config.audit.base ?? defaultBase(config);
+  if (!base) return;
+  const changed = new Set(changedFilesSince(config, base));
+  for (const file of files.filter((item) => changed.has(item.file) && item.type_coverage_percent < minimum)) {
+    records.push(typeCoverageFinding("changed-file", file, file.type_coverage_percent, minimum, "configured_changed_file_floor"));
+  }
+}
+
+function addBaselineCoverageRecords(
+  config: Config,
+  coverage: NonNullable<ProjectAnalysis["tsProject"]["type_coverage"]>,
+  records: ScoredRecord[],
+): void {
+  const baseline = readTypeCoverageBaseline(config.typeCoverage.baseline);
+  if (!baseline) return;
+  if (coverage.summary.type_coverage_percent < baseline.projectPercent) {
+    records.push(typeCoverageFinding("project", null, coverage.summary.type_coverage_percent, baseline.projectPercent, "ratchet_regression"));
+  }
+  const currentByFile = new Map(coverage.files.map((file) => [file.file, file]));
+  for (const [fileName, previous] of baseline.files) {
+    const current = currentByFile.get(fileName);
+    if (current && current.type_coverage_percent < previous) {
+      records.push(typeCoverageFinding("file", current, current.type_coverage_percent, previous, "ratchet_regression"));
+    }
+  }
+}
+
+function readTypeCoverageBaseline(file: string | null): { projectPercent: number; files: Map<string, number> } | null {
+  if (!file || !fs.existsSync(file)) return null;
+  try {
+    const value: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (!isRecord(value) || !isRecord(value.type_coverage)) return null;
+    const summary = value.type_coverage.summary;
+    const files = value.type_coverage.files;
+    if (!isRecord(summary) || typeof summary.type_coverage_percent !== "number" || !Array.isArray(files)) return null;
+    return {
+      projectPercent: summary.type_coverage_percent,
+      files: new Map(files.flatMap((item): Array<[string, number]> =>
+        isRecord(item) && typeof item.file === "string" && typeof item.type_coverage_percent === "number"
+          ? [[item.file, item.type_coverage_percent]]
+          : [])),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function typeCoverageFinding(
+  scope: "project" | "file" | "changed-file",
+  file: TypeCoverageFile | null,
+  actual: number,
+  required: number,
+  reason: string,
+): ScoredRecord {
+  return {
+    id: `type-coverage:${scope}:${file?.file ?? "project"}:${reason}`,
+    rule_id: `ts-react-quality-lens/type-coverage-${reason.replaceAll("_", "-")}`,
+    kind: "type_coverage_below_threshold",
+    evidence_kind: "metric",
+    disposition: "warn",
+    finding_confidence: "high",
+    scope: file ? "file" : "project",
+    ...(file ? { file: file.file } : {}),
+    score: Math.min(100, Math.round(required - actual) * 5),
+    risk: actual < required - 10 ? "high" : "medium",
+    source: "typescript-compiler-api",
+    message: `Type coverage ${actual}% is below the required ${required}% ${scope} threshold.`,
+    actual_percent: actual,
+    required_percent: required,
+    reason,
+    ...(file ? { coverage: file } : {}),
+    signals: [{ kind: reason, value: actual }],
   };
 }
 
