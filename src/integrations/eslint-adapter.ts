@@ -213,6 +213,8 @@ function normalizeEslintMessages(
       fatal?: boolean;
       line?: number;
       column?: number;
+      endLine?: number;
+      endColumn?: number;
       severity?: number;
       message: string;
     }>;
@@ -229,6 +231,8 @@ function normalizeEslintMessages(
         file: relativePath(config.projectRoot, result.filePath),
         line: message.line ?? null,
         column: message.column ?? null,
+        end_line: message.endLine ?? null,
+        end_column: message.endColumn ?? null,
         rule_id: message.ruleId ?? "eslint/parser",
         severity: message.severity === 2 ? "error" : "warning",
         message: message.message,

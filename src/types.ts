@@ -432,6 +432,33 @@ export type IssueAction =
       value: JsonValue;
     };
 
+export type RelatedLocation = {
+  file: string;
+  start_line: number;
+  start_column?: number;
+  end_line?: number;
+  end_column?: number;
+  role: "source" | "sink" | "cause" | "related" | "duplicate" | "fix-site";
+  message?: string;
+};
+
+export type SemanticDecision =
+  | "confirmed"
+  | "contract-preserved"
+  | "disagreed"
+  | "unresolved"
+  | "abstained"
+  | "unavailable";
+
+export type AnalysisIdentity = {
+  id: string;
+  schema_version: string;
+  compiler_api_version: string | null;
+  config_closure_hash: string;
+  rulesets: Record<string, string>;
+  integration_versions: Record<string, string | null>;
+};
+
 export type ScoredRecord = {
   id: string;
   rule_id?: string;
@@ -442,6 +469,15 @@ export type ScoredRecord = {
   scope?: "file" | "project";
   file?: string;
   files?: string[];
+  line?: number | null;
+  column?: number | null;
+  end_line?: number | null;
+  end_column?: number | null;
+  related_locations?: RelatedLocation[];
+  fix_group_id?: string;
+  estimated_effort?: number;
+  semantic_decision?: SemanticDecision;
+  reason_code?: string;
   score?: number;
   severity?: string;
   risk?: string;
@@ -463,6 +499,7 @@ export type Artifact = {
     test_runner: string;
   };
   provenance: Record<string, unknown>;
+  analysis_identity?: AnalysisIdentity;
   confidence: Confidence;
   summary: Record<string, unknown>;
   records?: ScoredRecord[];
@@ -490,6 +527,7 @@ export type AuditArtifact = Artifact & {
     changed_files: number;
     changed_hunks: number;
     base_snapshot_available: boolean;
+    base_snapshot_compatible: boolean | null;
     findings: number;
     active_findings: number;
     introduced_findings: number;
@@ -647,6 +685,8 @@ export type EslintMessage = {
   file: string;
   line: number | null;
   column: number | null;
+  end_line: number | null;
+  end_column: number | null;
   rule_id: string;
   severity: "error" | "warning";
   message: string;
@@ -677,5 +717,7 @@ export type DiagnosticRecord = {
   file: string | null;
   line: number | null;
   character: number | null;
+  end_line: number | null;
+  end_character: number | null;
   message: string;
 };

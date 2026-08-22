@@ -6,7 +6,9 @@ import type {
   FindingDisposition,
   IssueAction,
   JsonValue,
+  RelatedLocation,
   ScoredRecord,
+  SemanticDecision,
   SuppressionConfig,
 } from "./types.js";
 
@@ -28,15 +30,25 @@ export function enrichFinding(config: Config, value: unknown): unknown {
   const record = value;
   const suppression = matchingSuppression(config.suppressions, record);
   const kind = findingKind(record);
+  const ruleId = record.rule_id ?? defaultRuleId(record, kind);
+  const evidenceKind = record.evidence_kind ?? defaultEvidenceKind(record, kind);
+  const disposition = record.disposition ?? defaultDisposition(kind);
   const actions = record.actions?.length ? record.actions : actionsForRecord(record, kind);
+  const relatedLocations = record.related_locations ?? relatedLocationsFor(record);
+  const fixGroupId = record.fix_group_id ?? (relatedLocations.length > 1 ? record.id : null);
   return {
     ...record,
     kind,
-    rule_id: record.rule_id ?? defaultRuleId(record, kind),
-    evidence_kind: record.evidence_kind ?? defaultEvidenceKind(record, kind),
-    disposition: record.disposition ?? defaultDisposition(kind),
+    rule_id: ruleId,
+    evidence_kind: evidenceKind,
+    disposition,
     finding_confidence: record.finding_confidence ?? defaultFindingConfidence(record),
     message: record.message ?? defaultMessage(record, kind),
+    reason_code: record.reason_code ?? ruleId,
+    semantic_decision: record.semantic_decision ?? defaultSemanticDecision(record, evidenceKind, kind),
+    estimated_effort: record.estimated_effort ?? defaultEstimatedEffort(disposition),
+    ...(relatedLocations.length ? { related_locations: relatedLocations } : {}),
+    ...(fixGroupId ? { fix_group_id: fixGroupId } : {}),
     actions,
     ...(suppression ? { suppressed: true, suppression_reason: suppression.reason ?? "Configured suppression." } : {}),
   };
@@ -83,6 +95,45 @@ function defaultFindingConfidence(record: ScoredRecord): FindingConfidence {
   if (record.evidence_kind === "diagnostic" || record.evidence_kind === "test" || record.evidence_kind === "tool-rule") return "high";
   if (typeof record.source === "string" && !record.source.includes("heuristic")) return "high";
   return "medium";
+}
+
+function defaultSemanticDecision(record: ScoredRecord, evidence: EvidenceKind, kind: string): SemanticDecision {
+  if (record.tool_validation === "confirmed") return "confirmed";
+  if (record.tool_validation === "disagreed") return "disagreed";
+  if (record.tool_validation === "unavailable") return "unavailable";
+  if (kind === "storybook_evidence" || kind.includes("contract")) return "contract-preserved";
+  if (kind === "unsupported_pattern") return "abstained";
+  if (evidence === "heuristic") return "unresolved";
+  return "confirmed";
+}
+
+function defaultEstimatedEffort(disposition: FindingDisposition): number {
+  if (disposition === "block") return 60;
+  if (disposition === "warn") return 30;
+  if (disposition === "review") return 15;
+  return 5;
+}
+
+function relatedLocationsFor(record: ScoredRecord): RelatedLocation[] {
+  const locations: RelatedLocation[] = [];
+  if (Array.isArray(record.instances)) {
+    for (const instance of record.instances) {
+      if (!isRecord(instance) || typeof instance.file !== "string") continue;
+      locations.push({
+        file: instance.file,
+        start_line: typeof instance.start_line === "number" ? instance.start_line : 1,
+        ...(typeof instance.start_column === "number" ? { start_column: instance.start_column } : {}),
+        ...(typeof instance.end_line === "number" ? { end_line: instance.end_line } : {}),
+        ...(typeof instance.end_column === "number" ? { end_column: instance.end_column } : {}),
+        role: "duplicate",
+      });
+    }
+  }
+  for (const file of record.files ?? []) {
+    if (locations.some((location) => location.file === file) || file === record.file) continue;
+    locations.push({ file, start_line: 1, role: "related" });
+  }
+  return locations;
 }
 
 function defaultMessage(record: ScoredRecord, kind: string): string {

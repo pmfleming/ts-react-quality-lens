@@ -75,6 +75,8 @@ test("measure all writes MVP artifacts", () => {
   }
 
   const hotspots = JSON.parse(fs.readFileSync(path.join(config.outputDir, "hotspots.json"), "utf8")) as Artifact;
+  assert.match(hotspots.analysis_identity?.id ?? "", /^sha256:[a-f0-9]{64}$/);
+  assert.equal(typeof hotspots.analysis_identity?.config_closure_hash, "string");
   assert.ok(hotspots.records?.some((record) =>
     record.kind !== "file" &&
     record.signals?.some((signal) => signal.kind === "cyclomatic_complexity") &&
@@ -158,6 +160,10 @@ test("measure all writes MVP artifacts", () => {
   assert.equal(knip.ran, true);
   assert.equal(knip.complete, true);
   assert.ok(cleanup.records?.some((record) => record.source === "knip"));
+  assert.ok(cleanup.records?.every((record) => typeof record.reason_code === "string"));
+  assert.ok(cleanup.records?.every((record) => typeof record.estimated_effort === "number"));
+  assert.ok(cleanup.records?.some((record) => record.semantic_decision === "confirmed"));
+  assert.ok(cleanup.records?.some((record) => record.semantic_decision === "disagreed"));
   assert.ok(cleanup.records?.some((record) => Array.isArray(record.actions) && record.actions.length > 0));
 
   assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "analysis.json")));
@@ -488,6 +494,13 @@ test("audit marks unchanged-line findings as inherited context", () => {
   assert.equal(oldUnused.introduced, false);
   assert.ok(audit.summary.changed_hunks > 0);
   assert.equal(audit.summary.base_snapshot_available, true);
+  assert.equal(audit.summary.base_snapshot_compatible, true);
+
+  config.react.ruleset = "classic-v1";
+  const incompatible = runAudit(config, "test audit incompatible identity", { base: "HEAD", gate: "new-only" });
+  assert.equal(incompatible.summary.base_snapshot_available, true);
+  assert.equal(incompatible.summary.base_snapshot_compatible, false);
+  assert.ok(incompatible.summary.incomplete_reasons.some((reason) => reason.includes("analysis identity differs")));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -824,6 +837,9 @@ test("golden fixture exercises edge-case artifact signals", () => {
   assert.ok(dependency.summary.unsupported_patterns && dependency.summary.unsupported_patterns > 0);
   assert.ok(dependency.records?.some((record) => record.kind === "layer_violation"));
   assert.ok(dependency.records?.some((record) => record.kind === "unsupported_pattern"));
+  const cycle = dependency.records?.find((record) => record.kind === "import_cycle");
+  assert.ok(cycle?.related_locations && cycle.related_locations.length > 1);
+  assert.equal(cycle?.fix_group_id, cycle?.id);
   assert.ok(dependency.graph.edges.some((edge) => edge.from === "src/app/page" && edge.to === "src/lib/math" && edge.kind === "relative"));
 
   const clones = JSON.parse(fs.readFileSync(path.join(config.outputDir, "clones.json"), "utf8")) as Artifact &

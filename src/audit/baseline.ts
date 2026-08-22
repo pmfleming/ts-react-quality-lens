@@ -5,8 +5,14 @@ import path from "node:path";
 import { isRecord } from "../collections.js";
 import { loadConfig } from "../config.js";
 import { createAnalysisContext } from "../analysis-context.js";
+import { analysisIdentity } from "../provenance.js";
 import { collectFindings, runAuditMeasurements } from "./findings.js";
-import type { AuditFinding, Config } from "../types.js";
+import type { AnalysisIdentity, AuditFinding, Config } from "../types.js";
+
+export type BaseSnapshot = {
+  findingIds: Set<string>;
+  analysisIdentity: AnalysisIdentity;
+};
 
 export function readBaselineIds(file: string | null | undefined): Set<string> {
   if (!file || !fs.existsSync(file)) return new Set();
@@ -28,7 +34,7 @@ export function baseSnapshotFindingIds(
   base: string,
   command: string,
   baselineIds: Set<string>,
-): Set<string> | null {
+): BaseSnapshot | null {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ts-react-quality-lens-audit-base-"));
   try {
     addWorktree(config, tempRoot, base);
@@ -56,7 +62,7 @@ function measureBaseSnapshot(
   tempRoot: string,
   command: string,
   baselineIds: Set<string>,
-): Set<string> | null {
+): BaseSnapshot | null {
   const baseConfigPath = path.join(tempRoot, path.relative(config.projectRoot, config.configPath));
   if (!fs.existsSync(baseConfigPath)) return null;
   const baseConfig = loadConfig(baseConfigPath);
@@ -69,7 +75,10 @@ function measureBaseSnapshot(
     baselineIds,
     includeAll: true,
   });
-  return new Set(findings.map((finding) => finding.id));
+  return {
+    findingIds: new Set(findings.map((finding) => finding.id)),
+    analysisIdentity: analysisIdentity(baseConfig),
+  };
 }
 
 function addWorktree(config: Config, tempRoot: string, base: string): void {

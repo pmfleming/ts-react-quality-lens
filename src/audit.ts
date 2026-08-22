@@ -1,6 +1,6 @@
 import { isSuppressed } from "./actions.js";
 import { analysisConfidence, createAnalysisContext } from "./analysis-context.js";
-import { artifactBase, sourceSetHash } from "./provenance.js";
+import { analysisIdentity, artifactBase, sourceSetHash } from "./provenance.js";
 import { writeArtifact } from "./writer.js";
 import { baseSnapshotFindingIds, readBaselineIds, writeBaseline } from "./audit/baseline.js";
 import { changedFilesSince, changedLineRangesSince, defaultBase, type LineRange } from "./audit/change-set.js";
@@ -43,9 +43,16 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
   const scope = auditScope(config, options);
   runAuditMeasurements(config, command, context, true);
   const baselineIds = readBaselineIds(options.baseline ?? config.audit.baseline);
-  const baseIds = scope.base ? baseSnapshotFindingIds(config, scope.base, command, baselineIds) : null;
+  const baseSnapshot = scope.base ? baseSnapshotFindingIds(config, scope.base, command, baselineIds) : null;
+  const baseSnapshotCompatible = baseSnapshot
+    ? baseSnapshot.analysisIdentity.id === analysisIdentity(config).id
+    : null;
+  const baseIds = baseSnapshotCompatible ? baseSnapshot?.findingIds ?? null : null;
   const sets = findingSets(config, scope, baselineIds, baseIds);
-  const artifact = auditArtifact(config, command, context, scope, sets, baseIds !== null);
+  if (baseSnapshot && baseSnapshotCompatible === false) {
+    sets.incompleteReasons.push("Base snapshot analysis identity differs from the current compiler, config, ruleset, or integration identity.");
+  }
+  const artifact = auditArtifact(config, command, context, scope, sets, baseSnapshot !== null, baseSnapshotCompatible);
   writeArtifact(config, "audit.json", artifact);
   if (options.saveBaseline) writeBaseline(options.saveBaseline, sets.findings);
   return artifact;
@@ -94,6 +101,7 @@ function auditArtifact(
   scope: AuditScope,
   sets: FindingSets,
   baseSnapshotAvailable: boolean,
+  baseSnapshotCompatible: boolean | null,
 ): AuditArtifact {
   const project = context.project();
   const incompleteReasons = sets.incompleteReasons;
@@ -107,6 +115,7 @@ function auditArtifact(
         changed_files_available: scope.changedFiles.length > 0,
         audit_base: scope.base,
         base_snapshot_available: baseSnapshotAvailable,
+        base_snapshot_compatible: baseSnapshotCompatible,
       }),
       sourceSetHash(project),
     ),
@@ -120,6 +129,7 @@ function auditArtifact(
       changed_files: scope.changedFiles.length,
       changed_hunks: [...scope.changedLines.values()].reduce((count, ranges) => count + ranges.length, 0),
       base_snapshot_available: baseSnapshotAvailable,
+      base_snapshot_compatible: baseSnapshotCompatible,
       findings: sets.findings.length,
       active_findings: sets.gated.length,
       introduced_findings: countFindings(sets.findings, (finding) => finding.introduced),

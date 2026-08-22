@@ -254,12 +254,17 @@ function diagnosticRecord(ts: typeof tsTypes, diagnostic: tsTypes.Diagnostic, pr
   const lineChar = diagnostic.file && typeof diagnostic.start === "number"
     ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
     : null;
+  const endLineChar = diagnostic.file && typeof diagnostic.start === "number"
+    ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start + (diagnostic.length ?? 0))
+    : null;
   return {
     code: diagnostic.code,
     category: ts.DiagnosticCategory[diagnostic.category],
     file,
     line: lineChar ? lineChar.line + 1 : null,
     character: lineChar ? lineChar.character + 1 : null,
+    end_line: endLineChar ? endLineChar.line + 1 : null,
+    end_character: endLineChar ? endLineChar.character + 1 : null,
     message: flattenMessage(ts, diagnostic.messageText),
   };
 }

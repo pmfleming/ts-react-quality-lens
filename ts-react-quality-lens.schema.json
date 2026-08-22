@@ -54,6 +54,19 @@
       },
       "additionalProperties": true
     },
+    "analysis_identity": {
+      "type": "object",
+      "required": ["id", "schema_version", "compiler_api_version", "config_closure_hash", "rulesets", "integration_versions"],
+      "properties": {
+        "id": { "type": "string" },
+        "schema_version": { "type": "string" },
+        "compiler_api_version": { "type": ["string", "null"] },
+        "config_closure_hash": { "type": "string" },
+        "rulesets": { "type": "object", "additionalProperties": { "type": "string" } },
+        "integration_versions": { "type": "object", "additionalProperties": { "type": ["string", "null"] } }
+      },
+      "additionalProperties": false
+    },
     "confidence": {
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/jsonValue" }
@@ -97,6 +110,20 @@
         }
       ]
     },
+    "relatedLocation": {
+      "type": "object",
+      "required": ["file", "start_line", "role"],
+      "properties": {
+        "file": { "type": "string" },
+        "start_line": { "type": "number", "minimum": 1 },
+        "start_column": { "type": "number", "minimum": 1 },
+        "end_line": { "type": "number", "minimum": 1 },
+        "end_column": { "type": "number", "minimum": 1 },
+        "role": { "enum": ["source", "sink", "cause", "related", "duplicate", "fix-site"] },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "finding": {
       "type": "object",
       "required": ["id", "rule_id", "evidence_kind", "disposition", "finding_confidence", "message"],
@@ -112,6 +139,14 @@
         "file": { "type": "string" },
         "files": { "type": "array", "items": { "type": "string" } },
         "line": { "type": ["number", "null"] },
+        "column": { "type": ["number", "null"] },
+        "end_line": { "type": ["number", "null"] },
+        "end_column": { "type": ["number", "null"] },
+        "related_locations": { "type": "array", "items": { "$ref": "#/$defs/relatedLocation" } },
+        "fix_group_id": { "type": "string" },
+        "estimated_effort": { "type": "number", "minimum": 0 },
+        "semantic_decision": { "enum": ["confirmed", "contract-preserved", "disagreed", "unresolved", "abstained", "unavailable"] },
+        "reason_code": { "type": "string" },
         "score": { "type": "number" },
         "risk": { "type": "string" },
         "severity": { "type": "string" },

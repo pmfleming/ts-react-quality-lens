@@ -104,6 +104,7 @@ Each major artifact includes:
 - `task_id`
 - `project`
 - `provenance`
+- `analysis_identity` with compiler, config-closure, ruleset, and integration identities
 - `confidence`
 - `summary`
 - optional `records`, `groups`, or `findings` entries with machine-actionable `actions`
@@ -143,7 +144,7 @@ Config files may contain JSONC-style comments. The shipped `ts-react-quality-len
 
 ## Finding Actions
 
-Findings now include an `actions` array when they are written to disk. Actions describe likely next steps such as removing unused code, repairing dependency edges, adding a narrow configured suppression, or placing an inline suppression comment.
+Findings include primary start/end ranges, related locations for multi-site evidence, stable reason and fix-group IDs, semantic decisions, estimated remediation effort, and an `actions` array when they are written to disk. Audit refuses identity-based base/head matching when compiler, config closure, ruleset, or integration identities differ, rather than treating incomparable evidence as a regression-free result. Actions describe likely next steps such as removing unused code, repairing dependency edges, adding a narrow configured suppression, or placing an inline suppression comment.
 
 Configured suppressions mark matching findings with `suppressed: true` and preserve `suppression_reason` so dashboards and audit gates can distinguish intentional exceptions from active issues.
 
