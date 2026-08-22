@@ -107,7 +107,7 @@ function normalizeExecError(value: unknown): ExecError {
   return Object.assign(value instanceof Error ? value : new Error(String(value)), {
     stdout: details.stdout,
     stderr: details.stderr,
-    status: typeof details.status === "number" ? details.status : undefined,
+    ...(typeof details.status === "number" ? { status: details.status } : {}),
   });
 }
 

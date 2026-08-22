@@ -120,10 +120,13 @@ class TarjanCycleFinder {
       component.push(current);
     } while (current !== node);
 
-    const hasSelfLoop = component.length === 1 && (this.graph.get(component[0]) ?? []).includes(component[0]);
+    const onlyNode = component[0];
+    const hasSelfLoop = component.length === 1 && onlyNode !== undefined &&
+      (this.graph.get(onlyNode) ?? []).includes(onlyNode);
     if (component.length > 1 || hasSelfLoop) {
       const ordered = [...component].sort((left, right) => left.localeCompare(right));
-      this.cycles.push([...ordered, ordered[0]]);
+      const firstNode = ordered[0];
+      if (firstNode !== undefined) this.cycles.push([...ordered, firstNode]);
     }
   }
 }
@@ -179,8 +182,9 @@ export function dependencyCruiserCycles(config: Config, modules: DependencyCruis
 export function uniqueCycleCount(...cycleSets: string[][][]): number {
   return new Set(
     cycleSets.flat().map((cycle) => {
-      if (!cycle.length) return "";
-      const closed = cycle[0] === cycle.at(-1) ? cycle : [...cycle, cycle[0]];
+      const firstNode = cycle[0];
+      if (firstNode === undefined) return "";
+      const closed = firstNode === cycle.at(-1) ? cycle : [...cycle, firstNode];
       return canonicalCycle(closed);
     }),
   ).size;
@@ -231,7 +235,7 @@ function stripSourceExtension(value: string): string {
   return value.replace(/\.[cm]?[jt]sx?$/, "");
 }
 
-function correctnessMap(artifact: ArtifactLookup["correctness"]): Set<string> {
+function correctnessMap(artifact: ArtifactLookup["correctness"] | undefined): Set<string> {
   const result = new Set<string>();
   for (const test of artifact?.tests ?? []) {
     for (const file of test.source_mapping ?? []) result.add(file);

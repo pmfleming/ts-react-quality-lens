@@ -201,7 +201,7 @@ function compositeScore(
   return scores.length ? Math.max(...scores) : null;
 }
 
-function correctnessScore(artifact: RiskArtifact, file: string, correctnessFiles: Set<string>): number | null {
+function correctnessScore(artifact: RiskArtifact | undefined, file: string, correctnessFiles: Set<string>): number | null {
   if (!artifact) return null;
   if (artifact.execution?.status === "failed") return RISK_MODEL.tool_scores.failing_test_run;
   return correctnessFiles.has(file) ? 0 : RISK_MODEL.tool_scores.missing_direct_test_evidence;

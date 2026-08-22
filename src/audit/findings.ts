@@ -10,6 +10,7 @@ import type {
   AuditFinding,
   AuditVerdict,
   Config,
+  FindingDisposition,
   PolicyCheck,
   ScoredRecord,
 } from "../types.js";
@@ -89,10 +90,10 @@ function introducedByDiffOrBase(
   return findingTouchesChangedLine(finding, changedLines);
 }
 
-function policyDisposition(config: Config, finding: ScoredRecord): ScoredRecord["disposition"] {
+function policyDisposition(config: Config, finding: ScoredRecord): FindingDisposition {
   if (finding.source === "typescript-eslint" && !config.policy.requiredChecks.includes("typed-lint")) return "review";
   if (finding.source === "eslint-plugin-react-hooks" && !config.policy.requiredChecks.includes("react-hooks")) return "review";
-  return finding.disposition;
+  return finding.disposition ?? "review";
 }
 
 export function staleSuppressionFindings(config: Config, findings: AuditFinding[]): AuditFinding[] {
@@ -110,7 +111,7 @@ export function staleSuppressionFindings(config: Config, findings: AuditFinding[
       scope: suppression.file ? "file" : "project",
       task_id: "audit",
       introduced: true,
-      file: suppression.file,
+      ...(suppression.file ? { file: suppression.file } : {}),
       score: 35,
       risk: "medium",
       signals: [

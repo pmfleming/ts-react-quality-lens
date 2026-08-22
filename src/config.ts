@@ -213,8 +213,8 @@ function stripJsonComments(text: string): string {
 }
 
 function readJsoncChunk(scanner: JsonCommentScanner): string {
-  const char = scanner.text[scanner.index];
-  const next = scanner.text[scanner.index + 1];
+  const char = scanner.text.charAt(scanner.index);
+  const next = scanner.text.charAt(scanner.index + 1);
   scanner.index += 1;
   if (scanner.inString) return readStringChunk(scanner, char);
   if (char === "\"") return enterString(scanner, char);

@@ -21,10 +21,10 @@
         {
           default = pkgs.buildNpmPackage {
             pname = "ts-react-quality-lens";
-            version = "0.1.0";
+            version = "0.3.0";
             src = ./.;
             nodejs = pkgs.nodejs;
-            npmDepsHash = "sha256-b8i09HpkltZZO8PqrogJcNMq2z+h8dtDgeCGFjKskZw=";
+            npmDepsHash = "sha256-xXAusa4AsgG+73uuSPocs6//Er4UBgxmuF6gpNBihZQ=";
 
             npmBuildScript = "build";
             # Keep analyzer tool dependencies available at runtime. The CLI loads

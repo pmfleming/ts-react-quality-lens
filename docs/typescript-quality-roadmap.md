@@ -1,5 +1,7 @@
 # Applying TypeScript Quality Research to `ts-react-quality-lens`
 
+See [`github-quality-checker-review.md`](github-quality-checker-review.md) for the 2026 source-pinned survey of React Doctor, Knip, typescript-eslint, React's official lint rules, jsx-a11y, SonarJS, Fallow, package-quality tools, and related analyzers. That review refines the priorities below: broaden official React evidence first, establish a rule-precision harness, then add cleanup, accessibility, type-coverage, package, and SARIF adapters.
+
 ## Implementation status
 
 - **Phase 1 completed for schema 0.2.0:** evidence dispositions, policy-based audit decisions, incomplete verdicts, compiler/test blockers, corrected `unknown` and TypeScript-directive semantics, and a documented rule catalog.

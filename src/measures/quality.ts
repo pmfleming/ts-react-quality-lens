@@ -307,7 +307,7 @@ function compilerDiagnosticFinding(diagnostic: DiagnosticRecord): ScoredRecord {
     disposition: error ? "block" : "warn",
     finding_confidence: "high",
     scope: diagnostic.file ? "file" : "project",
-    file: diagnostic.file ?? undefined,
+    ...(diagnostic.file ? { file: diagnostic.file } : {}),
     line: diagnostic.line,
     severity: error ? "high" : "medium",
     score: error ? 100 : 50,

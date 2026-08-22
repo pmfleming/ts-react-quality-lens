@@ -94,7 +94,7 @@ function resolveAliasImportPath(specifier: string, aliases: PathAliasRule[]): st
 
 function aliasMatch(specifier: string, pattern: string): string | null {
   if (!pattern.includes("*")) return specifier === pattern ? "" : null;
-  const [prefix, suffix = ""] = pattern.split("*");
+  const [prefix = "", suffix = ""] = pattern.split("*");
   if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) return null;
   return specifier.slice(prefix.length, specifier.length - suffix.length);
 }

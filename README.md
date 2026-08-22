@@ -143,6 +143,8 @@ Audit also reports stale configured suppressions as `stale_suppression` findings
 
 `npm run ci` runs type checking, build, schema drift checks, formatting checks, tests, a smoke performance gate over `examples/basic`, and package smoke validation. Override the generous default performance threshold with `TSRQLENS_PERF_MAX_MS` when a CI environment needs a different budget.
 
+Development uses TypeScript 7's native `tsc` for faster parallel builds. TypeScript 7.0 does not expose the compiler API yet, so the runtime analyzer and typescript-eslint use Microsoft's `@typescript/typescript6` compatibility package through the standard `typescript` package alias. This supported side-by-side setup preserves AST and typed-lint functionality until the new TypeScript API is available.
+
 Run `npm run bench` for a synthetic multi-size benchmark harness. The analyzer also writes cache metadata under `output_dir/.cache/analysis.json` when `cache.enabled` is not set to `false`.
 
 ## Design Notes

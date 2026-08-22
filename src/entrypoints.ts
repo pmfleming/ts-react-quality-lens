@@ -57,7 +57,9 @@ function configuredPublicApiReferences(config: Config): EntryPointReference[] {
 
 function scriptFileReferences(command: string): string[] {
   const matches = command.matchAll(/(?:^|\s)(\.?\.?\/?[\w./-]+\.(?:mjs|cjs|js|ts|tsx))/g);
-  return [...matches].map((match) => match[1]);
+  return [...matches]
+    .map((match) => match[1])
+    .filter((file): file is string => file !== undefined);
 }
 
 function packageExportFiles(value: unknown): string[] {

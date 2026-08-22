@@ -129,6 +129,7 @@ function samePurposeRecord(group: PurposeCandidate[]): ScoredRecord | null {
   if (!first) return null;
   const files = [...new Set(group.map((candidate) => candidate.file))].sort();
   const names = [...new Set(group.map((candidate) => candidate.name))].sort();
+  const primaryFile = files[0] ?? first.file;
   const exportedCount = group.filter((candidate) => candidate.exported).length;
   const typedCount = group.filter((candidate) => Boolean(candidate.signature)).length;
   const entrypointCount = group.filter((candidate) => candidate.entrypointRoles.length > 0).length;
@@ -137,9 +138,9 @@ function samePurposeRecord(group: PurposeCandidate[]): ScoredRecord | null {
   return {
     id: `same-purpose:${first.category}:${stableHash(`${first.purposeKey}:${files.join(",")}:${names.join(",")}`)}`,
     kind: `same_purpose_${first.category}`,
-    file: files[0],
+    file: primaryFile,
     files,
-    line: group.find((candidate) => candidate.file === files[0])?.line ?? null,
+    line: group.find((candidate) => candidate.file === primaryFile)?.line ?? null,
     score,
     risk: riskForScore(score),
     purpose_key: first.purposeKey,

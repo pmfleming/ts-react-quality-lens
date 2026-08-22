@@ -150,7 +150,9 @@ function bindingEvidence(
 }
 
 function isLiteralDynamicImport(node: ts.Node): node is ts.CallExpression & { arguments: [ts.StringLiteralLike, ...ts.Expression[]] } {
-  return isDynamicImport(node) && Boolean(node.arguments[0]) && ts.isStringLiteralLike(node.arguments[0]);
+  if (!isDynamicImport(node)) return false;
+  const firstArgument = node.arguments[0];
+  return firstArgument !== undefined && ts.isStringLiteralLike(firstArgument);
 }
 
 function isNonLiteralDynamicImport(node: ts.Node): boolean {
@@ -209,7 +211,7 @@ function isAliasSpecifier(config: Config, specifier: string): boolean {
 
 function aliasPatternMatches(specifier: string, pattern: string): boolean {
   if (!pattern.includes("*")) return specifier === pattern;
-  const [prefix, suffix = ""] = pattern.split("*");
+  const [prefix = "", suffix = ""] = pattern.split("*");
   return specifier.startsWith(prefix) && specifier.endsWith(suffix);
 }
 

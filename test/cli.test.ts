@@ -19,6 +19,12 @@ const goldenConfig = path.join(repoRoot, "test/fixtures/golden/ts-react-quality-
 type ToolArtifact = Artifact & { tool_status: NonNullable<Artifact["tool_status"]> };
 type SummaryArtifact<T extends Record<string, unknown>> = Artifact & { summary: T };
 
+function requiredToolStatus(artifact: ToolArtifact, name: string) {
+  const status = artifact.tool_status[name];
+  assert.ok(status, `Expected ${name} tool status`);
+  return status;
+}
+
 test("catalog exposes stable board task metadata", () => {
   const config = loadConfig(fixtureConfig);
   const catalog = catalogForConfig(config);
@@ -101,31 +107,35 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(typeHealth.records?.some((record: ScoredRecord) => record.source === "typescript-compiler-api"));
 
   const lintHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "lint_health.json"), "utf8")) as ToolArtifact;
-  assert.equal(lintHealth.tool_status.typed_eslint.available, true);
-  assert.equal(lintHealth.tool_status.typed_eslint.ran, true);
+  const typedEslint = requiredToolStatus(lintHealth, "typed_eslint");
+  assert.equal(typedEslint.available, true);
+  assert.equal(typedEslint.ran, true);
   assert.ok(lintHealth.records?.every((record) => record.source === "typescript-eslint"));
 
   const dependencyHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "dependency_health.json"), "utf8")) as ToolArtifact & {
     graph: { edges: Array<{ from: string; source?: unknown; line?: unknown }> };
   };
-  assert.equal(dependencyHealth.tool_status.dependency_cruiser.available, true);
-  assert.equal(dependencyHealth.tool_status.dependency_cruiser.ran, true);
+  const dependencyCruiser = requiredToolStatus(dependencyHealth, "dependency_cruiser");
+  assert.equal(dependencyCruiser.available, true);
+  assert.equal(dependencyCruiser.ran, true);
   const dependencyEdges = dependencyHealth.graph.edges as Array<{ from: string; source?: unknown; line?: unknown }>;
   assert.ok(dependencyEdges.every((edge) => !edge.from.includes(".test")));
   assert.ok(dependencyEdges.some((edge) => edge.source === "dependency-cruiser" && edge.line !== null));
 
   const clones = JSON.parse(fs.readFileSync(path.join(config.outputDir, "clones.json"), "utf8")) as ToolArtifact &
     SummaryArtifact<{ jscpd_clone_groups: number; duplication_records: number }>;
-  assert.equal(clones.tool_status.jscpd.available, true);
-  assert.equal(clones.tool_status.jscpd.ran, true);
+  const jscpd = requiredToolStatus(clones, "jscpd");
+  assert.equal(jscpd.available, true);
+  assert.equal(jscpd.ran, true);
   assert.ok(clones.summary.jscpd_clone_groups > 0);
   assert.ok(clones.summary.duplication_records > 0);
   assert.ok(clones.records?.some((record) => record.kind === "duplication_pressure"));
 
   const reactHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "react_health.json"), "utf8")) as ToolArtifact &
     SummaryArtifact<{ hook_lint_findings: number }>;
-  assert.equal(reactHealth.tool_status.eslint_react_hooks.available, true);
-  assert.equal(reactHealth.tool_status.eslint_react_hooks.ran, true);
+  const reactHooks = requiredToolStatus(reactHealth, "eslint_react_hooks");
+  assert.equal(reactHooks.available, true);
+  assert.equal(reactHooks.ran, true);
   assert.ok(reactHealth.summary.hook_lint_findings > 0);
   assert.ok(reactHealth.records?.some((record: ScoredRecord) => record.source === "framework-adapter"));
 
@@ -551,9 +561,10 @@ test("react hooks lint resolves dependencies when output dir is outside the proj
   fs.rmSync(config.outputDir, { recursive: true, force: true });
 
   const [reactHealth] = runMeasure(config, "quality.react_health", "test react hooks temp output") as [ToolArtifact];
+  const reactHooks = requiredToolStatus(reactHealth, "eslint_react_hooks");
 
-  assert.equal(reactHealth.tool_status.eslint_react_hooks.available, true);
-  assert.equal(reactHealth.tool_status.eslint_react_hooks.ran, true);
+  assert.equal(reactHooks.available, true);
+  assert.equal(reactHooks.ran, true);
   fs.rmSync(config.outputDir, { recursive: true, force: true });
 });
 
@@ -594,7 +605,7 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
     ToolArtifact & SummaryArtifact<{ dependency_cruiser_cycles: number }>,
   ];
 
-  assert.equal(dependencyHealth.tool_status.dependency_cruiser.ran, true);
+  assert.equal(requiredToolStatus(dependencyHealth, "dependency_cruiser").ran, true);
   assert.equal(dependencyHealth.summary.dependency_cruiser_cycles, 1);
   fs.rmSync(config.outputDir, { recursive: true, force: true });
 });

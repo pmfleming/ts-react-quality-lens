@@ -52,7 +52,7 @@ export function measureDependencyHealth(config: Config, command: string, context
       kind: "unsupported_pattern",
       severity: "medium",
       score: 35,
-      file: signal.file,
+      ...(signal.file ? { file: signal.file } : {}),
       line: signal.line ?? null,
       evidence: signal.message ?? signal.kind,
       signals: [signal],
