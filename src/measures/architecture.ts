@@ -1,6 +1,6 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { groupMapNodes, mapNode } from "../graph.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { analysisIdentity, artifactBase, sourceSetHash, taskInputHash } from "../provenance.js";
 import { readArtifact, writeArtifact } from "../writer.js";
 import { isRecord, parseJson } from "../collections.js";
 import { RISK_MODEL, type ArtifactFreshness, type ArtifactFreshnessLookup, type RiskArtifact } from "../risk-model.js";
@@ -8,8 +8,11 @@ import type { AnalysisContext, Config, JsonValue } from "../types.js";
 import fs from "node:fs";
 
 type MapInputArtifact = RiskArtifact & {
+  task_id?: string;
+  analysis_identity?: { id: string };
   provenance?: {
     source_set_hash?: JsonValue;
+    input_set_hash?: JsonValue;
   };
 };
 
@@ -32,7 +35,7 @@ export function measureArchitectureMap(config: Config, command: string, context:
   for (const test of artifacts.correctness?.tests ?? []) {
     for (const file of test.source_mapping ?? []) correctnessFiles.add(file);
   }
-  const artifactStatus = artifactFreshness(artifacts, currentSourceHash);
+  const artifactStatus = artifactFreshness(config, artifacts, currentSourceHash);
   const nodes = project.modules.map((module) => mapNode(module, artifacts, artifactStatus, correctnessFiles));
   const edges = project.imports.map((edge) => ({
     id: `import:${edge.from}:${edge.to}:${edge.line}`,
@@ -95,14 +98,17 @@ export function measureArchitectureMap(config: Config, command: string, context:
   return artifact;
 }
 
-function artifactFreshness(
+export function artifactFreshness(
+  config: Config,
   artifacts: Record<string, MapInputArtifact | null>,
   currentSourceHash: string,
 ): ArtifactFreshnessLookup {
+  const identity = analysisIdentity(config);
   return Object.fromEntries(
     Object.entries(artifacts).map(([name, value]) => {
-      const status: ArtifactFreshness =
-        !value ? "missing" : name === "performance" || value.provenance?.source_set_hash === currentSourceHash ? "available" : "stale";
+      const fresh = value?.task_id && value.analysis_identity?.id === identity.id &&
+        value.provenance?.input_set_hash === taskInputHash(config, value.task_id, currentSourceHash, identity);
+      const status: ArtifactFreshness = !value ? "missing" : name === "performance" || fresh ? "available" : "stale";
       return [name, status];
     }),
   );

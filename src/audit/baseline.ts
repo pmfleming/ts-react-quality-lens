@@ -63,9 +63,20 @@ function measureBaseSnapshot(
   command: string,
   baselineIds: Set<string>,
 ): BaseSnapshot | null {
-  const baseConfigPath = path.join(tempRoot, path.relative(config.projectRoot, config.configPath));
+  const repositoryRoot = childProcess.execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: config.projectRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+  const baseConfigPath = path.join(tempRoot, path.relative(repositoryRoot, config.configPath));
+  const baseProjectRoot = path.join(tempRoot, path.relative(repositoryRoot, config.projectRoot));
+  // Reuse installed dependencies without running install scripts in the snapshot.
+  for (const root of new Set([repositoryRoot, config.projectRoot])) {
+    const installed = path.join(root, "node_modules");
+    const target = path.join(tempRoot, path.relative(repositoryRoot, root), "node_modules");
+    if (fs.existsSync(installed) && !fs.existsSync(target)) fs.symlinkSync(installed, target, "junction");
+  }
   if (!fs.existsSync(baseConfigPath)) return null;
   const baseConfig = loadConfig(baseConfigPath);
+  if (path.resolve(baseConfig.projectRoot) !== path.resolve(baseProjectRoot)) return null;
   baseConfig.outputDir = path.join(tempRoot, "target", "audit-base-analysis");
   baseConfig.cache.enabled = false;
   runAuditMeasurements(baseConfig, command, createAnalysisContext(baseConfig), false);

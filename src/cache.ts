@@ -5,7 +5,7 @@ import { parseJson } from "./collections.js";
 import { analysisIdentity, contentHash, sourceSetHash } from "./provenance.js";
 import type { Config, ProjectAnalysis, SourceFileRecord, TypedModuleRecord } from "./types.js";
 
-const CACHE_FORMAT = 2;
+const CACHE_FORMAT = 3;
 
 type CachePayload = {
   cache_format: number;
@@ -27,7 +27,7 @@ export function readAnalysisCache(
   if (!fs.existsSync(file)) return null;
   try {
     const payload = parseJson(fs.readFileSync(file, "utf8"));
-    if (!isCachePayload(payload) || payload.key !== analysisCacheKey(config, sourceFiles, testFiles)) return null;
+    if (!isCachePayload(payload) || payload.key !== analysisCacheKey(config, sourceFiles, testFiles, payload.project.tsProject.input_files)) return null;
     return hydrateProject(payload.project, file);
   } catch {
     return null;
@@ -45,7 +45,7 @@ export function writeAnalysisCache(
   }
   const payload: CachePayload = {
     cache_format: CACHE_FORMAT,
-    key: analysisCacheKey(config, project.sourceFiles, project.testFiles),
+    key: analysisCacheKey(config, project.sourceFiles, project.testFiles, project.tsProject.input_files),
     project: {
       ...project,
       tsProject: {
@@ -93,8 +93,13 @@ function hydrateProject(project: CachePayload["project"], file: string): Project
   };
 }
 
-function analysisCacheKey(config: Config, sourceFiles: SourceFileRecord[], testFiles: SourceFileRecord[]): string {
-  return contentHash([...sourceFiles, ...testFiles], [String(CACHE_FORMAT), analysisIdentity(config).id]);
+function analysisCacheKey(config: Config, sourceFiles: SourceFileRecord[], testFiles: SourceFileRecord[], inputs: string[] = []): string {
+  const measured = new Set([...sourceFiles, ...testFiles].map((file) => path.resolve(file.path)));
+  const dependencies = inputs.filter((file) => !measured.has(file)).map((file) => ({
+    relativePath: path.relative(config.projectRoot, file),
+    text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing",
+  }));
+  return contentHash([...sourceFiles, ...testFiles, ...dependencies], [String(CACHE_FORMAT), analysisIdentity(config).id]);
 }
 
 function cacheableProject(config: Config, project: Omit<ProjectAnalysis, "cache">): boolean {

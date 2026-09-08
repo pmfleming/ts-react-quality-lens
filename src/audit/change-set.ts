@@ -83,7 +83,8 @@ export function stripSourceExtension(file: string): string {
 function fileFindingTouchesLine(record: ScoredRecord, changedLines: Map<string, LineRange[]>): boolean {
   if (!record.file) return false;
   const ranges = changedLines.get(stripSourceExtension(record.file)) ?? [];
-  return typeof record.line === "number" ? lineInRanges(record.line, ranges) : ranges.length > 0;
+  return typeof record.line === "number"
+    ? rangesOverlap({ start: record.line, end: record.end_line ?? record.line }, ranges) : ranges.length > 0;
 }
 
 type FindingInstance = { file: string; start: number | null; end: number | null };
@@ -104,10 +105,6 @@ function instanceTouchesLine(instance: FindingInstance, changedLines: Map<string
   return instance.start === null
     ? ranges.length > 0
     : rangesOverlap({ start: instance.start, end: instance.end ?? instance.start }, ranges);
-}
-
-function lineInRanges(line: number, ranges: LineRange[]): boolean {
-  return ranges.some((range) => line >= range.start && line <= range.end);
 }
 
 function rangesOverlap(target: LineRange, ranges: LineRange[]): boolean {

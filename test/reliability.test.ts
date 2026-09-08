@@ -11,7 +11,10 @@ import { collectFindings, requiredEvidenceReasons, runAuditMeasurements } from "
 import { loadConfig } from "../src/config.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { MEASURE_TASKS } from "../src/measures/registry.js";
-import { writeArtifact } from "../src/writer.js";
+import { readArtifact, writeArtifact } from "../src/writer.js";
+import { analysisIdentity, artifactBase, sourceSetHash } from "../src/provenance.js";
+import { artifactFreshness } from "../src/measures/architecture.js";
+import { normalizeFindingIdentities } from "../src/finding-identity.js";
 import type { Artifact, Config } from "../src/types.js";
 
 function fixture(run: (root: string, config: Config) => void): void {
@@ -134,4 +137,81 @@ test("audits run package health and collect current package failures", () => fix
       changedFiles: [], changedLines: new Map(), baselineIds: new Set(), includeAll: true,
     }).some((finding) => finding.id === "package:broken" && finding.disposition === "block"));
   });
+}));
+
+test("cache invalidates inherited compiler settings and declaration dependencies", () => fixture((root, config) => {
+  config.cache.enabled = true;
+  const base = path.join(root, "tsconfig.base.json");
+  fs.writeFileSync(base, JSON.stringify({ compilerOptions: { strict: true } }));
+  fs.writeFileSync(path.join(root, "tsconfig.json"), JSON.stringify({ extends: "./tsconfig.base.json", include: ["src"] }));
+  fs.writeFileSync(path.join(root, "src/globals.d.ts"), "declare const externalValue: string;\n");
+  fs.writeFileSync(path.join(root, "src/a.ts"), "export const a = externalValue;\n");
+  const identity = analysisIdentity(config).id;
+  assert.equal(createAnalysisContext(config).project().cache.status, "miss");
+  assert.equal(createAnalysisContext(config).project().cache.status, "hit");
+  fs.writeFileSync(base, JSON.stringify({ compilerOptions: { strict: false } }));
+  assert.notEqual(analysisIdentity(config).id, identity);
+  assert.equal(createAnalysisContext(config).project().cache.status, "miss");
+  assert.equal(createAnalysisContext(config).project().cache.status, "hit");
+  fs.writeFileSync(path.join(root, "src/globals.d.ts"), "declare const externalValue: number;\n");
+  assert.equal(createAnalysisContext(config).project().cache.status, "miss");
+  const before = analysisIdentity(config).id;
+  config.typeCoverage.minimumPercent = 99;
+  assert.notEqual(analysisIdentity(config).id, before);
+}));
+
+test("artifact freshness covers tests, analysis identity, and external runtime evidence", () => fixture((root, config) => {
+  fs.writeFileSync(path.join(root, "src/a.test.ts"), "// initial test\n");
+  const before = sourceSetHash(createAnalysisContext(config).project());
+  fs.writeFileSync(path.join(root, "src/a.test.ts"), "// modified test\n");
+  const after = sourceSetHash(createAnalysisContext(config).project());
+  assert.notEqual(before, after);
+  const runtime = path.join(root, "axe.json");
+  config.runtimeInputs.axe = runtime;
+  fs.writeFileSync(runtime, JSON.stringify({ violations: [] }));
+  const input = artifactBase(config, "quality.runtime", "test", {}, after);
+  assert.equal(artifactFreshness(config, { runtime: input }, after).runtime, "available");
+  fs.writeFileSync(runtime, JSON.stringify({ violations: [], url: "changed" }));
+  assert.equal(artifactFreshness(config, { runtime: input }, after).runtime, "stale");
+  const current = artifactBase(config, "quality.runtime", "test", {}, after);
+  config.react.ruleset = "classic-v1";
+  assert.equal(artifactFreshness(config, { runtime: current }, after).runtime, "stale");
+}));
+
+test("semantic identities survive movement and preserve duplicate occurrences", () => fixture((root, config) => {
+  const file = "src/a.ts";
+  const text = "export function first() { missing(); }\nexport function second() { missing(); }\n";
+  fs.writeFileSync(path.join(root, file), text);
+  const finding = { id: "legacy", file, source: "typescript-compiler", rule_id: "typescript/TS2304", message: "Cannot find name missing", column: 27 };
+  const records = [1, 2].map((line) => ({ ...finding, line }));
+  const initial = normalizeFindingIdentities(config, records);
+  fs.writeFileSync(path.join(root, file), `// inserted comment\n\n${text}`);
+  const moved = normalizeFindingIdentities(config, records.map((record) => ({ ...record, line: record.line + 2 })));
+  const ids = (values: unknown[]) => values.map((value) => (value as { id: string }).id);
+  assert.deepEqual(ids(initial), ids(moved));
+  assert.equal(new Set(ids(initial)).size, 2);
+  const duplicate = normalizeFindingIdentities(config, [{ ...finding, line: 3 }, { ...finding, line: 3 }]);
+  assert.equal(new Set(ids(duplicate)).size, 2);
+}));
+
+test("snapshot matching includes new errors in unchanged consumers and does not reintroduce existing issues", () => fixture((_root, config) => {
+  config.policy.requiredChecks = ["typed-lint"];
+  writeArtifact(config, "lint_health.json", { ...artifact("quality.lint"), records: [
+    { id: "old", file: "src/a.ts", line: 1, disposition: "block" },
+    { id: "new-consumer", file: "src/consumer.ts", line: 1, disposition: "block" },
+  ] });
+  const findings = collectFindings(config, {
+    changedFiles: ["src/a.ts"], changedLines: new Map([["src/a", [{ start: 1, end: 1 }]]]),
+    baselineIds: new Set(), baseFindingIds: new Set(["old"]), diffAvailable: true,
+  });
+  assert.equal(findings.find((finding) => finding.id === "old")?.introduced, false);
+  assert.equal(findings.find((finding) => finding.id === "new-consumer")?.introduced, true);
+}));
+
+test("persisted compiler diagnostics have unique occurrence identities", () => fixture((root, config) => {
+  fs.writeFileSync(path.join(root, "src/a.ts"), "missing();\nmissing();\n");
+  runMeasure(config, "quality.type_health", "test");
+  const records = readArtifact(config, "type_health.json")?.records?.filter((record) => record.diagnostic_code === 2304) ?? [];
+  assert.equal(records.length, 2);
+  assert.equal(new Set(records.map((record) => record.id)).size, 2);
 }));

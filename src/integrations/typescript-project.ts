@@ -61,6 +61,7 @@ export function loadTypeScriptProjects(
     reason: loaded ? null : projects.filter(({ project }) => !project.loaded).map(({ item, project }) =>
       `${toPosix(path.relative(config.projectRoot, item.path))}: ${project.reason ?? "project did not load"}`).join("; "),
     diagnostics: [...diagnostics.values()],
+    input_files: [...new Set(projects.flatMap(({ project }) => project.input_files ?? []))],
     modules,
     ...firstCompilerOptions(projects),
     type_coverage: {
@@ -136,6 +137,7 @@ function createTypedProject(
     loaded: true,
     reason: null,
     compiler_options: compilerOptionSummary(parsed.options),
+    input_files: program.getSourceFiles().map((file) => path.resolve(file.fileName)),
     diagnostics: ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnosticRecord(ts, diagnostic, config.projectRoot)),
     modules: collectTypedModules(ts, config, sourceFiles, program, checker),
     type_coverage: collectTypeCoverage(ts, config, sourceFiles, program, checker),

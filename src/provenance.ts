@@ -2,7 +2,8 @@ import os from "node:os";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { toolPackageVersion } from "./integrations/tool-runner.js";
+import * as ts from "typescript";
+import { executablePackageVersion, toolPackageVersion } from "./integrations/tool-runner.js";
 import { LENS_NAME, SCHEMA_VERSION } from "./tasks.js";
 import { discoverWorkspaces } from "./workspaces.js";
 import type { AnalysisIdentity, Confidence, Config, ProjectAnalysis } from "./types.js";
@@ -25,6 +26,7 @@ export function artifactBase(
   confidence: Confidence,
   sourceSetHash: string | null = null,
 ) {
+  const identity = analysisIdentity(config);
   return {
     schema_version: SCHEMA_VERSION,
     task_id: taskId,
@@ -37,9 +39,12 @@ export function artifactBase(
     },
     provenance: {
       ...provenance(command),
-      ...(sourceSetHash ? { source_set_hash: sourceSetHash } : {}),
+      ...(sourceSetHash ? {
+        source_set_hash: sourceSetHash,
+        input_set_hash: taskInputHash(config, taskId, sourceSetHash, identity),
+      } : {}),
     },
-    analysis_identity: analysisIdentity(config),
+    analysis_identity: identity,
     confidence,
   };
 }
@@ -52,11 +57,13 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     knip: toolPackageVersion("knip"),
     publint: toolPackageVersion("publint"),
     are_the_types_wrong: toolPackageVersion("@arethetypeswrong/cli"),
-    dependency_cruiser: toolPackageVersion("dependency-cruiser"),
-    jscpd: toolPackageVersion("jscpd"),
+    dependency_cruiser: executablePackageVersion(config, "depcruise", "dependency-cruiser"),
+    jscpd: executablePackageVersion(config, "jscpd", "jscpd"),
   };
   const configHash = configClosureHash(config);
   const rulesets = {
+    builtin: "tsrqlens-analysis-v2",
+    finding_identity: "semantic-occurrence-v1",
     typed_lint: "tsrqlens-typescript-recommended-v1",
     react: config.react.ruleset,
     accessibility: "jsx-a11y-recommended-v1",
@@ -87,6 +94,12 @@ function configClosureHash(config: Config): string {
   for (const file of workspaceConfigFiles(config)) {
     files.set(`workspace:${path.relative(config.projectRoot, file).replace(/\\/g, "/")}`, file);
   }
+  const parsed = new Set<string>();
+  for (const [label, file] of [...files]) {
+    if (!file || (label !== "tsconfig" && !label.startsWith("workspace:")) || path.basename(file) === "package.json") continue;
+    collectCompilerConfigInputs(file, parsed, files, config.projectRoot);
+  }
+  hash.update(JSON.stringify(effectiveSettings(config)));
   for (const [label, file] of [...files].sort(([left], [right]) => left.localeCompare(right))) {
     hash.update(label);
     hash.update("\0");
@@ -104,8 +117,65 @@ function workspaceConfigFiles(config: Config): string[] {
   ]))];
 }
 
-export function sourceSetHash(project: Pick<ProjectAnalysis, "sourceFiles">): string {
-  return contentHash(project.sourceFiles);
+export function sourceSetHash(
+  project: Pick<ProjectAnalysis, "sourceFiles"> & Partial<Pick<ProjectAnalysis, "testFiles">> & { tsProject?: { input_files?: string[] } },
+): string {
+  const files = new Map([...project.sourceFiles, ...(project.testFiles ?? [])].map((file) => [file.relativePath, file]));
+  const measured = new Set([...files.values()].map((file) => path.resolve(file.path)));
+  const first = project.sourceFiles[0];
+  const root = first ? first.path.slice(0, -first.relativePath.length) : ".";
+  const dependencies = (project.tsProject?.input_files ?? []).filter((file) => !measured.has(file)).map((file) => ({
+    relativePath: `compiler-input:${path.relative(root, file).replace(/\\/g, "/")}`,
+    text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing",
+  }));
+  return contentHash([...files.values(), ...dependencies]);
+}
+
+export function taskInputHash(config: Config, taskId: string, sourceHash: string, identity = analysisIdentity(config)): string {
+  const files = taskId === "quality.runtime"
+    ? Object.values(config.runtimeInputs)
+    : taskId === "quality.sarif" ? config.sarifInputs.map((input) => input.path)
+    : taskId === "quality.type_health" ? [config.typeCoverage.baseline]
+    : taskId === "map.architecture" ? Object.values(config.performanceInputs) : [];
+  return contentHash(files.filter((file): file is string => file !== null).map((file) => ({
+    relativePath: path.relative(config.projectRoot, file),
+    text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing",
+  })), [sourceHash, identity.id, taskId]);
+}
+
+function collectCompilerConfigInputs(
+  file: string,
+  seen: Set<string>,
+  files: Map<string, string | null>,
+  root: string,
+): void {
+  if (seen.has(file)) return;
+  seen.add(file);
+  ts.getParsedCommandLineOfConfigFile(file, {}, {
+    ...ts.sys,
+    onUnRecoverableConfigFileDiagnostic: () => {},
+    readFile: (input) => {
+      files.set(`compiler:${path.relative(root, input).replace(/\\/g, "/")}`, input);
+      return ts.sys.readFile(input);
+    },
+  });
+}
+
+function effectiveSettings(config: Config): unknown {
+  const {
+    configPath: _configPath, configDir: _configDir, projectRoot: _projectRoot,
+    outputDir: _outputDir, cache: _cache, audit: _audit, raw: _raw, ...settings
+  } = config;
+  return normalizeSettings(settings, config.projectRoot);
+}
+
+function normalizeSettings(value: unknown, root: string): unknown {
+  if (typeof value === "string" && path.isAbsolute(value)) return path.relative(root, value).replace(/\\/g, "/");
+  if (Array.isArray(value)) return value.map((item) => normalizeSettings(item, root));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => [key, normalizeSettings(item, root)]));
+  return value;
 }
 
 export function contentHash(files: Array<{ relativePath: string; text: string }>, seeds: string[] = []): string {

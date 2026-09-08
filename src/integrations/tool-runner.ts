@@ -67,6 +67,21 @@ export function managedPackageJsonUrl(): string {
   return packageJsonUrl(managedRoot());
 }
 
+export function executablePackageVersion(config: Config, executableName: string, packageName: string): string | null {
+  const executable = localBin(config.projectRoot, executableName, false);
+  if (!executable) return null;
+  let directory = path.dirname(fs.realpathSync(executable));
+  while (directory !== path.dirname(directory)) {
+    const manifestPath = path.join(directory, "package.json");
+    if (fs.existsSync(manifestPath)) {
+      const manifest = parseJson(fs.readFileSync(manifestPath, "utf8"));
+      if (isRecord(manifest) && manifest.name === packageName && typeof manifest.version === "string") return manifest.version;
+    }
+    directory = path.dirname(directory);
+  }
+  return null;
+}
+
 export function toolPackageVersion(name: string): string | null {
   try {
     const manifest: unknown = require(`${name}/package.json`);

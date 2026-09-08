@@ -52,7 +52,8 @@ export function collectFindings(config: Config, scope: FindingScope): AuditFindi
   const noDiffScope = scope.includeAll || (!scope.diffAvailable && changed.size === 0);
   return AUDIT_TASK_IDS.flatMap((taskId) => taskFindings(config, taskId)).flatMap((raw) => {
     const enriched = enrichFinding(config, raw.finding);
-    if (!noDiffScope && !findingTouchesChangedFile(enriched, changed)) return [];
+    const newInSnapshot = scope.baseFindingIds && !scope.baseFindingIds.has(enriched.id);
+    if (!noDiffScope && !newInSnapshot && !findingTouchesChangedFile(enriched, changed)) return [];
     return [auditFinding(config, raw.taskId, enriched, scope, Boolean(noDiffScope))];
   });
 }
@@ -88,8 +89,8 @@ function introducedByDiffOrBase(
   changedLines: Map<string, LineRange[]>,
   baseFindingIds: Set<string> | null,
 ): boolean {
-  if (baseFindingIds && !baseFindingIds.has(finding.id)) return true;
-  if (noDiffScope) return baseFindingIds ? !baseFindingIds.has(finding.id) : true;
+  if (baseFindingIds) return !baseFindingIds.has(finding.id);
+  if (noDiffScope) return true;
   return findingTouchesChangedLine(finding, changedLines);
 }
 

@@ -1,4 +1,5 @@
 import { isRecord } from "./collections.js";
+import { normalizeFindingIdentities } from "./finding-identity.js";
 import { discoverWorkspaces, workspaceForFile } from "./workspaces.js";
 import type {
   Config,
@@ -15,7 +16,8 @@ import type {
 
 export function enrichArtifactFindings(config: Config, value: unknown): unknown {
   if (!isRecord(value)) return value;
-  const records = Array.isArray(value.records) ? value.records.map((record) => enrichFinding(config, record)) : value.records;
+  const records = Array.isArray(value.records)
+    ? normalizeFindingIdentities(config, value.records).map((record) => enrichFinding(config, record)) : value.records;
   const groups = Array.isArray(value.groups) ? value.groups.map((record) => enrichFinding(config, record)) : value.groups;
   const disagreements = Array.isArray(value.disagreements)
     ? value.disagreements.map((record) => enrichFinding(config, record))

@@ -316,6 +316,7 @@ type TypeScriptProjectConfig = {
 };
 
 export type TypeScriptProject = {
+  input_files?: string[];
   available: boolean;
   loaded: boolean;
   reason: string | null;
