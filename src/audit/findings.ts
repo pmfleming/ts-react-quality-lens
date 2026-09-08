@@ -42,8 +42,8 @@ type FindingScope = {
 
 export function runAuditMeasurements(config: Config, command: string, context: AnalysisContext, includeTests: boolean): void {
   for (const taskId of AUDIT_TASK_IDS) {
-    if (!includeTests && taskId === "correctness.all") continue;
-    MEASURE_TASKS.get(taskId)?.handler(config, command, context);
+    const measurement = !includeTests && taskId === "correctness.all" ? "correctness.catalog" : taskId;
+    MEASURE_TASKS.get(measurement)?.handler(config, command, context);
   }
 }
 

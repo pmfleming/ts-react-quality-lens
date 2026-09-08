@@ -17,8 +17,15 @@ export function writeArtifact(config: Config, artifactName: string, value: unkno
 }
 
 export function readArtifact(config: Config, artifactName: string): Artifact | null {
+  if (artifactName !== path.basename(artifactName) || artifactName.includes("\\") || !artifactName.endsWith(".json")) {
+    throw new Error("Artifact names must be JSON filenames without path components.");
+  }
   const target = path.join(config.outputDir, artifactName);
   if (!fs.existsSync(target)) return null;
+  const relative = path.relative(fs.realpathSync(config.outputDir), fs.realpathSync(target));
+  if (relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) {
+    throw new Error("Artifact resolves outside the output directory.");
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const value = parseJson(fs.readFileSync(target, "utf8"));

@@ -7,7 +7,7 @@ const root = path.resolve();
 const bin = path.join(root, "dist", "bin", "ts-react-quality-lens.js");
 const config = path.join(root, "examples", "basic", "ts-react-quality-lens.config.json");
 
-test("MCP server exposes read-only quality tools", async () => {
+test("MCP server initializes quality tools",  async () => {
   const response = await exchange(
     "mcp",
     `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })}\n`,

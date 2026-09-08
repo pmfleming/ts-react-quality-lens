@@ -22,6 +22,7 @@ type AuditOptions = {
   gate?: "new-only" | "all" | null;
   baseline?: string | null;
   saveBaseline?: string | null;
+  runTests?: boolean;
 };
 
 type AuditScope = {
@@ -45,7 +46,7 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
   const scope = auditScope(config, options);
   config = { ...config, audit: { ...config.audit, base: scope.base, changedSince: scope.base } };
   const context = createAnalysisContext(config);
-  runAuditMeasurements(config, command, context, true);
+  runAuditMeasurements(config, command, context, options.runTests !== false);
   const baselineIds = readBaselineIds(options.baseline ?? config.audit.baseline);
   const baseSnapshot = scope.comparisonBase ? baseSnapshotFindingIds(config, scope.comparisonBase, command, baselineIds) : null;
   const baseSnapshotCompatible = baseSnapshot

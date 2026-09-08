@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import * as ts from "typescript";
 import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
 import { isRecord, parseJson } from "./collections.js";
 import { readPackageJson } from "./entrypoints.js";
@@ -30,13 +31,6 @@ import type {
   TypeCoverageConfig,
   WorkspacesConfig,
 } from "./types.js";
-
-type JsonCommentScanner = {
-  text: string;
-  index: number;
-  inString: boolean;
-  escaped: boolean;
-};
 
 const DEFAULT_EXCLUDES = [
   "node_modules",
@@ -220,67 +214,10 @@ function configErrorMessage(error: ErrorObject): string {
 }
 
 function parseJsonConfig(text: string): unknown {
-  return parseJson(stripJsonComments(text));
-}
-
-function stripJsonComments(text: string): string {
-  const scanner: JsonCommentScanner = { text, index: 0, inString: false, escaped: false };
-  const chunks: string[] = [];
-  while (scanner.index < scanner.text.length) chunks.push(readJsoncChunk(scanner));
-  return chunks.join("");
-}
-
-function readJsoncChunk(scanner: JsonCommentScanner): string {
-  const char = scanner.text.charAt(scanner.index);
-  const next = scanner.text.charAt(scanner.index + 1);
-  scanner.index += 1;
-  if (scanner.inString) return readStringChunk(scanner, char);
-  if (char === "\"") return enterString(scanner, char);
-  if (char === "/" && next === "/") return skipJsoncLineComment(scanner);
-  if (char === "/" && next === "*") return skipJsoncBlockComment(scanner);
-  return char;
-}
-
-function readStringChunk(scanner: JsonCommentScanner, char: string): string {
-  const state = nextStringState(char, scanner.escaped, scanner.inString);
-  scanner.escaped = state.escaped;
-  scanner.inString = state.inString;
-  return char;
-}
-
-function enterString(scanner: JsonCommentScanner, char: string): string {
-  scanner.inString = true;
-  return char;
-}
-
-function nextStringState(char: string, escaped: boolean, inString: boolean): Pick<JsonCommentScanner, "escaped" | "inString"> {
-  const nextEscaped = char === "\\" && !escaped;
-  return {
-    escaped: char === "\\" ? nextEscaped : false,
-    inString: char === "\"" && !escaped ? false : inString,
-  };
-}
-
-function skipJsoncLineComment(scanner: JsonCommentScanner): string {
-  scanner.index = skipLineComment(scanner.text, scanner.index - 1) + 1;
-  return "\n";
-}
-
-function skipJsoncBlockComment(scanner: JsonCommentScanner): string {
-  scanner.index = skipBlockComment(scanner.text, scanner.index - 1) + 1;
-  return " ";
-}
-
-function skipLineComment(text: string, index: number): number {
-  let cursor = index;
-  while (cursor < text.length && text[cursor] !== "\n") cursor += 1;
-  return cursor;
-}
-
-function skipBlockComment(text: string, index: number): number {
-  let cursor = index + 2;
-  while (cursor < text.length && !(text[cursor] === "*" && text[cursor + 1] === "/")) cursor += 1;
-  return cursor + 1;
+  const parsed = ts.parseConfigFileTextToJson("config.json", text);
+  if (parsed.error) throw new Error(ts.flattenDiagnosticMessageText(parsed.error.messageText, "\n"));
+  const value: unknown = parsed.config;
+  return value;
 }
 
 function resolveFromConfig(configDir: string, value: string): string {

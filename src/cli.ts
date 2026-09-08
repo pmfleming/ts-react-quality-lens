@@ -216,7 +216,7 @@ Commands:
   measure       Write one task artifact or all artifacts.
   audit         Run changed-code quality audit and write audit.json.
   context       Write and print compact agent-ready project context.
-  mcp           Start a read-only JSON-RPC MCP server over stdio.
+  mcp           Start an MCP server; test execution requires explicit tool permission.
   lsp           Start an LSP diagnostics and code-action server over stdio.
 `);
 }

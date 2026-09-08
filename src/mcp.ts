@@ -7,23 +7,34 @@ import { projectContext } from "./context.js";
 import { packageRootFrom } from "./package-root.js";
 import { catalogForConfig, TASKS } from "./tasks.js";
 import { readArtifact } from "./writer.js";
+import { artifactFindings } from "./findings.js";
 import type { Config, ScoredRecord } from "./types.js";
 
 type JsonRpcRequest = { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
-type McpTool = { name: string; description: string; inputSchema: Record<string, unknown> };
+type McpTool = { name: string; description: string; inputSchema: Record<string, unknown>; annotations?: { readOnlyHint: boolean } };
 
 const TOOLS = [
   { name: "catalog", description: "Return the quality task catalog.", inputSchema: { type: "object", properties: {} } },
   { name: "context", description: "Analyze and return compact project context.", inputSchema: { type: "object", properties: {} } },
   {
     name: "measure",
-    description: "Run a read-only quality measurement.",
+    description: "Analyze code and write artifacts without running configured tests. Project tooling may execute configuration.",
+    annotations: { readOnlyHint: false },
     inputSchema: { type: "object", required: ["task_id"], properties: { task_id: { type: "string" } } },
   },
   {
     name: "audit",
-    description: "Run the changed-code quality audit.",
-    inputSchema: { type: "object", properties: { base: { type: "string" }, gate: { enum: ["new-only", "all"] } } },
+    description: "Run a changed-code audit. Tests only execute when run_tests is explicitly true; required tests otherwise remain incomplete.",
+    annotations: { readOnlyHint: false },
+    inputSchema: { type: "object", properties: {
+      base: { type: "string" }, gate: { enum: ["new-only", "all"] }, run_tests: { type: "boolean", default: false },
+    } },
+  },
+  {
+    name: "run_tests",
+    description: "Execute the configured project test command. This runs project code and can modify files.",
+    annotations: { readOnlyHint: false },
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "explain",
@@ -54,7 +65,7 @@ function handleLine(config: Config, line: string): void {
   }
   if (request.id === undefined) return;
   try {
-    writeResult(request.id, dispatch(config, request));
+    writeResult(request.id, dispatchMcp(config, request));
   } catch (error) {
     writeError(request.id, -32603, error instanceof Error ? error.message : String(error));
   }
@@ -69,7 +80,7 @@ function parseRequest(line: string): JsonRpcRequest | null {
   }
 }
 
-function dispatch(config: Config, request: JsonRpcRequest): unknown {
+export function dispatchMcp(config: Config, request: JsonRpcRequest): unknown {
   if (request.method === "initialize") return {
     protocolVersion: "2025-03-26",
     capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
@@ -78,7 +89,7 @@ function dispatch(config: Config, request: JsonRpcRequest): unknown {
   if (request.method === "ping") return {};
   if (request.method === "tools/list") return { tools: TOOLS };
   if (request.method === "resources/list") return {
-    resources: TASKS.map((task) => ({ uri: `tsrqlens://artifact/${task.artifact}`, name: task.title, mimeType: "application/json" })),
+    resources: artifactResources().map(([artifact, name]) => ({ uri: `tsrqlens://artifact/${artifact}`, name, mimeType: "application/json" })),
   };
   if (request.method === "resources/read") return readResource(config, request.params);
   if (request.method === "tools/call") return callTool(config, request.params);
@@ -92,12 +103,14 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   context: (config) => projectContext(config, "mcp context"),
   measure: (config, args) => {
     const taskId = requiredString(args, "task_id", "measure");
-    return runMeasure(config, taskId, `mcp measure ${taskId}`);
+    return runMeasure(config, taskId, `mcp measure ${taskId}`, { allowTestExecution: false });
   },
   audit: (config, args) => runAudit(config, "mcp audit", {
     base: typeof args.base === "string" ? args.base : null,
     gate: args.gate === "all" || args.gate === "new-only" ? args.gate : null,
+    runTests: args.run_tests === true,
   }),
+  run_tests: (config) => runMeasure(config, "correctness.all", "mcp run_tests"),
   explain: (config, args) => explainFinding(config, requiredString(args, "finding_id", "explain")),
 };
 
@@ -119,16 +132,22 @@ function readResource(config: Config, params: unknown): unknown {
     throw new Error("resources/read requires a tsrqlens artifact URI");
   }
   const artifact = params.uri.slice("tsrqlens://artifact/".length);
+  if (!artifactResources().some(([name]) => name === artifact)) throw new Error("Unknown artifact resource");
   const value = readArtifact(config, artifact);
   if (!value) throw new Error(`Artifact ${artifact} has not been measured`);
   return { contents: [{ uri: params.uri, mimeType: "application/json", text: JSON.stringify(value, null, 2) }] };
 }
 
+function artifactResources(): Array<[string, string]> {
+  return [["audit.json", "Changed-code audit"], ["context.json", "Project context"],
+    ...TASKS.map((task): [string, string] => [task.artifact, task.title])];
+}
+
 function explainFinding(config: Config, findingId: string): unknown {
   let finding: ScoredRecord | null = null;
-  for (const task of TASKS) {
-    const artifact = readArtifact(config, task.artifact);
-    finding = artifact?.records?.find((record) => record.id === findingId) ?? finding;
+  for (const [name] of artifactResources()) {
+    finding = artifactFindings(readArtifact(config, name)).find((record) => record.id === findingId) ?? null;
+    if (finding) break;
   }
   if (!finding) throw new Error(`Finding ${findingId} was not found in measured artifacts`);
   const contractsPath = path.join(packageRootFrom(import.meta.url), "rule-contracts.json");

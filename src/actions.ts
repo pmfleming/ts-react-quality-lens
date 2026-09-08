@@ -2,6 +2,7 @@ import { isRecord } from "./collections.js";
 import { normalizeFindingIdentities } from "./finding-identity.js";
 import { discoverWorkspaces, workspaceForFile } from "./workspaces.js";
 import type {
+  Artifact,
   Config,
   EvidenceKind,
   FindingConfidence,
@@ -14,6 +15,8 @@ import type {
   SuppressionConfig,
 } from "./types.js";
 
+export function enrichArtifactFindings(config: Config, value: Artifact): Artifact;
+export function enrichArtifactFindings(config: Config, value: unknown): unknown;
 export function enrichArtifactFindings(config: Config, value: unknown): unknown {
   if (!isRecord(value)) return value;
   const records = Array.isArray(value.records)
@@ -185,15 +188,7 @@ export function suppressionMatches(suppression: SuppressionConfig, record: Score
 }
 
 function actionsForRecord(record: ScoredRecord, kind: string): IssueAction[] {
-  const lineComment = `// ts-react-quality-lens-ignore-next-line ${kind}`;
-  const fileComment = `// ts-react-quality-lens-ignore-file ${kind}`;
   const actions: IssueAction[] = [
-    {
-      type: "suppress-line",
-      auto_fixable: false,
-      description: `Suppress this ${kind} finding on the affected line.`,
-      comment: lineComment,
-    },
     {
       type: "add-to-config",
       auto_fixable: true,
@@ -204,14 +199,6 @@ function actionsForRecord(record: ScoredRecord, kind: string): IssueAction[] {
   ];
   const fix = fixAction(record, kind);
   if (fix) actions.unshift(fix);
-  if (!record.line) {
-    actions.push({
-      type: "suppress-file",
-      auto_fixable: false,
-      description: `Suppress this ${kind} finding for the whole file.`,
-      comment: fileComment,
-    });
-  }
   return actions;
 }
 
