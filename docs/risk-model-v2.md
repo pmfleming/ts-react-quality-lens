@@ -1,80 +1,14 @@
-# ts-react-quality-lens Risk Model v2
+# Risk model v2 (superseded)
 
-Model id: `tsrqlens.architecture_risk`
-Version: `2`
-Calibration: `v2-multi-complexity-static-analysis`
+The current implementation uses **risk model v3**, not v2. See the [current risk-model reference](risk-model-v3.md) for formulas, input freshness, and test-evidence semantics.
 
-This model separates raw measurement facts from derived risk scores. Since artifact schema 0.2.0, audit gating is also separate from these scores: findings carry `block`, `warn`, `review`, or `info` dispositions, and raw scores alone cannot fail an audit. Producers keep emitting task-specific records such as hotspot, dependency, type-health, locality, and React findings. The architecture map combines those records into portable category scores and records the model id, version, and calibration that produced them.
+This path is retained for existing links. V2 used model ID `tsrqlens.architecture_risk`, version `2`, and calibration label `v2-multi-complexity-static-analysis`.
 
-## Thresholds
+Key changes in v3:
 
-| Classification | Score |
-| --- | --- |
-| `ok` / `low` | `< 35` |
-| `warning` / `medium` | `35-69` |
-| `bad` / `high` | `>= 70` |
+- Lint and cleanup records now contribute to quality risk.
+- Correctness risk requires an explicit passed/failed suite result; discovery alone is unknown.
+- Only compiler-resolved direct test imports count as direct test evidence, not filename or type-only associations.
+- Map prerequisites refresh every declared input while preserving compatible current test execution.
 
-## Category Scores
-
-Per-module architecture map nodes expose these derived scores:
-
-| Field | Inputs | Unknown when |
-| --- | --- | --- |
-| `maintainability_risk` | `hotspots.json`, clone-derived duplication pressure from `clones.json` | Hotspot or clone artifact is missing or stale. |
-| `correctness_risk` | `correctness_review.json` test mapping and execution status | Correctness artifact is missing or stale. |
-| `architectural_risk` | `dependency_health.json`, `leverage_metrics.json`, large-module penalty | Dependency artifact is missing or stale. |
-| `change_risk` | `locality_metrics.json` with churn, defect-keyword commits, and co-change | Locality artifact is missing or stale. |
-| `performance_risk` | `react_health.json` render/component heuristics plus optional bundle/render inputs | React-health artifact is missing or stale. |
-| `quality_risk` | `ts_escape_hatches.json`, `type_health.json` | Both quality input artifacts are missing or stale. |
-
-`total_score` is a weighted average of the category scores and is `null` when any required category is unknown. The compatibility field `risk_score` remains numeric and uses the highest known category score so existing dashboards can still sort partially known nodes.
-
-## Weights
-
-Architecture-map total-score category weights:
-
-| Category | Weight |
-| --- | ---: |
-| `maintainability` | 1 |
-| `correctness` | 1 |
-| `architecture` | 1 |
-| `change` | 1 |
-| `performance` | 0.5 |
-| `quality` | 1 |
-
-Hotspot scoring weights are centralized in `src/risk-model.ts`. Function metrics stop at nested function boundaries, so an outer callback does not inherit decisions from inner callbacks. Nesting depth counts control structures rather than counting both a control structure and its block:
-
-| Signal | Weight |
-| --- | ---: |
-| File line count | 0.3 |
-| File branch count | 2 |
-| File import count | 2 |
-| Function cyclomatic complexity | 4 |
-| Function cognitive complexity | 2 |
-| Function log10 Halstead effort | 1 |
-| Function nesting depth | 5 |
-| Function line count | 0.4 |
-| Function JSX density | 2 |
-| Function JSX conditionals | 6 |
-
-## Unknown Inputs
-
-Every produced artifact includes `provenance.source_set_hash`, a hash of the measured source file set and contents. `map.architecture` compares that hash with the current project before consuming input artifacts:
-
-| Status | Meaning |
-| --- | --- |
-| `available` | Artifact exists and its `source_set_hash` matches current source. |
-| `missing` | Artifact is absent. |
-| `stale` | Artifact exists but has no matching `source_set_hash`. |
-
-Missing or stale inputs are recorded in `summary.artifact_status`, `confidence.missing_input`, `confidence.stale_input`, and each affected node's `unknown_metrics`.
-
-## Implemented Input Signals
-
-`dependency_health.json` now includes layer classifications, `layer_violation` records, and `unsupported_pattern` records for unresolved aliases, wildcard re-exports, and non-literal dynamic imports. TypeScript `paths` aliases are resolved through the loaded `tsconfig` when possible.
-
-`locality_metrics.json` keeps raw change facts alongside the derived score: commit count, contributor count, defect-keyword commit count, and top co-change partners.
-
-`clones.json` includes both token-based groups and `engine: "ast"` structural clone groups built from normalized TypeScript AST function bodies. It also emits `duplication_pressure` records that aggregate clone density, duplicated line coverage, cross-file clone groups, and structural clone participation per source module. Same-purpose export/component/hook records use name-token and type-shape evidence to flag likely duplicated responsibilities even when bodies are not clone-like.
-
-`map.architecture` accepts optional project-supplied performance inputs through `performance_inputs.bundle_stats` and `performance_inputs.render_costs`. Missing performance input files are optional and do not make the map incomplete.
+Risk model versions are separate from artifact schema versions. Read `map.json`'s `meta.risk_model_version` and analysis identity rather than inferring scoring behavior from the filename or schema version alone.

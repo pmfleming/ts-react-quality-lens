@@ -2,6 +2,8 @@
 
 Reviewed: 2026-08-22
 
+> **Historical research snapshot.** The local-project gaps and roadmap below describe the review baseline, not the current implementation. Managed React v2, jsx-a11y, Knip, package health, type coverage, SARIF/runtime ingestion, workspace ownership, reusable project snapshots, richer findings, and MCP/LSP have since shipped with limitations. See [implementation status](typescript-quality-roadmap.md) and the [README](../README.md). Recommendations such as per-workspace policy enforcement, universal rule contracts, and a public-project corpus are not all implemented. External-source claims remain those of the original review and have not been re-verified by this documentation update.
+
 ## Purpose
 
 This review mines active open-source TypeScript, JavaScript, React, architecture, dead-code, package, and security checkers for ideas that fit `ts-react-quality-lens`.

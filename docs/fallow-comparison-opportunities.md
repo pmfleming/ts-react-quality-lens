@@ -1,4 +1,6 @@
-# Fallow Comparison Opportunities
+# Fallow Comparison Opportunities (historical)
+
+> **Archived research, not current behavior.** This comparison describes an early project snapshot. Its five-test baseline, command/cache descriptions, and remaining-work list are historical. Audit, actions, JSONC/schema validation, cleanup, reusable project caching, MCP, and LSP have since shipped. See the [README](../README.md) and [current implementation status](typescript-quality-roadmap.md) for supported behavior. In particular, current snapshot identity takes precedence over hunk attribution, and the cache is `output_dir/.cache/analysis-v2.json`.
 
 This review compares `ts-react-quality-lens` with `fallow-rs/fallow` and looks for practical improvements that fit this project rather than trying to copy Fallow wholesale.
 
