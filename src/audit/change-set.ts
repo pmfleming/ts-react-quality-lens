@@ -1,26 +1,51 @@
 import childProcess from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { isRecord } from "../collections.js";
 import type { Config, ScoredRecord } from "../types.js";
 
 export type LineRange = { start: number; end: number };
 
+export type ChangeSet = {
+  complete: boolean;
+  reason: string | null;
+  comparisonBase: string | null;
+  files: string[];
+  lines: Map<string, LineRange[]>;
+};
+
+// Compare the merge base to the analyzed working tree, including untracked files.
+export function changeSetSince(config: Config, base: string): ChangeSet {
+  try {
+    const comparisonBase = gitOutput(config, ["merge-base", base, "HEAD"]).trim();
+    const files = gitOutput(config, ["diff", "--relative", "--name-only", "-z", comparisonBase, "--"]).split("\0").filter(Boolean);
+    const lines = parseChangedLineRanges(gitOutput(config, [
+      "-c", "core.quotepath=false", "diff", "--relative", "--src-prefix=a/", "--dst-prefix=b/",
+      "--unified=0", "--no-ext-diff", "--no-textconv", comparisonBase, "--",
+    ]));
+    const untracked = gitOutput(config, ["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean);
+    for (const file of untracked) {
+      const text = fs.readFileSync(path.resolve(config.projectRoot, file), "utf8");
+      lines.set(stripSourceExtension(file), [{ start: 1, end: text.split(/\r?\n/).length }]);
+    }
+    return { complete: true, reason: null, comparisonBase, files: [...new Set([...files, ...untracked])], lines };
+  } catch (error) {
+    return {
+      complete: false,
+      reason: `Git comparison against ${base} failed: ${error instanceof Error ? error.message : String(error)}`,
+      comparisonBase: null,
+      files: [],
+      lines: new Map(),
+    };
+  }
+}
+
 export function changedFilesSince(config: Config, base: string): string[] {
-  return gitDiff(config, [
-    ["diff", "--name-only", `${base}...HEAD`],
-    ["diff", "--name-only", base],
-  ])
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map(normalizePath);
+  return changeSetSince(config, base).files;
 }
 
 export function changedLineRangesSince(config: Config, base: string): Map<string, LineRange[]> {
-  const diff = gitDiff(config, [
-    ["diff", "--unified=0", "--no-ext-diff", `${base}...HEAD`],
-    ["diff", "--unified=0", "--no-ext-diff", base],
-  ]);
-  return diff ? parseChangedLineRanges(diff) : new Map<string, LineRange[]>();
+  return changeSetSince(config, base).lines;
 }
 
 export function defaultBase(config: Config): string | null {
@@ -89,31 +114,25 @@ function rangesOverlap(target: LineRange, ranges: LineRange[]): boolean {
   return ranges.some((range) => target.start <= range.end && range.start <= target.end);
 }
 
-function gitDiff(config: Config, attempts: string[][]): string {
-  for (const args of attempts) {
-    const output = gitOutput(config, args);
-    if (output.trim()) return output;
-  }
-  return "";
-}
-
 function gitOutput(config: Config, args: string[]): string {
-  try {
-    return childProcess.execFileSync("git", args, {
-      cwd: config.projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-  } catch {
-    return "";
-  }
+  return childProcess.execFileSync("git", args, {
+    cwd: config.projectRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 30000,
+    maxBuffer: 64 * 1024 * 1024,
+  });
 }
 
 function parseChangedLineRanges(diff: string): Map<string, LineRange[]> {
   const result = new Map<string, LineRange[]>();
   let currentFile: string | null = null;
   for (const line of diff.split(/\r?\n/)) {
-    if (line.startsWith("+++ b/")) currentFile = normalizePath(line.slice("+++ b/".length));
+    if (line.startsWith("+++ ") && !line.startsWith("+++ /dev/null")) {
+      const raw = line.slice(4).replace(/\t$/, "");
+      const file: unknown = raw.startsWith('"') ? JSON.parse(raw) : raw;
+      currentFile = typeof file === "string" && file.startsWith("b/") ? normalizePath(file.slice(2)) : null;
+    }
     else if (line.startsWith("+++ /dev/null")) currentFile = null;
     else if (currentFile && line.startsWith("@@")) addChangedRange(result, currentFile, line);
   }

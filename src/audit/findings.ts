@@ -26,6 +26,7 @@ const AUDIT_TASK_IDS = [
   "quality.locality_leverage",
   "quality.react_health",
   "quality.cleanup",
+  "quality.package_health",
   "quality.sarif",
   "quality.runtime",
 ];
@@ -35,6 +36,7 @@ type FindingScope = {
   changedLines: Map<string, LineRange[]>;
   baselineIds: Set<string>;
   includeAll?: boolean;
+  diffAvailable?: boolean;
   baseFindingIds?: Set<string> | null;
 };
 
@@ -47,7 +49,7 @@ export function runAuditMeasurements(config: Config, command: string, context: A
 
 export function collectFindings(config: Config, scope: FindingScope): AuditFinding[] {
   const changed = new Set(scope.changedFiles.map(stripSourceExtension));
-  const noDiffScope = scope.includeAll || changed.size === 0;
+  const noDiffScope = scope.includeAll || (!scope.diffAvailable && changed.size === 0);
   return AUDIT_TASK_IDS.flatMap((taskId) => taskFindings(config, taskId)).flatMap((raw) => {
     const enriched = enrichFinding(config, raw.finding);
     if (!noDiffScope && !findingTouchesChangedFile(enriched, changed)) return [];
@@ -147,16 +149,21 @@ const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = 
     return status?.ran === true && status.complete === true ? null : "Required type-aware ESLint analysis did not complete.";
   },
   tests: testEvidenceReason,
-  "react-hooks": (config) => readArtifact(config, "react_health.json")?.tool_status?.eslint_react_hooks?.ran === true
-    ? null
-    : "Required React Hooks analysis did not run.",
+  "react-hooks": (config) => {
+    const status = readArtifact(config, "react_health.json")?.tool_status?.eslint_react_hooks;
+    return status?.ran === true && status.complete === true ? null : "Required React Hooks analysis did not complete.";
+  },
   package: (config) => readArtifact(config, "package_health.json")?.summary.complete === true
     ? null
     : "Required package health analysis did not complete.",
 };
 
 export function requiredEvidenceReasons(config: Config): string[] {
-  return config.policy.requiredChecks.flatMap((check) => EVIDENCE_CHECKS[check](config) ?? []);
+  const reasons = config.policy.requiredChecks.flatMap((check) => EVIDENCE_CHECKS[check](config) ?? []);
+  if (readArtifact(config, "runtime_health.json")?.summary.status === "incomplete") {
+    reasons.push("Configured runtime evidence did not complete.");
+  }
+  return reasons;
 }
 
 function testEvidenceReason(config: Config): string | null {

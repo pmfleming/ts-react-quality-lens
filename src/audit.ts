@@ -3,7 +3,7 @@ import { analysisConfidence, createAnalysisContext } from "./analysis-context.js
 import { analysisIdentity, artifactBase, sourceSetHash } from "./provenance.js";
 import { writeArtifact } from "./writer.js";
 import { baseSnapshotFindingIds, readBaselineIds, writeBaseline } from "./audit/baseline.js";
-import { changedFilesSince, changedLineRangesSince, defaultBase, type LineRange } from "./audit/change-set.js";
+import { changeSetSince, defaultBase, type LineRange } from "./audit/change-set.js";
 import auditMarkdown from "./audit/render.js";
 import {
   auditVerdict,
@@ -29,6 +29,9 @@ type AuditScope = {
   gate: "new-only" | "all";
   changedFiles: string[];
   changedLines: Map<string, LineRange[]>;
+  diffAvailable: boolean;
+  comparisonBase: string | null;
+  incompleteReasons: string[];
 };
 
 type FindingSets = {
@@ -39,16 +42,19 @@ type FindingSets = {
 };
 
 export function runAudit(config: Config, command: string, options: AuditOptions = {}): AuditArtifact {
-  const context = createAnalysisContext(config);
   const scope = auditScope(config, options);
+  config = { ...config, audit: { ...config.audit, base: scope.base, changedSince: scope.base } };
+  const context = createAnalysisContext(config);
   runAuditMeasurements(config, command, context, true);
   const baselineIds = readBaselineIds(options.baseline ?? config.audit.baseline);
-  const baseSnapshot = scope.base ? baseSnapshotFindingIds(config, scope.base, command, baselineIds) : null;
+  const baseSnapshot = scope.comparisonBase ? baseSnapshotFindingIds(config, scope.comparisonBase, command, baselineIds) : null;
   const baseSnapshotCompatible = baseSnapshot
     ? baseSnapshot.analysisIdentity.id === analysisIdentity(config).id
     : null;
   const baseIds = baseSnapshotCompatible ? baseSnapshot?.findingIds ?? null : null;
   const sets = findingSets(config, scope, baselineIds, baseIds);
+  sets.incompleteReasons.push(...scope.incompleteReasons);
+  if (scope.diffAvailable && !baseSnapshot) sets.incompleteReasons.push("Base snapshot analysis is unavailable.");
   if (baseSnapshot && baseSnapshotCompatible === false) {
     sets.incompleteReasons.push("Base snapshot analysis identity differs from the current compiler, config, ruleset, or integration identity.");
   }
@@ -60,11 +66,15 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
 
 function auditScope(config: Config, options: AuditOptions): AuditScope {
   const base = options.changedSince ?? options.base ?? config.audit.changedSince ?? config.audit.base ?? defaultBase(config);
+  const changes = base ? changeSetSince(config, base) : null;
   return {
     base,
     gate: options.gate ?? config.audit.gate,
-    changedFiles: base ? changedFilesSince(config, base) : [],
-    changedLines: base ? changedLineRangesSince(config, base) : new Map<string, LineRange[]>(),
+    changedFiles: changes?.files ?? [],
+    changedLines: changes?.lines ?? new Map<string, LineRange[]>(),
+    diffAvailable: changes?.complete === true,
+    comparisonBase: changes?.comparisonBase ?? null,
+    incompleteReasons: changes?.reason ? [changes.reason] : [],
   };
 }
 
@@ -84,6 +94,7 @@ function findingSets(
     ...collectFindings(config, {
       changedFiles: scope.changedFiles,
       changedLines: scope.changedLines,
+      diffAvailable: scope.diffAvailable,
       baselineIds,
       baseFindingIds,
     }),

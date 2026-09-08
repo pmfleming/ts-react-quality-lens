@@ -109,9 +109,14 @@ function parseCompilerConfig(ts: typeof tsTypes, config: Config): ParsedConfigRe
       ]),
     };
   }
-  return {
-    parsed: ts.parseJsonConfigFileContent(parsedJson.config, ts.sys, path.dirname(configPath), {}, configPath),
-  };
+  const parsed = ts.parseJsonConfigFileContent(parsedJson.config, ts.sys, path.dirname(configPath), {}, configPath);
+  if (parsed.errors.length) {
+    return {
+      failure: unloadedProject(true, "TypeScript configuration is invalid", parsed.errors.map((diagnostic) =>
+        diagnosticRecord(ts, diagnostic, config.projectRoot))),
+    };
+  }
+  return { parsed };
 }
 
 function createTypedProject(

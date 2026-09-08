@@ -144,7 +144,7 @@ export function loadConfig(configArg?: string | null): Config {
     accessibility: normalizeAccessibility(rawConfig.accessibility),
     cleanup: normalizeCleanup(rawConfig.cleanup),
     typeCoverage: normalizeTypeCoverage(configDir, rawConfig.type_coverage),
-    packageHealth: normalizePackageHealth(rawConfig.package_health, rawConfig.policy?.profile),
+    packageHealth: normalizePackageHealth(rawConfig.package_health, rawConfig.policy),
     sarifInputs: normalizeSarifInputs(configDir, rawConfig.sarif_inputs),
     workspaces: normalizeWorkspaces(rawConfig.workspaces),
     runtimeInputs: normalizeRuntimeInputs(configDir, rawConfig.runtime_inputs),
@@ -414,9 +414,9 @@ function normalizeTypeCoverage(configDir: string, value: TypeCoverageConfig | un
   };
 }
 
-function normalizePackageHealth(value: PackageHealthConfig | undefined, profile: PolicyProfile | undefined): Config["packageHealth"] {
+function normalizePackageHealth(value: PackageHealthConfig | undefined, policy: PolicyConfig | undefined): Config["packageHealth"] {
   return {
-    enabled: value?.enabled ?? profile === "library",
+    enabled: value?.enabled ?? (policy?.profile === "library" || policy?.required_checks?.includes("package") === true),
     attwProfile: value?.attw_profile ?? "strict",
   };
 }

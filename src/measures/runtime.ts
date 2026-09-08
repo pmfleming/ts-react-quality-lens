@@ -76,8 +76,12 @@ function parseRuntimeInput(config: Config, input: RuntimeInput): { name: string;
   }
 }
 function profilerRecords(config: Config, value: unknown): ScoredRecord[] {
-  const commits = Array.isArray(value) ? value : isRecord(value) && Array.isArray(value.commits) ? value.commits : [];
-  return commits.flatMap((commit, index) => optionalRecord(profilerRecord(config, commit, index)));
+  const commits = Array.isArray(value) ? value : requiredArray(value, "commits");
+  return commits.map((commit, index) => {
+    const record = profilerRecord(config, commit, index);
+    if (!record) throw new Error(`Invalid profiler commit at index ${index}: a finite duration is required.`);
+    return record;
+  });
 }
 function profilerRecord(config: Config, value: unknown, index: number): ScoredRecord | null {
   if (!isRecord(value)) return null;
@@ -109,8 +113,14 @@ function profilerRecord(config: Config, value: unknown, index: number): ScoredRe
   };
 }
 function axeRecords(_config: Config, value: unknown): ScoredRecord[] {
-  const violations = isRecord(value) && Array.isArray(value.violations) ? value.violations : [];
-  return violations.flatMap((violation, violationIndex) => axeViolationRecords(violation, violationIndex));
+  const violations = requiredArray(value, "violations");
+  return violations.flatMap((violation, violationIndex) => {
+    if (!isRecord(violation) || typeof violation.id !== "string" ||
+        !Array.isArray(violation.nodes) || !violation.nodes.every(isRecord)) {
+      throw new Error(`Invalid axe violation at index ${violationIndex}.`);
+    }
+    return axeViolationRecords(violation, violationIndex);
+  });
 }
 function axeViolationRecords(value: unknown, violationIndex: number): ScoredRecord[] {
   if (!isRecord(value)) return [];
@@ -146,15 +156,24 @@ function axeScore(impact: string): number {
   return { critical: 100, serious: 75, moderate: 50, minor: 25 }[impact] ?? 25;
 }
 function reactDoctorRecords(config: Config, value: unknown): ScoredRecord[] {
-  return reactDoctorDiagnostics(value).flatMap((diagnostic, index) =>
-    optionalRecord(reactDoctorRecord(config, diagnostic, index)));
+  return reactDoctorDiagnostics(value).map((diagnostic, index) => {
+    if (!isRecord(diagnostic) || typeof diagnostic.rule !== "string") {
+      throw new Error(`Invalid React Doctor diagnostic at index ${index}.`);
+    }
+    const record = reactDoctorRecord(config, diagnostic, index);
+    if (!record) throw new Error(`Invalid React Doctor diagnostic at index ${index}.`);
+    return record;
+  });
 }
 function reactDoctorDiagnostics(value: unknown): unknown[] {
-  if (!isRecord(value)) return [];
-  if (Array.isArray(value.diagnostics)) return value.diagnostics;
-  if (!Array.isArray(value.projects)) return [];
-  return value.projects.flatMap((project): unknown[] =>
-    isRecord(project) && Array.isArray(project.diagnostics) ? project.diagnostics : []);
+  if (isRecord(value) && Array.isArray(value.diagnostics)) return value.diagnostics;
+  return requiredArray(value, "projects").flatMap((project) => requiredArray(project, "diagnostics"));
+}
+function requiredArray(value: unknown, property: string): unknown[] {
+  if (!isRecord(value) || !Array.isArray(value[property])) {
+    throw new Error(`Unsupported runtime input: expected an array at ${property}.`);
+  }
+  return value[property];
 }
 function reactDoctorRecord(config: Config, value: unknown, index: number): ScoredRecord | null {
   if (!isRecord(value)) return null;
