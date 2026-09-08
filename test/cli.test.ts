@@ -120,9 +120,9 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(map.nodes.length > 0);
   assert.ok(map.edges.length > 0);
   assert.equal(map.meta?.risk_model_id, "tsrqlens.architecture_risk");
-  assert.equal(map.meta?.risk_model_version, 2);
+  assert.equal(map.meta?.risk_model_version, 3);
   assert.ok(map.nodes.every((node) => node.risk_model_id === "tsrqlens.architecture_risk"));
-  assert.ok(map.nodes.every((node) => node.risk_model_version === 2));
+  assert.ok(map.nodes.every((node) => node.risk_model_version === 3));
   assert.ok(map.nodes.every((node) => Array.isArray(node.unknown_metrics)));
   assert.ok(Object.entries(map.summary.artifact_status ?? {}).every(([name, status]) => name === "performance" || status === "available"));
   assert.equal(map.summary.unknown_metric_nodes, 0);

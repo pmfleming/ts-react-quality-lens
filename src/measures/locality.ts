@@ -3,13 +3,14 @@ import { gitHistory } from "../history.js";
 import { riskForScore } from "../risk-model.js";
 import { escapeRecords, hiddenCouplingSignals } from "../scoring.js";
 import { readArtifact } from "../writer.js";
+import { directTestSources } from "../test-mapping.js";
 import { writeQualityArtifact } from "./quality-artifact.js";
 import type { AnalysisContext, Config, ModuleRecord, ScoredRecord } from "../types.js";
 
 export function measureLocality(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const testCatalog = readArtifact(config, "test_catalog.json");
-  const testEvidence = new Set((testCatalog?.tests ?? []).flatMap((test) => test.source_mapping ?? []));
+  const testEvidence = new Set((testCatalog?.tests ?? []).flatMap(directTestSources));
   const history = gitHistory(config);
   const records = project.modules.map((module) => {
     const farImports = module.imports.filter((edge) => edge.to_kind === "relative" && edge.specifier.startsWith("../../"));
@@ -29,7 +30,8 @@ export function measureLocality(config: Config, command: string, context: Analys
       risk: riskForScore(score),
       dependency_distance: farImports.length,
       hidden_coupling: hiddenCoupling,
-      test_locality: hasTestEvidence ? "direct_evidence" : "no_evidence",
+      test_locality: hasTestEvidence ? "direct_import_association" : "no_direct_import_association",
+      coverage_status: "not_collected",
       churn: { commits: historyRecord.commits, contributors: historyRecord.contributors },
       defect_commits: historyRecord.defect_commits,
       cochange_partners: historyRecord.cochange_partners,

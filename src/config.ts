@@ -114,6 +114,7 @@ export function loadConfig(configArg?: string | null): Config {
     ? { name: rawConfig.package_manager, detected: rawConfig.package_manager !== "unknown" }
     : detectPackageManager(root);
   const tsconfig = resolveOptional(configDir, rawConfig.tsconfig) ?? autoPath(root, "tsconfig.json");
+  const testCommand = configuredTestCommand(rawConfig, packageJson, packageManager.name);
 
   return {
     configPath,
@@ -128,7 +129,7 @@ export function loadConfig(configArg?: string | null): Config {
     packageManagerDetected: packageManager.detected,
     framework: normalizeAuto(rawConfig.framework, () => detectFramework(root, packageJson)),
     testRunner: normalizeAuto(rawConfig.test_runner, () => detectTestRunner(root, packageJson)),
-    testCommand: rawConfig.test_command ?? packageJson?.scripts?.test ?? null,
+    testCommand,
     exclude: [...DEFAULT_EXCLUDES, ...(rawConfig.exclude ?? [])],
     layerRules: normalizeLayerRules(rawConfig.layer_rules),
     performanceInputs: normalizePerformanceInputs(configDir, rawConfig.performance_inputs),
@@ -142,7 +143,7 @@ export function loadConfig(configArg?: string | null): Config {
     sarifInputs: normalizeSarifInputs(configDir, rawConfig.sarif_inputs),
     workspaces: normalizeWorkspaces(rawConfig.workspaces),
     runtimeInputs: normalizeRuntimeInputs(configDir, rawConfig.runtime_inputs),
-    policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(rawConfig.test_command ?? packageJson?.scripts?.test)),
+    policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(testCommand)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
     pathAliases: tsconfig ? readPathAliases(tsconfig) : [],
@@ -380,6 +381,13 @@ function normalizeRuntimeInputs(configDir: string, value: RuntimeInputConfig | u
     axe: value?.axe ? path.resolve(configDir, value.axe) : null,
     reactDoctor: value?.react_doctor ? path.resolve(configDir, value.react_doctor) : null,
   };
+}
+
+function configuredTestCommand(raw: RawConfig, manifest: PackageJson | null, manager: string): string | null {
+  if (Object.prototype.hasOwnProperty.call(raw, "test_command")) return raw.test_command ?? null;
+  if (!manifest?.scripts?.test) return null;
+  const executable = ["npm", "pnpm", "yarn", "bun"].includes(manager) ? manager : "npm";
+  return `${executable} run test`;
 }
 
 function normalizePolicy(value: PolicyConfig | undefined, hasTsconfig: boolean, hasTestCommand: boolean): Config["policy"] {

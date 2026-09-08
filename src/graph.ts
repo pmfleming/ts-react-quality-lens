@@ -1,6 +1,7 @@
 import path from "node:path";
 import { dedupeBy, groupBy } from "./collections.js";
 import { isTestPath, toPosix } from "./files.js";
+import { directTestSources } from "./test-mapping.js";
 import {
   architectureRiskScores,
   riskForScore,
@@ -8,9 +9,9 @@ import {
   type ArtifactFreshnessLookup,
   type RiskArtifactLookup,
 } from "./risk-model.js";
-import type { Config, DependencyCruiserDependency, DependencyCruiserModule, ImportRecord, ModuleRecord, ScoredRecord } from "./types.js";
+import type { Config, DependencyCruiserDependency, DependencyCruiserModule, ImportRecord, ModuleRecord } from "./types.js";
 
-type ArtifactLookup = RiskArtifactLookup & Record<string, { records?: ScoredRecord[]; tests?: Array<{ source_mapping?: string[] }> } | null>;
+type ArtifactLookup = RiskArtifactLookup;
 
 export function mapNode(
   module: ModuleRecord,
@@ -48,6 +49,11 @@ export function mapNode(
       components: module.components.length,
       types: module.types.length,
       entrypoint_roles: module.entrypointRoles.length,
+    },
+    test_evidence: {
+      direct_import_association: correctnessFiles.has(module.file),
+      suite_status: artifacts.correctness?.execution?.status ?? "unknown",
+      coverage_status: "not_collected",
     },
   };
 }
@@ -249,7 +255,7 @@ function stripSourceExtension(value: string): string {
 function correctnessMap(artifact: ArtifactLookup["correctness"] | undefined): Set<string> {
   const result = new Set<string>();
   for (const test of artifact?.tests ?? []) {
-    for (const file of test.source_mapping ?? []) result.add(file);
+    for (const file of directTestSources(test)) result.add(file);
   }
   return result;
 }

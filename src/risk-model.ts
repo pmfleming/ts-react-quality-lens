@@ -1,10 +1,10 @@
-import type { ModuleRecord, RiskLevel, ScoredRecord } from "./types.js";
+import type { ModuleRecord, RiskLevel, ScoredRecord, TestAssociation } from "./types.js";
 
 export type ArtifactFreshness = "available" | "missing" | "stale";
 
 export type RiskArtifact = {
   records?: ScoredRecord[];
-  tests?: Array<{ source_mapping?: string[] }>;
+  tests?: Array<{ source_mapping?: string[]; source_associations?: TestAssociation[] }>;
   execution?: { status?: string };
 } | null;
 
@@ -43,8 +43,8 @@ type ArchitectureRiskScores = NamedRiskScores & {
 
 export const RISK_MODEL = Object.freeze({
   id: "tsrqlens.architecture_risk",
-  version: 2,
-  calibration: "v2-multi-complexity-static-analysis",
+  version: 3,
+  calibration: "v3-explicit-test-evidence-and-quality-inputs",
   thresholds: Object.freeze({
     warning: 35,
     bad: 70,
@@ -135,7 +135,7 @@ export function architectureRiskScores(
     ),
   );
   const quality = compositeScore(
-    ["escape_hatches", "type_health"],
+    ["escape_hatches", "type_health", "lint", "cleanup"],
     unknownMetrics,
     artifactStatus,
     (name) => maxScoreFor(artifacts[name]?.records, module.file),
@@ -168,7 +168,7 @@ export function architectureRiskScores(
     quality_risk: quality,
     total_score: categoryScores.total,
     risk_score: riskScore,
-    classification: classifyRiskScore(categoryScores.total ?? riskScore),
+    classification: classifyRiskScore(categoryScores.total),
     unknown_metrics: unknownMetrics,
   };
 }
@@ -184,7 +184,9 @@ function availableScore(
     unknownMetrics.push(`${artifactName}:${status}`);
     return null;
   }
-  return compute();
+  const score = compute();
+  if (score === null) unknownMetrics.push(`${artifactName}:no_measured_evidence`);
+  return score;
 }
 
 function compositeScore(
@@ -204,6 +206,7 @@ function compositeScore(
 function correctnessScore(artifact: RiskArtifact | undefined, file: string, correctnessFiles: Set<string>): number | null {
   if (!artifact) return null;
   if (artifact.execution?.status === "failed") return RISK_MODEL.tool_scores.failing_test_run;
+  if (artifact.execution?.status !== "passed") return null;
   return correctnessFiles.has(file) ? 0 : RISK_MODEL.tool_scores.missing_direct_test_evidence;
 }
 
@@ -216,9 +219,10 @@ function weightedTotal(scores: Record<string, number | null>): number | null {
 }
 
 function maxScoreFor(records: ScoredRecord[] = [], file: string): number | null {
-  const candidates = records.filter((record) => record.file === file || record.files?.includes(file));
+  const candidates = records.filter((record) => !record.suppressed &&
+    (record.scope === "project" || record.file === file || record.files?.includes(file)));
   if (!candidates.length) return 0;
-  return Math.max(0, ...candidates.map((record) => severityScore(record.severity) ?? record.score ?? 0));
+  return Math.max(0, ...candidates.map((record) => Math.max(severityScore(record.severity) ?? 0, record.score ?? 0)));
 }
 
 function severityScore(severity: unknown): number | null {

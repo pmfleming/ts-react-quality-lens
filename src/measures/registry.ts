@@ -1,4 +1,4 @@
-import { measureArchitectureMap } from "./architecture.js";
+import { ARCHITECTURE_INPUTS, measureArchitectureMap } from "./architecture.js";
 import { measureClones } from "./clones.js";
 import { measureCleanup } from "./cleanup.js";
 import { measureCorrectnessCatalog } from "./correctness.js";
@@ -57,18 +57,7 @@ export const MEASURE_TASKS = new Map<string, MeasureTask>(
       "map.architecture",
       {
         handler: measureArchitectureMap,
-        prerequisites: [
-          "quality.hotspots",
-          "quality.escape_hatches",
-          "quality.type_health",
-          "quality.lint",
-          "quality.dependency_health",
-          "correctness.catalog",
-          "quality.locality_dynamic",
-          "quality.locality_leverage",
-          "quality.react_health",
-          "quality.cleanup",
-        ],
+        prerequisites: ARCHITECTURE_INPUTS.map((input) => input.task),
       },
     ],
   ],

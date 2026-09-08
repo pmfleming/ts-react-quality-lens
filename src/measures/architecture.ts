@@ -3,6 +3,7 @@ import { groupMapNodes, mapNode } from "../graph.js";
 import { analysisIdentity, artifactBase, sourceSetHash, taskInputHash } from "../provenance.js";
 import { readArtifact, writeArtifact } from "../writer.js";
 import { isRecord, parseJson } from "../collections.js";
+import { directTestSources } from "../test-mapping.js";
 import { RISK_MODEL, type ArtifactFreshness, type ArtifactFreshnessLookup, type RiskArtifact } from "../risk-model.js";
 import type { AnalysisContext, Config, JsonValue } from "../types.js";
 import fs from "node:fs";
@@ -16,24 +17,30 @@ type MapInputArtifact = RiskArtifact & {
   };
 };
 
+export const ARCHITECTURE_INPUTS = [
+  { name: "hotspots", task: "quality.hotspots", artifact: "hotspots.json" },
+  { name: "clones", task: "quality.clones", artifact: "clones.json" },
+  { name: "escape_hatches", task: "quality.escape_hatches", artifact: "ts_escape_hatches.json" },
+  { name: "type_health", task: "quality.type_health", artifact: "type_health.json" },
+  { name: "lint", task: "quality.lint", artifact: "lint_health.json" },
+  { name: "dependency_health", task: "quality.dependency_health", artifact: "dependency_health.json" },
+  { name: "correctness", task: "correctness.catalog", artifact: "correctness_review.json" },
+  { name: "locality", task: "quality.locality_dynamic", artifact: "locality_metrics.json" },
+  { name: "leverage", task: "quality.locality_leverage", artifact: "leverage_metrics.json" },
+  { name: "react_health", task: "quality.react_health", artifact: "react_health.json" },
+  { name: "cleanup", task: "quality.cleanup", artifact: "cleanup.json" },
+] as const;
+
 export function measureArchitectureMap(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const currentSourceHash = sourceSetHash(project);
   const artifacts: Record<string, MapInputArtifact | null> = {
-    hotspots: readArtifact(config, "hotspots.json"),
-    clones: readArtifact(config, "clones.json"),
-    escape_hatches: readArtifact(config, "ts_escape_hatches.json"),
-    type_health: readArtifact(config, "type_health.json"),
-    dependency_health: readArtifact(config, "dependency_health.json"),
-    correctness: readArtifact(config, "correctness_review.json"),
-    locality: readArtifact(config, "locality_metrics.json"),
-    leverage: readArtifact(config, "leverage_metrics.json"),
-    react_health: readArtifact(config, "react_health.json"),
+    ...Object.fromEntries(ARCHITECTURE_INPUTS.map((input) => [input.name, readArtifact(config, input.artifact)])),
     performance: readPerformanceInputs(config),
   };
   const correctnessFiles = new Set<string>();
   for (const test of artifacts.correctness?.tests ?? []) {
-    for (const file of test.source_mapping ?? []) correctnessFiles.add(file);
+    for (const file of directTestSources(test)) correctnessFiles.add(file);
   }
   const artifactStatus = artifactFreshness(config, artifacts, currentSourceHash);
   const nodes = project.modules.map((module) => mapNode(module, artifacts, artifactStatus, correctnessFiles));

@@ -1,6 +1,7 @@
 import childProcess from "node:child_process";
 import path from "node:path";
 import { toPosix } from "./files.js";
+import { stableHash } from "./clone-utils.js";
 import type { Config } from "./types.js";
 
 type ChurnAccumulator = { commits: number; contributors: number; contributor_names: Set<string> };
@@ -17,15 +18,7 @@ type GitHistoryRecord = ChurnRecord & {
 export function gitHistory(config: Config): Map<string, GitHistoryRecord> {
   const result = new Map<string, HistoryAccumulator>();
   try {
-    const scopedRoots = config.sourceRoots.map((root) => toPosix(path.relative(config.projectRoot, root))).filter(Boolean);
-    const args = ["log", "--name-only", "--format=commit:%H%x1f%an%x1f%s", "--since=2 years ago"];
-    if (scopedRoots.length) args.push("--", ...scopedRoots);
-    const output = childProcess.execFileSync("git", args, {
-      cwd: config.projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 30000,
-    });
+    const output = historyOutput(config);
     for (const commit of parseGitCommits(output)) addCommitHistory(result, commit);
   } catch {
     return new Map();
@@ -43,6 +36,21 @@ export function gitHistory(config: Config): Map<string, GitHistoryRecord> {
     });
   }
   return compact;
+}
+
+export function gitHistoryFingerprint(config: Config): string {
+  try { return stableHash(historyOutput(config)); }
+  catch { return "unavailable"; }
+}
+
+function historyOutput(config: Config): string {
+  const scopedRoots = config.sourceRoots.map((root) => toPosix(path.relative(config.projectRoot, root))).filter(Boolean);
+  const args = ["log", "--relative", "--name-only", "--format=commit:%H%x1f%an%x1f%s", "--since=2 years ago"];
+  if (scopedRoots.length) args.push("--", ...scopedRoots);
+  return childProcess.execFileSync("git", args, {
+    cwd: config.projectRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    timeout: 30000, maxBuffer: 64 * 1024 * 1024,
+  });
 }
 
 function addCommitHistory(

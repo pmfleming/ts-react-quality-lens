@@ -556,7 +556,15 @@ export type AuditArtifact = Artifact & {
   findings: AuditFinding[];
 };
 
+export type TestAssociation = {
+  file: string;
+  kind: "filename" | "direct-import" | "type-only-import";
+  confidence: FindingConfidence;
+};
+
 export type TestRecord = {
+  source_associations?: TestAssociation[];
+  coverage_status?: "not_collected";
   id: string;
   name: string;
   path: string;

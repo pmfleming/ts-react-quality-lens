@@ -2,6 +2,7 @@ import { analysisConfidence, createAnalysisContext } from "../analysis-context.j
 import { runTestCommand, testRecord } from "../correctness.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
+import { createTestMapper } from "../test-mapping.js";
 import type { AnalysisContext, Config, ScoredRecord, TestExecution } from "../types.js";
 
 export function measureCorrectnessCatalog(
@@ -11,13 +12,16 @@ export function measureCorrectnessCatalog(
   context: AnalysisContext = createAnalysisContext(config),
 ) {
   const project = context.project();
-  const tests = project.testFiles.map((file) => testRecord(config, file, project.modules));
+  const mapper = createTestMapper(config, project.modules);
+  const tests = project.testFiles.map((file) => testRecord(config, file, project.modules, mapper));
   const execution: TestExecution = runTests ? runTestCommand(config) : { status: "not_run", command: config.testCommand };
   const summary = {
     tests: tests.length,
     colocated_tests: tests.filter((test) => test.locality === "colocated").length,
     external_tests: tests.filter((test) => test.locality !== "colocated").length,
     execution_status: execution.status,
+    execution_scope: "suite",
+    coverage_status: "not_collected",
   };
   const records = executionFindings(execution);
   const review = {
@@ -42,6 +46,8 @@ export function measureCorrectnessCatalog(
       path: test.path,
       framework: test.framework,
       source_mapping: test.source_mapping,
+      source_associations: test.source_associations,
+      coverage_status: test.coverage_status,
       status: "not_run",
       suite_status: execution.status,
       command_hint: config.testCommand,

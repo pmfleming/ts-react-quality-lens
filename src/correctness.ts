@@ -1,29 +1,28 @@
 import childProcess from "node:child_process";
 import path from "node:path";
 import { isRecord } from "./collections.js";
-import { countMatches } from "./collections.js";
+import * as ts from "typescript";
+import { createTestMapper } from "./test-mapping.js";
 import type { Config, ModuleRecord, SourceFileRecord, TestExecution, TestRecord } from "./types.js";
 
-export function testRecord(config: Config, file: SourceFileRecord, modules: ModuleRecord[]): TestRecord {
-  const sameStem = file.relativePath
-    .replace(/(?:\.test|\.spec|\.e2e)?\.[cm]?[jt]sx?$/, "")
-    .replace(/\/__tests__\//, "/");
-  const sourceMapping = [...new Set([
-    ...modules
-      .filter((module) => sameStem.endsWith(module.id) || module.id.endsWith(path.basename(sameStem)))
-      .map((module) => module.file),
-    ...importedSourceMappings(file, modules),
-  ])];
+export function testRecord(
+  config: Config,
+  file: SourceFileRecord,
+  modules: ModuleRecord[],
+  mapper = createTestMapper(config, modules),
+): TestRecord {
+  const { source, associations } = mapper(file);
+  const sourceMapping = [...new Set(associations.filter((item) => item.kind !== "type-only-import").map((item) => item.file))];
   return {
     id: `test:${file.relativePath}`,
     name: path.basename(file.relativePath),
     path: file.relativePath,
     framework: inferTestFramework(config, file.text),
-    locality: sourceMapping.length > 0 ? "colocated" : "external",
+    locality: associations.some((item) => item.kind === "filename") ? "colocated" : "external",
     source_mapping: sourceMapping,
-    assertions: countMatches(file.text, /\b(?:expect|assert|should)\s*(?:\(|\.)/g),
-    skipped: countMatches(file.text, /\b(?:it|test|describe)\.skip\s*\(/g),
-    todo: countMatches(file.text, /\b(?:it|test)\.todo\s*\(/g),
+    source_associations: associations,
+    coverage_status: "not_collected",
+    ...testSyntaxCounts(source),
   };
 }
 
@@ -36,6 +35,8 @@ export function runTestCommand(config: Config): TestExecution {
       encoding: "utf8",
       stdio: "pipe",
       timeout: 120000,
+      env: { ...process.env, PATH: `${path.join(config.projectRoot, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}` },
+      maxBuffer: 16 * 1024 * 1024,
     });
     return { status: "passed", command: config.testCommand };
   } catch (error) {
@@ -50,17 +51,22 @@ export function runTestCommand(config: Config): TestExecution {
   }
 }
 
-function importedSourceMappings(file: SourceFileRecord, modules: ModuleRecord[]): string[] {
-  const moduleById = new Map(modules.map((module) => [module.id, module.file]));
-  return [...file.text.matchAll(/\b(?:from\s+|import\s*\(\s*)["'](\.{1,2}\/[^"']+)["']/g)].flatMap((match) => {
-    const specifier = match[1];
-    if (!specifier) return [];
-    const resolved = path.posix
-      .normalize(path.posix.join(path.posix.dirname(file.relativePath), specifier))
-      .replace(/\.[cm]?[jt]sx?$/, "");
-    const source = moduleById.get(resolved);
-    return source ? [source] : [];
-  });
+function testSyntaxCounts(source: ts.SourceFile): Pick<TestRecord, "assertions" | "skipped" | "todo"> {
+  const counts = { assertions: 0, skipped: 0, todo: 0 };
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const expression = node.expression;
+      const root = ts.isPropertyAccessExpression(expression) ? expression.expression : expression;
+      if (ts.isIdentifier(root) && ["expect", "assert", "should"].includes(root.text)) counts.assertions += 1;
+      if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(root) && ["it", "test", "describe"].includes(root.text)) {
+        if (expression.name.text === "skip") counts.skipped += 1;
+        if (expression.name.text === "todo" && root.text !== "describe") counts.todo += 1;
+      }
+    }
+    node.forEachChild(visit);
+  };
+  visit(source);
+  return counts;
 }
 
 function inferTestFramework(config: Config, text: string): string {

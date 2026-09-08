@@ -6,6 +6,7 @@ import * as ts from "typescript";
 import { executablePackageVersion, toolPackageVersion } from "./integrations/tool-runner.js";
 import { LENS_NAME, SCHEMA_VERSION } from "./tasks.js";
 import { discoverWorkspaces } from "./workspaces.js";
+import { gitHistoryFingerprint } from "./history.js";
 import type { AnalysisIdentity, Confidence, Config, ProjectAnalysis } from "./types.js";
 
 function provenance(command: string, sourceType = "static") {
@@ -64,6 +65,8 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   const rulesets = {
     builtin: "tsrqlens-analysis-v2",
     finding_identity: "semantic-occurrence-v1",
+    test_mapping: "compiler-imports-v1",
+    architecture: "risk-model-v3",
     typed_lint: "tsrqlens-typescript-recommended-v1",
     react: config.react.ruleset,
     accessibility: "jsx-a11y-recommended-v1",
@@ -140,7 +143,7 @@ export function taskInputHash(config: Config, taskId: string, sourceHash: string
   return contentHash(files.filter((file): file is string => file !== null).map((file) => ({
     relativePath: path.relative(config.projectRoot, file),
     text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing",
-  })), [sourceHash, identity.id, taskId]);
+  })), [sourceHash, identity.id, taskId, ...(taskId === "quality.locality_dynamic" ? [gitHistoryFingerprint(config)] : [])]);
 }
 
 function collectCompilerConfigInputs(
