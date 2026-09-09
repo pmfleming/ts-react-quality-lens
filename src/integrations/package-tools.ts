@@ -5,6 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { isRecord, parseJson } from "../collections.js";
+import { resolveNpmCli } from "./npm-cli.js";
 import type { AttwProblem, Config, PackageHealthResult, PackageToolStatus, PublintMessage } from "../types.js";
 import {
   runLocalTool,
@@ -85,8 +86,8 @@ function packProject(config: Config, tempDir: string): {
 } {
   const startedAt = Date.now();
   try {
-    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-    const stdout = childProcess.execFileSync(npm, [
+    const stdout = childProcess.execFileSync(process.execPath, [
+      resolveNpmCli(),
       "pack",
       "--ignore-scripts",
       "--json",

@@ -419,7 +419,7 @@ test("library profile validates declaration emit, packed files, and type resolut
   assert.equal(config.packageHealth.enabled, true);
   assert.ok(config.policy.requiredChecks.includes("package"));
   const [artifact] = runMeasure(config, "quality.package_health", "test package health") as [ToolArtifact];
-  assert.equal(artifact.summary.complete, true);
+  assert.equal(artifact.summary.complete, true, JSON.stringify(artifact.tool_status, null, 2));
   assert.equal(requiredToolStatus(artifact, "declaration_emit").complete, true);
   assert.equal(requiredToolStatus(artifact, "npm_pack").complete, true);
   assert.equal(requiredToolStatus(artifact, "publint").complete, true);
