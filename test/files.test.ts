@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { loadConfig } from "../src/config.js";
 import { normalizeImportPath } from "../src/files.js";
+import { measureCorrectnessCatalog } from "../src/measures/correctness.js";
 import type { Config } from "../src/types.js";
 
 function fixture(run: (root: string, config: Config) => void): void {
@@ -29,6 +30,34 @@ test("import resolution accepts exact aliases and empty wildcard matches without
   }
   for (const specifier of ["@app/other", "@missing", "unrelated"]) {
     assert.deepEqual(resolve(specifier), { kind: "external", id: specifier, resolved: null });
+  }
+}));
+
+test("test classification ignores checkout ancestors while preserving project-local test paths", () => fixture((root) => {
+  for (const parent of ["ordinary", "test", "tests", "spec", "e2e", "cypress", "__tests__"]) {
+    const projectRoot = path.join(root, parent, "app");
+    fs.mkdirSync(path.join(projectRoot, "src/__tests__"), { recursive: true });
+    fs.mkdirSync(path.join(projectRoot, "tests"));
+    fs.writeFileSync(path.join(projectRoot, "src/index.ts"), "export const production = true;\n");
+    fs.writeFileSync(path.join(projectRoot, "src/index.test.ts"), 'import "./index.js";\n');
+    fs.writeFileSync(path.join(projectRoot, "src/__tests__/nested.ts"), 'import "../index.js";\n');
+    fs.writeFileSync(path.join(projectRoot, "tests/integration.ts"), 'import "../src/index.js";\n');
+    const config = loadConfig(path.join(projectRoot, "lens.json"));
+    for (const status of ["miss", "hit"]) {
+      const context = createAnalysisContext(config);
+      const project = context.project();
+      assert.equal(project.cache.status, status, parent);
+      assert.deepEqual(project.sourceFiles.map((file) => file.relativePath), ["src/index.ts"], parent);
+      assert.deepEqual(project.testFiles.map((file) => file.relativePath), [
+        "src/__tests__/nested.ts", "src/index.test.ts", "tests/integration.ts",
+      ], parent);
+      assert.ok(project.sourceFiles.every((file) => !file.isTest), parent);
+      assert.ok(project.modules.every((module) => !module.sourceFile.isTest), parent);
+      assert.ok(project.testFiles.every((file) => file.isTest), parent);
+      const catalog = measureCorrectnessCatalog(config, "test", false, context);
+      assert.equal(catalog.summary.tests, 3, parent);
+      assert.ok(catalog.tests.every((test) => test.path !== "src/index.ts"), parent);
+    }
   }
 }));
 

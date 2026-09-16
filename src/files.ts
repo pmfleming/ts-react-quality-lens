@@ -18,7 +18,7 @@ export function discoverTestFiles(config: Config): string[] {
   for (const root of config.testRoots) {
     if (fs.existsSync(root)) walk(root, config, files, true);
   }
-  return unique(files).filter((file) => isTestPath(file)).sort();
+  return unique(files).filter((file) => isTestPath(path.relative(config.projectRoot, file))).sort();
 }
 
 export function readSourceFile(file: string, projectRoot: string): SourceFileRecord {
@@ -29,7 +29,7 @@ export function readSourceFile(file: string, projectRoot: string): SourceFileRec
     text,
     lines: text.split(/\r?\n/),
     extension: path.extname(file),
-    isTest: isTestPath(file),
+    isTest: isTestPath(path.relative(projectRoot, file)),
   };
 }
 

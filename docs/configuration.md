@@ -26,7 +26,7 @@ The default filename is `ts-react-quality-lens.config.json` in the current worki
 | `test_command` | When omitted, infer `<package-manager> run test` if the root manifest has a `test` script. `null` disables inference/execution. A string runs with the project shell. |
 | `exclude` | Adds to built-in excludes; does not replace them. |
 
-Source/test discovery walks directories and accepts `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, and `.cts`; `.mjs` and `.cjs` are not discovered as source files. Tests are recognized by test/spec/e2e filename suffixes or conventional test-directory path segments, and excluded from the source module set.
+Source/test discovery walks directories and accepts `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, and `.cts`; `.mjs` and `.cjs` are not discovered as source files. Tests are recognized by test/spec/e2e filename suffixes or conventional test-directory path segments relative to `project_root`, and excluded from the source module set. Parent directories outside the project do not affect classification.
 
 Framework detection is broader than convention analysis: the built-in convention adapters currently cover generic React, Next.js, Remix, and Storybook signals. Detecting Expo, Astro, or Vite does not imply a comprehensive framework-specific ruleset.
 
