@@ -83,7 +83,7 @@ function normalizeSourcePath(base: string, config: Config) {
 function resolveAliasImportPath(specifier: string, aliases: PathAliasRule[]): string | null {
   for (const alias of aliases) {
     const match = aliasMatch(specifier, alias.pattern);
-    if (!match) continue;
+    if (match === null) continue;
     for (const replacement of alias.replacements) {
       const resolved = resolveSourcePath(replacement.replace("*", match));
       if (resolved) return resolved;

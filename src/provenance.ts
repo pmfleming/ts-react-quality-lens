@@ -67,6 +67,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     finding_identity: "semantic-occurrence-v1",
     sarif: "namespaced-fingerprint-occurrence-v2",
     test_mapping: "compiler-imports-v1",
+    import_resolution: "path-aliases-v2",
     architecture: "risk-model-v3",
     typed_lint: "tsrqlens-typescript-recommended-v1",
     react: config.react.ruleset,
