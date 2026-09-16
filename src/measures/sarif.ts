@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,7 +25,7 @@ type ParsedInput = { status: SarifInputStatus; records: ScoredRecord[] };
 export function measureSarif(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const parsed = config.sarifInputs.map((input) => parseSarifInput(config, input));
-  const records = parsed.flatMap((input) => input.records);
+  const records = uniqueResultIdentities(parsed.flatMap((input) => input.records));
   const requiredKeys = parsed.flatMap((input, index) => input.status.required ? [`sarif_input_${index + 1}_complete`] : []);
   const completionSignals = Object.fromEntries(parsed.map((input, index) => [`sarif_input_${index + 1}_complete`, input.status.complete]));
   const confidence = analysisConfidence(config, project, {
@@ -55,6 +56,16 @@ export function measureSarif(config: Config, command: string, context: AnalysisC
   };
   writeArtifact(config, "sarif_findings.json", artifact);
   return artifact;
+}
+
+function uniqueResultIdentities(records: ScoredRecord[]): ScoredRecord[] {
+  const occurrences = new Map<string, number>();
+  return records.map((record) => {
+    if (record.kind !== "sarif_finding") return record;
+    const occurrence = (occurrences.get(record.id) ?? 0) + 1;
+    occurrences.set(record.id, occurrence);
+    return { ...record, id: `${record.id}:${occurrence}`, occurrence };
+  });
 }
 
 function parseSarifInput(config: Config, input: Config["sarifInputs"][number]): ParsedInput {
@@ -128,14 +139,17 @@ function parseResult(
     ...sarifCodeFlowLocations(config, value.codeFlows),
   ];
   const fingerprints = isRecord(value.partialFingerprints) ? value.partialFingerprints : {};
-  const identity = Object.keys(fingerprints).length
-    ? JSON.stringify(Object.entries(fingerprints).sort(([left], [right]) => left.localeCompare(right)))
-    : `${tool.name}:${ruleId}:${primary?.file ?? "project"}:${primary?.start_line ?? 0}:${message}`;
+  const identity = JSON.stringify([
+    input.name, tool.name, ruleId, primary?.file ?? "project",
+    Object.keys(fingerprints).length
+      ? Object.entries(fingerprints).sort(([left], [right]) => left.localeCompare(right))
+      : [primary?.start_line ?? 0, primary?.start_column ?? 0, message],
+  ]);
   const securitySeverity = isRecord(value.properties) && typeof value.properties["security-severity"] === "string"
     ? value.properties["security-severity"]
     : null;
   return [{
-    id: `sarif:${stableHash(identity)}`,
+    id: `sarif:v2:${crypto.createHash("sha256").update(identity).digest("hex")}`,
     rule_id: `${tool.name}/${ruleId}`,
     kind: "sarif_finding",
     evidence_kind: "tool-rule",

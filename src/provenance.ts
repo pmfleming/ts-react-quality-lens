@@ -65,6 +65,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   const rulesets = {
     builtin: "tsrqlens-analysis-v2",
     finding_identity: "semantic-occurrence-v1",
+    sarif: "namespaced-fingerprint-occurrence-v2",
     test_mapping: "compiler-imports-v1",
     architecture: "risk-model-v3",
     typed_lint: "tsrqlens-typescript-recommended-v1",

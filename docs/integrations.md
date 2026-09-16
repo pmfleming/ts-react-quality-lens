@@ -51,6 +51,8 @@ Valid empty arrays are accepted as complete reports. Missing files, unsupported 
 
 Inputs must have `version: "2.1.0"` and a `runs` array. Normalization retains tool/rule metadata, partial fingerprints, primary/related ranges, code flows, proposed fixes, automation details, and invocation failures where available. Proposed fixes are data only. This is a targeted normalizer, not full validation of every SARIF field.
 
+SARIF result IDs namespace partial fingerprints by input name, scanner, rule, and normalized file. Occurrence suffixes preserve duplicate results; fingerprints remain stable across line movement. Without fingerprints, identity also uses the source position and message. The `sarif:v2:` identity format replaces the earlier fingerprint-only IDs: regenerate SARIF baselines and update ID-based suppressions after upgrading. Analysis identity records this change so old artifacts cannot be treated as compatible snapshots.
+
 SARIF result levels map to `error → block`, `warning → warn`, `note → info`, and `none → review`. Input/invocation failures map to `block` for required inputs and `warn` otherwise. `required: false` makes report production optional; it does **not** downgrade actual error-level findings.
 
 ### Architecture performance inputs
