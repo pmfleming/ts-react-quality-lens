@@ -160,6 +160,71 @@ test("cache invalidates inherited compiler settings and declaration dependencies
   assert.notEqual(analysisIdentity(config).id, before);
 }));
 
+test("cache invalidates compiler root-file additions and removals outside source discovery", () => fixture((root, config) => {
+  config.cache.enabled = true;
+  const diagnostics = () => {
+    const project = createAnalysisContext(config).project();
+    return { status: project.cache.status, codes: project.tsProject.diagnostics.map((item) => item.code) };
+  };
+  assert.deepEqual(diagnostics(), { status: "miss", codes: [] });
+  assert.equal(diagnostics().status, "hit");
+  const declaration = path.join(root, "src/invalid.d.ts");
+  fs.writeFileSync(declaration, "declare const broken: DoesNotExist;\n");
+  const added = diagnostics();
+  assert.equal(added.status, "miss");
+  assert.ok(added.codes.includes(2304));
+  assert.equal(diagnostics().status, "hit");
+  fs.rmSync(declaration);
+  assert.deepEqual(diagnostics(), { status: "miss", codes: [] });
+}));
+
+test("cache invalidates previously missing module resolution candidates", () => fixture((root, config) => {
+  config.cache.enabled = true;
+  fs.writeFileSync(path.join(root, "src/a.ts"), 'import { value } from "../types/value.js"; export const a = value;\n');
+  const before = createAnalysisContext(config).project();
+  assert.ok(before.tsProject.diagnostics.some((item) => item.code === 2307));
+  assert.equal(createAnalysisContext(config).project().cache.status, "hit");
+  fs.mkdirSync(path.join(root, "types"));
+  fs.writeFileSync(path.join(root, "types/value.d.ts"), "export declare const value: number;\n");
+  const after = createAnalysisContext(config).project();
+  assert.equal(after.cache.status, "miss");
+  assert.deepEqual(after.tsProject.diagnostics, []);
+  assert.equal(createAnalysisContext(config).project().cache.status, "hit");
+}));
+
+test("cache invalidates newly installed automatic type packages", () => fixture((root, config) => {
+  config.cache.enabled = true;
+  fs.writeFileSync(path.join(root, "tsconfig.json"), JSON.stringify({
+    compilerOptions: { strict: true, types: ["*"] }, include: ["src"],
+  }));
+  fs.mkdirSync(path.join(root, "node_modules/@types"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src/a.ts"), "export const a = installedGlobal;\n");
+  assert.ok(createAnalysisContext(config).project().tsProject.diagnostics.some((item) => item.code === 2304));
+  assert.equal(createAnalysisContext(config).project().cache.status, "hit");
+  fs.mkdirSync(path.join(root, "node_modules/@types/installed"));
+  fs.writeFileSync(path.join(root, "node_modules/@types/installed/index.d.ts"), "declare const installedGlobal: number;\n");
+  const after = createAnalysisContext(config).project();
+  assert.equal(after.cache.status, "miss");
+  assert.deepEqual(after.tsProject.diagnostics, []);
+}));
+
+test("cache fingerprints package manifests used in module resolution", () => fixture((root, config) => {
+  config.cache.enabled = true;
+  const dependency = path.join(root, "node_modules/dependency");
+  fs.mkdirSync(dependency, { recursive: true });
+  const manifest = path.join(dependency, "package.json");
+  fs.writeFileSync(manifest, JSON.stringify({ name: "dependency", types: "number.d.ts" }));
+  fs.writeFileSync(path.join(dependency, "number.d.ts"), "export declare const value: number;\n");
+  fs.writeFileSync(path.join(dependency, "string.d.ts"), "export declare const value: string;\n");
+  fs.writeFileSync(path.join(root, "src/a.ts"), 'import { value } from "dependency"; export const a: number = value;\n');
+  assert.deepEqual(createAnalysisContext(config).project().tsProject.diagnostics, []);
+  assert.equal(createAnalysisContext(config).project().cache.status, "hit");
+  fs.writeFileSync(manifest, JSON.stringify({ name: "dependency", types: "string.d.ts" }));
+  const after = createAnalysisContext(config).project();
+  assert.equal(after.cache.status, "miss");
+  assert.ok(after.tsProject.diagnostics.some((item) => item.code === 2322));
+}));
+
 test("artifact freshness covers tests, analysis identity, and external runtime evidence", () => fixture((root, config) => {
   fs.writeFileSync(path.join(root, "src/a.test.ts"), "// initial test\n");
   const before = sourceSetHash(createAnalysisContext(config).project());

@@ -1,4 +1,5 @@
 import type * as ts from "typescript";
+import type { CompilerInputQuery } from "./integrations/compiler-inputs.js";
 
 type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -317,6 +318,7 @@ type TypeScriptProjectConfig = {
 
 export type TypeScriptProject = {
   input_files?: string[];
+  input_queries?: CompilerInputQuery[];
   available: boolean;
   loaded: boolean;
   reason: string | null;

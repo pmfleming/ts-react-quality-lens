@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import * as ts from "typescript";
 import { parseJson } from "./collections.js";
+import { compilerInputQueryResults, type CompilerInputQuery } from "./integrations/compiler-inputs.js";
 import { analysisIdentity, contentHash, sourceSetHash } from "./provenance.js";
 import type { Config, ProjectAnalysis, SourceFileRecord, TypedModuleRecord } from "./types.js";
 
-const CACHE_FORMAT = 3;
+const CACHE_FORMAT = 4;
 
 type CachePayload = {
   cache_format: number;
@@ -27,7 +28,9 @@ export function readAnalysisCache(
   if (!fs.existsSync(file)) return null;
   try {
     const payload = parseJson(fs.readFileSync(file, "utf8"));
-    if (!isCachePayload(payload) || payload.key !== analysisCacheKey(config, sourceFiles, testFiles, payload.project.tsProject.input_files)) return null;
+    if (!isCachePayload(payload) || payload.key !== analysisCacheKey(
+      config, sourceFiles, testFiles, payload.project.tsProject.input_files, payload.project.tsProject.input_queries,
+    )) return null;
     return hydrateProject(payload.project, file);
   } catch {
     return null;
@@ -45,7 +48,7 @@ export function writeAnalysisCache(
   }
   const payload: CachePayload = {
     cache_format: CACHE_FORMAT,
-    key: analysisCacheKey(config, project.sourceFiles, project.testFiles, project.tsProject.input_files),
+    key: analysisCacheKey(config, project.sourceFiles, project.testFiles, project.tsProject.input_files, project.tsProject.input_queries),
     project: {
       ...project,
       tsProject: {
@@ -93,13 +96,21 @@ function hydrateProject(project: CachePayload["project"], file: string): Project
   };
 }
 
-function analysisCacheKey(config: Config, sourceFiles: SourceFileRecord[], testFiles: SourceFileRecord[], inputs: string[] = []): string {
+function analysisCacheKey(
+  config: Config,
+  sourceFiles: SourceFileRecord[],
+  testFiles: SourceFileRecord[],
+  inputs: string[] = [],
+  queries: CompilerInputQuery[] = [],
+): string {
   const measured = new Set([...sourceFiles, ...testFiles].map((file) => path.resolve(file.path)));
   const dependencies = inputs.filter((file) => !measured.has(file)).map((file) => ({
     relativePath: path.relative(config.projectRoot, file),
     text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing",
   }));
-  return contentHash([...sourceFiles, ...testFiles, ...dependencies], [String(CACHE_FORMAT), analysisIdentity(config).id]);
+  return contentHash([...sourceFiles, ...testFiles, ...dependencies], [
+    String(CACHE_FORMAT), analysisIdentity(config).id, compilerInputQueryResults(queries),
+  ]);
 }
 
 function cacheableProject(config: Config, project: Omit<ProjectAnalysis, "cache">): boolean {

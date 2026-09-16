@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as tsTypes from "typescript";
 import { isRecord } from "../collections.js";
+import { trackCompilerInputs } from "./compiler-inputs.js";
 import { relativeModuleId, toPosix } from "../files.js";
 import type {
   Config,
@@ -62,6 +63,7 @@ export function loadTypeScriptProjects(
       `${toPosix(path.relative(config.projectRoot, item.path))}: ${project.reason ?? "project did not load"}`).join("; "),
     diagnostics: [...diagnostics.values()],
     input_files: [...new Set(projects.flatMap(({ project }) => project.input_files ?? []))],
+    input_queries: projects.flatMap(({ project }) => project.input_queries ?? []),
     modules,
     ...firstCompilerOptions(projects),
     type_coverage: {
@@ -90,17 +92,18 @@ function loadTypeScriptProject(config: Config, sourceFiles: SourceFileRecord[]):
   const ts = tsTypes;
   if (!config.tsconfig || !fs.existsSync(config.tsconfig)) return unloadedProject(true, "tsconfig was not found");
   try {
-    const result = parseCompilerConfig(ts, config);
-    return result.failure ?? createTypedProject(ts, config, sourceFiles, result.parsed);
+    const inputs = trackCompilerInputs();
+    const result = parseCompilerConfig(ts, config, inputs.system);
+    return result.failure ?? createTypedProject(ts, config, sourceFiles, result.parsed, inputs);
   } catch (error) {
     return unloadedProject(true, error instanceof Error ? error.message : String(error));
   }
 }
 
-function parseCompilerConfig(ts: typeof tsTypes, config: Config): ParsedConfigResult {
+function parseCompilerConfig(ts: typeof tsTypes, config: Config, system: tsTypes.System): ParsedConfigResult {
   const configPath = config.tsconfig;
   if (!configPath) return { failure: unloadedProject(true, "tsconfig was not found") };
-  const configText = ts.sys.readFile(configPath);
+  const configText = system.readFile(configPath);
   if (configText === undefined) return { failure: unloadedProject(true, "tsconfig could not be read") };
   const parsedJson = ts.parseConfigFileTextToJson(configPath, configText);
   if (parsedJson.error) {
@@ -110,7 +113,7 @@ function parseCompilerConfig(ts: typeof tsTypes, config: Config): ParsedConfigRe
       ]),
     };
   }
-  const parsed = ts.parseJsonConfigFileContent(parsedJson.config, ts.sys, path.dirname(configPath), {}, configPath);
+  const parsed = ts.parseJsonConfigFileContent(parsedJson.config, system, path.dirname(configPath), {}, configPath);
   if (parsed.errors.length) {
     return {
       failure: unloadedProject(true, "TypeScript configuration is invalid", parsed.errors.map((diagnostic) =>
@@ -125,20 +128,37 @@ function createTypedProject(
   config: Config,
   sourceFiles: SourceFileRecord[],
   parsed: tsTypes.ParsedCommandLine,
+  inputs: ReturnType<typeof trackCompilerInputs>,
 ): TypeScriptProject {
+  const options = { ...parsed.options, noEmit: true };
+  const host = ts.createCompilerHost(options);
+  Object.assign(host, {
+    readFile: inputs.system.readFile,
+    fileExists: inputs.system.fileExists,
+    directoryExists: inputs.system.directoryExists,
+    getDirectories: inputs.system.getDirectories,
+    readDirectory: inputs.system.readDirectory,
+    ...(inputs.system.realpath ? { realpath: inputs.system.realpath } : {}),
+  });
   const program = ts.createProgram({
     rootNames: parsed.fileNames,
-    options: { ...parsed.options, noEmit: true },
+    options,
+    host,
     ...(parsed.projectReferences ? { projectReferences: parsed.projectReferences } : {}),
   });
   const checker = program.getTypeChecker();
+  const diagnostics = ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnosticRecord(ts, diagnostic, config.projectRoot));
   return {
     available: true,
     loaded: true,
     reason: null,
     compiler_options: compilerOptionSummary(parsed.options),
-    input_files: program.getSourceFiles().map((file) => path.resolve(file.fileName)),
-    diagnostics: ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnosticRecord(ts, diagnostic, config.projectRoot)),
+    input_files: [...new Set([
+      ...program.getSourceFiles().map((file) => path.resolve(file.fileName)),
+      ...[...inputs.files].map((file) => path.resolve(file)),
+    ])],
+    input_queries: [...inputs.queries.values()],
+    diagnostics,
     modules: collectTypedModules(ts, config, sourceFiles, program, checker),
     type_coverage: collectTypeCoverage(ts, config, sourceFiles, program, checker),
   };
