@@ -41,15 +41,16 @@ test("SARIF fingerprints are isolated by input, scanner, rule, file, and occurre
     { name: "second", path: second, required: true },
   ];
   report(first, [
-    run("scanner", [result(), result("rule-b"), result("rule-a", "src/b.ts"), result()]),
+    run("scanner", [result(), result("rule-b"), result("rule-a", "src/b.ts"), result(),
+      result("rule-a", "src/a.ts", 1, {}), result("rule-a", "src/a.ts", 1, {})]),
     run("other-scanner", [result()]),
     run("scanner", [result()]),
   ]);
   report(second, [run("scanner", [result()])]);
   const context = createAnalysisContext(config);
   const initial = measureSarif(config, "test", context).records;
-  assert.equal(initial.length, 7);
-  assert.equal(new Set(initial.map((item) => item.id)).size, 7);
+  assert.equal(initial.length, 9);
+  assert.equal(new Set(initial.map((item) => item.id)).size, 9);
   const selected = initial[0];
   assert.ok(selected);
   config.suppressions = [{ id: selected.id, reason: "Only this finding" }];
@@ -60,7 +61,7 @@ test("SARIF fingerprints are isolated by input, scanner, rule, file, and occurre
     baselineIds: new Set([selected.id]), baseFindingIds: new Set([selected.id]),
   });
   assert.equal(findings.filter((item) => !item.introduced).length, 1);
-  assert.equal(findings.filter((item) => item.introduced && !item.suppressed).length, 6);
+  assert.equal(findings.filter((item) => item.introduced && !item.suppressed).length, 8);
 }));
 
 test("SARIF fingerprint identities survive movement, result reordering, and fingerprint-key ordering", () => fixture((root, config) => {
@@ -75,15 +76,4 @@ test("SARIF fingerprint identities survive movement, result reordering, and fing
     result("rule-b", "src/a.ts", 10), result("rule-a", "src/a.ts", 20, { second: "two", first: "one" }),
   ])]);
   assert.deepEqual(measureSarif(config, "test", context).records.map((item) => item.id).sort(), initial);
-}));
-
-test("SARIF results without fingerprints retain duplicate occurrences", () => fixture((root, config) => {
-  const file = path.join(root, "report.sarif");
-  config.sarifInputs = [{ name: "scanner", path: file, required: true }];
-  report(file, [run("scanner", [result("rule-a", "src/a.ts", 1, {}), result("rule-a", "src/a.ts", 1, {})])]);
-  const context = createAnalysisContext(config);
-  const initial = measureSarif(config, "test", context).records;
-  assert.equal(new Set(initial.map((item) => item.id)).size, 2);
-  assert.deepEqual(initial.map((item) => item.occurrence), [1, 2]);
-  assert.deepEqual(measureSarif(config, "test", context).records.map((item) => item.id), initial.map((item) => item.id));
 }));

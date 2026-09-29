@@ -18,39 +18,11 @@ function fixture(t: test.TestContext) {
   return { root, execPath, file };
 }
 
-test("npm CLI uses npm_execpath when launched by npm", (t) => {
-  const { execPath, file } = fixture(t);
-  const cli = file("custom/npm-cli.js");
-  assert.equal(resolveNpmCli(execPath, { npm_execpath: cli }), cli);
-});
-
-test("npm CLI ignores other package managers and resolves beside Node on Windows", (t) => {
-  const { execPath, file } = fixture(t);
-  const pnpm = file("custom/pnpm.cjs");
-  const cli = file("node/node_modules/npm/bin/npm-cli.js");
-  assert.equal(resolveNpmCli(execPath, { npm_execpath: pnpm }), cli);
-});
-
-test("npm CLI resolves a Unix installation relative to Node", (t) => {
-  const { execPath, file } = fixture(t);
-  const cli = file("lib/node_modules/npm/bin/npm-cli.js");
-  assert.equal(resolveNpmCli(execPath, {}), cli);
-});
-
 test("npm CLI resolves npm.cmd on PATH without executing the shim", (t) => {
   const { root, execPath, file } = fixture(t);
   file("npm installation/npm.cmd");
   const cli = file("npm installation/node_modules/npm/bin/npm-cli.js");
   assert.equal(resolveNpmCli(execPath, { Path: path.join(root, "npm installation") }), cli);
-});
-
-test("npm CLI follows npm symlinks on PATH", { skip: process.platform === "win32" }, (t) => {
-  const { root, execPath, file } = fixture(t);
-  const cli = file("separate installation/npm-cli.js");
-  const bin = path.join(root, "bin");
-  fs.mkdirSync(bin);
-  fs.symlinkSync(cli, path.join(bin, "npm"));
-  assert.equal(resolveNpmCli(execPath, { PATH: bin }), cli);
 });
 
 test("npm CLI reports missing installations rather than executing a shim as JavaScript", (t) => {

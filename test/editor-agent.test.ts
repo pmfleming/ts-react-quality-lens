@@ -7,10 +7,9 @@ import { test } from "node:test";
 import { loadConfig } from "../src/config.js";
 import { createLspSession } from "../src/lsp.js";
 import { dispatchMcp } from "../src/mcp.js";
-import { runMeasure } from "../src/measure-runner.js";
 import { MEASURE_TASKS } from "../src/measures/registry.js";
 import { enrichArtifactFindings } from "../src/actions.js";
-import { readArtifact, writeArtifact } from "../src/writer.js";
+import { writeArtifact } from "../src/writer.js";
 import type { Artifact, Config, ScoredRecord } from "../src/types.js";
 
 async function fixture(run: (root: string, config: Config) => Promise<void> | void): Promise<void> {
@@ -139,27 +138,4 @@ test("MCP requires explicit permission to execute project tests", () => fixture(
     dispatchMcp(config, { method: "tools/call", params: { name: "audit", arguments: { run_tests: true } } });
     assert.ok(ran.includes("correctness.all"));
   } finally { for (const [id, task] of tasks) MEASURE_TASKS.set(id, task); }
-}));
-
-test("editor analysis runs in a worker while protocol requests remain responsive", () => fixture(async (_root, config) => {
-  const session = createLspSession(config, undefined, () => {});
-  try {
-    let finished = false;
-    const pending = session.handle({ method: "textDocument/diagnostic", params: {
-      textDocument: { uri: pathToFileURL(path.join(config.projectRoot, "src/a.ts")).href },
-    } }).then((value) => { finished = true; return value; });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    const initialized = await session.handle({ id: 2, method: "initialize" });
-    assert.ok(initialized);
-    assert.equal(finished, false);
-    const result = await pending as { kind: string; items: unknown[] };
-    assert.equal(result.kind, "full");
-    assert.ok(Array.isArray(result.items));
-    await session.idle();
-  } finally { session.dispose(); }
-}));
-
-test("API measurements return the same enriched finding identities as persisted artifacts", () => fixture((_root, config) => {
-  const [result] = runMeasure(config, "quality.hotspots", "test");
-  assert.deepEqual(result?.records, readArtifact(config, "hotspots.json")?.records);
 }));

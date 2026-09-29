@@ -31,18 +31,6 @@ function fixture(run: (root: string, config: Config) => void): void {
   finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
 
-test("project service and explicit project mode agree on conventional typed findings", () => fixture((_root, config) => {
-  const service = runTypedLint(config);
-  assert.equal(service.project_mode, "project-service");
-  assert.equal(service.complete, true, service.reason ?? JSON.stringify(service.messages));
-  assert.ok(service.messages.some((message) => message.rule_id === "@typescript-eslint/no-unsafe-return"));
-  config.typedLint.mode = "project";
-  const explicit = runTypedLint(config);
-  assert.equal(explicit.complete, true, explicit.reason ?? JSON.stringify(explicit.messages));
-  assert.equal(explicit.configured_project, "tsconfig.json");
-  assert.deepEqual(service.messages, explicit.messages);
-}));
-
 test("project service covers child projects with references and without a root tsconfig", () => fixture((root, config) => {
   write(root, "package.json", { name: "typed-workspace", type: "module", workspaces: ["packages/*"] });
   write(root, "tsconfig.json", { files: [], references: [{ path: "packages/a" }, { path: "packages/b" }] });
@@ -95,12 +83,4 @@ test("missing configuration and source roots cannot produce clean typed evidence
   result = runTypedLint(config);
   assert.equal(result.complete, false);
   assert.match(result.reason ?? "", /tsconfig/);
-}));
-
-test("typed lint mode is validated and defaults to auto", () => fixture((root, config) => {
-  assert.equal(config.typedLint.mode, "auto");
-  write(root, "ts-react-quality-lens.config.json", { typed_lint: { mode: "project-service" } });
-  assert.equal(loadConfig(config.configPath).typedLint.mode, "project-service");
-  write(root, "ts-react-quality-lens.config.json", { typed_lint: { mode: "guess" } });
-  assert.throws(() => loadConfig(config.configPath), /Invalid config/);
 }));

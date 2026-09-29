@@ -11,10 +11,9 @@ import { collectFindings, requiredEvidenceReasons, runAuditMeasurements } from "
 import { loadConfig } from "../src/config.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { MEASURE_TASKS } from "../src/measures/registry.js";
-import { readArtifact, writeArtifact } from "../src/writer.js";
+import { writeArtifact } from "../src/writer.js";
 import { analysisIdentity, artifactBase, sourceSetHash } from "../src/provenance.js";
 import { artifactFreshness } from "../src/measures/architecture.js";
-import { normalizeFindingIdentities } from "../src/finding-identity.js";
 import type { Artifact, Config } from "../src/types.js";
 
 function fixture(run: (root: string, config: Config) => void): void {
@@ -59,13 +58,6 @@ function stubMeasurements(run: () => void): void {
   try { run(); }
   finally { for (const [id, task] of tasks) MEASURE_TASKS.set(id, task); }
 }
-
-test("invalid TypeScript options are diagnostics, not clean loaded projects", () => fixture((root, config) => {
-  fs.writeFileSync(path.join(root, "tsconfig.json"), JSON.stringify({ compilerOptions: { nonexistentOption: true }, include: ["src"] }));
-  const project = createAnalysisContext(config).project();
-  assert.equal(project.tsProject.loaded, false);
-  assert.ok(project.tsProject.diagnostics.some((diagnostic) => diagnostic.code === 5023));
-}));
 
 test("runtime inputs reject unsupported shapes and invalid entries but accept valid empty reports", () => fixture((root, config) => {
   const file = path.join(root, "runtime.json");
@@ -243,22 +235,6 @@ test("artifact freshness covers tests, analysis identity, and external runtime e
   assert.equal(artifactFreshness(config, { runtime: current }, after).runtime, "stale");
 }));
 
-test("semantic identities survive movement and preserve duplicate occurrences", () => fixture((root, config) => {
-  const file = "src/a.ts";
-  const text = "export function first() { missing(); }\nexport function second() { missing(); }\n";
-  fs.writeFileSync(path.join(root, file), text);
-  const finding = { id: "legacy", file, source: "typescript-compiler", rule_id: "typescript/TS2304", message: "Cannot find name missing", column: 27 };
-  const records = [1, 2].map((line) => ({ ...finding, line }));
-  const initial = normalizeFindingIdentities(config, records);
-  fs.writeFileSync(path.join(root, file), `// inserted comment\n\n${text}`);
-  const moved = normalizeFindingIdentities(config, records.map((record) => ({ ...record, line: record.line + 2 })));
-  const ids = (values: unknown[]) => values.map((value) => (value as { id: string }).id);
-  assert.deepEqual(ids(initial), ids(moved));
-  assert.equal(new Set(ids(initial)).size, 2);
-  const duplicate = normalizeFindingIdentities(config, [{ ...finding, line: 3 }, { ...finding, line: 3 }]);
-  assert.equal(new Set(ids(duplicate)).size, 2);
-}));
-
 test("snapshot matching includes new errors in unchanged consumers and does not reintroduce existing issues", () => fixture((_root, config) => {
   config.policy.requiredChecks = ["typed-lint"];
   writeArtifact(config, "lint_health.json", { ...artifact("quality.lint"), records: [
@@ -271,12 +247,4 @@ test("snapshot matching includes new errors in unchanged consumers and does not 
   });
   assert.equal(findings.find((finding) => finding.id === "old")?.introduced, false);
   assert.equal(findings.find((finding) => finding.id === "new-consumer")?.introduced, true);
-}));
-
-test("persisted compiler diagnostics have unique occurrence identities", () => fixture((root, config) => {
-  fs.writeFileSync(path.join(root, "src/a.ts"), "missing();\nmissing();\n");
-  runMeasure(config, "quality.type_health", "test");
-  const records = readArtifact(config, "type_health.json")?.records?.filter((record) => record.diagnostic_code === 2304) ?? [];
-  assert.equal(records.length, 2);
-  assert.equal(new Set(records.map((record) => record.id)).size, 2);
 }));

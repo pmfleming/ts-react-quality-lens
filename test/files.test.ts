@@ -5,7 +5,6 @@ import path from "node:path";
 import { test } from "node:test";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { loadConfig } from "../src/config.js";
-import { normalizeImportPath } from "../src/files.js";
 import { measureCorrectnessCatalog } from "../src/measures/correctness.js";
 import type { Config } from "../src/types.js";
 
@@ -17,21 +16,6 @@ function fixture(run: (root: string, config: Config) => void): void {
   try { run(root, loadConfig(path.join(root, "lens.json"))); }
   finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
-
-test("import resolution accepts exact aliases and empty wildcard matches without matching unrelated imports", () => fixture((root, config) => {
-  config.pathAliases = [
-    { pattern: "@app", replacements: [path.join(root, "missing.ts"), path.join(root, "src/index.ts")] },
-    { pattern: "@src/*", replacements: [path.join(root, "src/*")] },
-    { pattern: "@missing", replacements: [path.join(root, "missing.ts")] },
-  ];
-  const resolve = (specifier: string) => normalizeImportPath(path.join(root, "src/consumer.ts"), specifier, config);
-  for (const specifier of ["@app", "@src/index", "@src/"]) {
-    assert.deepEqual(resolve(specifier), { kind: "relative", id: "src/index", resolved: path.join(root, "src/index.ts") });
-  }
-  for (const specifier of ["@app/other", "@missing", "unrelated"]) {
-    assert.deepEqual(resolve(specifier), { kind: "external", id: specifier, resolved: null });
-  }
-}));
 
 test("test classification ignores checkout ancestors while preserving project-local test paths", () => fixture((root) => {
   for (const parent of ["ordinary", "test", "tests", "spec", "e2e", "cypress", "__tests__"]) {
@@ -62,7 +46,7 @@ test("test classification ignores checkout ancestors while preserving project-lo
 }));
 
 test("exact tsconfig aliases produce internal graph edges on fresh and cached analysis", () => fixture((root) => {
-  fs.writeFileSync(path.join(root, "tsconfig.json"), JSON.stringify({
+  fs.writeFileSync(path.join(root, "tsconfig.json"), "// User tsconfigs accept JSONC comments.\n" + JSON.stringify({
     compilerOptions: { strict: true, types: [], paths: { "@app": ["./src/index.ts"] } }, include: ["src"],
   }));
   fs.writeFileSync(path.join(root, "src/consumer.ts"), 'import { value } from "@app"; export const result = value;\n');

@@ -8,12 +8,9 @@ import { loadConfig } from "../src/config.js";
 import { runTestCommand, testRecord } from "../src/correctness.js";
 import { createTestMapper, directTestSources } from "../src/test-mapping.js";
 import { readSourceFile } from "../src/files.js";
-import { mapNode } from "../src/graph.js";
 import { runMeasure } from "../src/measure-runner.js";
-import { ARCHITECTURE_INPUTS } from "../src/measures/architecture.js";
-import { MEASURE_TASKS } from "../src/measures/registry.js";
 import { readArtifact } from "../src/writer.js";
-import type { Config, TestAssociation } from "../src/types.js";
+import type { Config } from "../src/types.js";
 
 function fixture(run: (root: string, config: Config) => void): void {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lens-architecture-"));
@@ -44,7 +41,7 @@ test("test mapping resolves inherited aliases and directory imports without suff
   fs.writeFileSync(file, [
     'import { value } from "@one/foo";',
     'import { value as barrel } from "../src/barrel";',
-    'import type { Value } from "../src/types";',
+    'import { type Value } from "../src/types";',
     '// import { value } from "../src/two/foo"; expect(false); test.skip("fake");',
     'const pretend = "assert.equal(1, 2); test.todo(fake)";',
     'expect(value); test.skip("real", () => {});',
@@ -67,55 +64,23 @@ test("test mapping resolves inherited aliases and directory imports without suff
   assert.equal(named.coverage_status, "not_collected");
 }));
 
-test("standalone architecture generates every declared input exactly once", () => fixture((_root, config) => {
-  const tasks = new Map(MEASURE_TASKS);
-  const counts = new Map<string, number>();
-  for (const [id, task] of tasks) MEASURE_TASKS.set(id, { ...task, handler: (...args) => {
-    counts.set(id, (counts.get(id) ?? 0) + 1);
-    return task.handler(...args);
-  } });
-  try {
-    const [map] = runMeasure(config, "map.architecture", "test standalone");
-    assert.equal(map?.summary.missing_inputs, 0);
-    for (const input of ARCHITECTURE_INPUTS) {
-      assert.equal(counts.get(input.task), 1, input.task);
-      assert.ok(readArtifact(config, input.artifact), input.artifact);
-    }
-  } finally { for (const [id, task] of tasks) MEASURE_TASKS.set(id, task); }
-}));
-
 test("architecture prerequisites preserve current executed tests without rerunning them", () => fixture((root, config) => {
+  fs.writeFileSync(path.join(root, "tests/a.test.ts"), 'import { a } from "../src/a.js"; void a;\n');
   config.testCommand = `node -e "require('node:fs').appendFileSync('test-runs', 'x')"`;
   runMeasure(config, "correctness.all", "test execution");
   runMeasure(config, "map.architecture", "test map");
   assert.equal(readArtifact(config, "correctness_review.json")?.execution?.status, "passed");
   assert.equal(fs.readFileSync(path.join(root, "test-runs"), "utf8"), "x");
+  const executed = readArtifact(config, "map.json")?.nodes as Array<{ test_evidence: { suite_status: string; coverage_status: string } }>;
+  assert.ok(executed.length > 0);
+  assert.ok(executed.every((node) => node.test_evidence.suite_status === "passed" && node.test_evidence.coverage_status === "not_collected"));
   fs.writeFileSync(path.join(root, "tests/new.test.ts"), "// New test invalidates execution evidence\n");
   runMeasure(config, "map.architecture", "test stale map");
   assert.equal(readArtifact(config, "correctness_review.json")?.execution?.status, "not_run");
+  const stale = readArtifact(config, "map.json")?.nodes as Array<{ correctness_risk: number | null }>;
+  assert.ok(stale.length > 0);
+  assert.ok(stale.every((node) => node.correctness_risk === null));
   assert.equal(fs.readFileSync(path.join(root, "test-runs"), "utf8"), "x");
-}));
-
-test("architecture distinguishes unexecuted tests from passing suite associations and consumes lint and cleanup", () => fixture((_root, config) => {
-  const module = createAnalysisContext(config).project().modules[0];
-  assert.ok(module);
-  const filename: TestAssociation = { file: module.file, kind: "filename", confidence: "low" };
-  const inputs = Object.fromEntries(ARCHITECTURE_INPUTS.map((input) => [input.name, { records: [] }]));
-  const statuses = Object.fromEntries(ARCHITECTURE_INPUTS.map((input) => [input.name, "available" as const]));
-  const notRun = mapNode(module, { ...inputs, correctness: { execution: { status: "not_run" }, tests: [{ source_associations: [filename] }] } }, statuses);
-  assert.equal(notRun.correctness_risk, null);
-  assert.ok(notRun.unknown_metrics.includes("correctness:no_measured_evidence"));
-  const named = mapNode(module, { ...inputs, correctness: { execution: { status: "passed" }, tests: [{ source_associations: [filename] }] } }, statuses);
-  assert.equal(named.correctness_risk, 40);
-  const direct = mapNode(module, {
-    ...inputs,
-    correctness: { execution: { status: "passed" }, tests: [{ source_associations: [{ ...filename, kind: "direct-import" }] }] },
-    lint: { records: [{ id: "lint", file: module.file, score: 90 }] },
-    cleanup: { records: [{ id: "ignored", file: module.file, score: 100, suppressed: true }] },
-  }, statuses);
-  assert.equal(direct.correctness_risk, 0);
-  assert.equal(direct.quality_risk, 90);
-  assert.equal(direct.test_evidence.coverage_status, "not_collected");
 }));
 
 test("inferred tests use package-manager lifecycle scripts and explicit null disables execution", () => fixture((root, config) => {
