@@ -62,13 +62,15 @@ A safe `unknown` annotation is not an escape hatch. Type coverage separates expl
 | React rule family | Produced disposition |
 | --- | --- |
 | `rules-of-hooks`, `set-state-in-render` | `block` |
-| `exhaustive-deps`, `immutability`, `globals`, `refs`, `purity`, `static-components`, `error-boundaries` | `warn` |
-| `unsupported-syntax` | `info` |
-| Other emitted official rules (including effect/memoization rules) | `review` |
+| `exhaustive-deps`, `immutability`, `globals`, `refs`, `purity`, `static-components`, `error-boundaries`, `component-hook-factories` | `warn` (correctness) |
+| `unsupported-syntax`, `incompatible-library`, `preserve-manual-memoization`, `use-memo`, `void-use-memo`, `set-state-in-effect` | `info` (optimization) |
+| `config`, `gating` | `review` (configuration) |
+| Other emitted official rules | `review` (unknown; requires classification) |
+| Parser failures | `info` (tool-failure; incomplete evidence) |
 | Managed jsx-a11y findings | `warn` |
 | Built-in missing-alt/nonsemantic-interaction fallback | `review` |
 
-React policy downgrades affect all records sourced from `eslint-plugin-react-hooks` when that check is not required. jsx-a11y findings are separate and remain warnings. The React profile does not require successful jsx-a11y production; fallback evidence must not be mistaken for full standards-based accessibility analysis.
+React findings carry `react_category`; the summary counts correctness, optimization, configuration, and unknown findings separately. Optimization findings describe unsupported compilation or potential wasted work, not demonstrated runtime failures. They remain informational even when React checks are required. Unknown future rules require review instead of automatically becoming blockers. When the check is optional, non-informational React findings become review items. jsx-a11y findings are separate and remain warnings. The React profile does not require successful jsx-a11y production; fallback evidence must not be mistaken for full standards-based accessibility analysis.
 
 ## Package and imported evidence
 

@@ -11,6 +11,9 @@ import { analysisIdentity, compilerProvenance } from "../src/provenance.js";
 import { readArtifact } from "../src/writer.js";
 import { featureSupport, reactSupport } from "../src/react-support.js";
 import { discoverWorkspaces } from "../src/workspaces.js";
+import { createAnalysisContext } from "../src/analysis-context.js";
+import { measureReactHealth } from "../src/measures/react-health.js";
+import { collectFindings } from "../src/audit/findings.js";
 import type { Config } from "../src/types.js";
 
 function fixture(run: (root: string, config: Config) => void): void {
@@ -100,4 +103,35 @@ test("invalid compiler configuration retains engine provenance and failed load s
   assert.equal(artifact?.tool_status?.compiler_api?.loaded, false);
   assert.equal(artifact?.tool_status?.compiler_api?.version, ts.version);
   assert.ok(artifact?.records?.some((record) => record.rule_id === "typescript/TS5023"));
+}));
+
+test("React optimization evidence stays informational through artifact enrichment and audit policy", () => fixture((_root, config) => {
+  const rules = ["unsupported-syntax", "incompatible-library", "preserve-manual-memoization", "use-memo", "void-use-memo", "set-state-in-effect"];
+  const context = createAnalysisContext(config);
+  context.reactHooksLint = () => ({
+    available: true, ran: true, complete: true, reason: null, version: "test", ruleset: "recommended-v2",
+    messages: [...rules, "rules-of-hooks", "immutability", "config", "future-rule"].map((rule, index) => ({
+      file: "src/a.ts", line: index + 1, column: 1, end_line: null, end_column: null,
+      rule_id: `react-hooks/${rule}`, severity: "error", message: `Fixture ${rule}`,
+    })),
+  });
+  context.jsxA11yLint = () => ({ available: true, ran: true, complete: true, reason: null, version: "test", messages: [] });
+  const result = measureReactHealth(config, "test", context);
+  assert.equal(result.summary.optimization_findings, rules.length);
+  assert.equal(result.summary.correctness_findings, 2);
+  assert.equal(result.summary.configuration_findings, 1);
+  assert.equal(result.summary.unclassified_hook_findings, 1);
+  for (const required of [true, false]) {
+    config.policy.requiredChecks = required ? ["react-hooks"] : [];
+    const findings = collectFindings(config, { changedFiles: [], changedLines: new Map(), baselineIds: new Set(), includeAll: true });
+    for (const rule of rules) {
+      const finding = findings.find((item) => item.rule_id === `react-hooks/${rule}`);
+      assert.equal(finding?.react_category, "optimization");
+      assert.equal(finding?.disposition, "info");
+      assert.equal(finding?.risk, "low");
+    }
+    assert.equal(findings.find((item) => item.rule_id === "react-hooks/rules-of-hooks")?.disposition, required ? "block" : "review");
+    assert.equal(findings.find((item) => item.rule_id === "react-hooks/immutability")?.disposition, required ? "warn" : "review");
+    assert.equal(findings.find((item) => item.rule_id === "react-hooks/future-rule")?.disposition, "review");
+  }
 }));

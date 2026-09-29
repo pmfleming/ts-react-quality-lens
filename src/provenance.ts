@@ -87,6 +87,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     typed_lint: "tsrqlens-typescript-recommended-v1",
     react: config.react.ruleset,
     react_support: "declared-range-capabilities-v1",
+    react_classification: "correctness-optimization-v1",
     accessibility: "jsx-a11y-recommended-v1",
     cleanup: config.cleanup.knip ? "knip-normalized-v1" : "builtin-cleanup-v1",
   };

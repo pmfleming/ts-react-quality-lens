@@ -95,6 +95,7 @@ function introducedByDiffOrBase(
 }
 
 function policyDisposition(config: Config, finding: ScoredRecord): FindingDisposition {
+  if (finding.source === "eslint-plugin-react-hooks" && finding.disposition === "info") return "info";
   if (finding.source === "typescript-eslint" && !config.policy.requiredChecks.includes("typed-lint")) return "review";
   if (finding.source === "eslint-plugin-react-hooks" && !config.policy.requiredChecks.includes("react-hooks")) return "review";
   if (["publint", "are-the-types-wrong", "declaration-emit", "pack", "attw"].includes(String(finding.source)) &&

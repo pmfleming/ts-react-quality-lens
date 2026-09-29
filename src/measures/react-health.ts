@@ -3,9 +3,10 @@ import { eslintFindingRecord } from "../integrations/eslint-findings.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { riskForScore } from "../risk-model.js";
 import { reactSupport } from "../react-support.js";
+import { reactRulePolicy } from "../react-rules.js";
 import { frameworkRiskRecords } from "../scoring.js";
 import { writeArtifact } from "../writer.js";
-import type { AnalysisContext, Config, EslintMessage, FindingDisposition, FunctionRecord, ModuleRecord, ScoredRecord } from "../types.js";
+import type { AnalysisContext, Config, EslintMessage, FunctionRecord, ModuleRecord, ScoredRecord } from "../types.js";
 
 export function measureReactHealth(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
@@ -30,6 +31,10 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       components: project.modules.reduce((count, module) => count + module.components.length, 0),
       records: records.length,
       hook_lint_findings: hooksLint.messages.length,
+      correctness_findings: records.filter((record) => record.react_category === "correctness").length,
+      optimization_findings: records.filter((record) => record.react_category === "optimization").length,
+      configuration_findings: records.filter((record) => record.react_category === "configuration").length,
+      unclassified_hook_findings: records.filter((record) => record.react_category === "unknown").length,
       a11y_findings: records.filter(isAccessibilityFinding).length,
       a11y_tool_findings: a11yLint.messages.length,
       a11y_heuristic_findings: records.filter((record) => record.source === "jsx-a11y-heuristic").length,
@@ -94,19 +99,14 @@ function componentHealthRecord(module: ModuleRecord, component: FunctionRecord):
 
 function hookLintRecord(message: EslintMessage): ScoredRecord {
   const ruleName = message.rule_id.replace(/^react-hooks\//, "");
-  const disposition = reactRuleDisposition(ruleName);
+  const policy = reactRulePolicy(message.rule_id);
   const kind = `${ruleName.replace(/-/g, "_")}_violation`;
-  return eslintFindingRecord(message, {
-    id: eslintFindingId(message, "eslint-plugin-react-hooks"), kind, disposition, source: "eslint-plugin-react-hooks",
-  });
-}
-
-function reactRuleDisposition(ruleName: string): FindingDisposition {
-  if (["rules-of-hooks", "set-state-in-render"].includes(ruleName)) return "block";
-  if (["exhaustive-deps", "immutability", "globals", "refs", "purity", "static-components", "error-boundaries"].includes(ruleName)) {
-    return "warn";
-  }
-  return ruleName === "unsupported-syntax" ? "info" : "review";
+  return {
+    ...eslintFindingRecord(message, {
+      id: eslintFindingId(message, "eslint-plugin-react-hooks"), kind, disposition: policy.disposition, source: "eslint-plugin-react-hooks",
+    }),
+    react_category: policy.category,
+  };
 }
 
 function a11yLintRecord(message: EslintMessage): ScoredRecord {

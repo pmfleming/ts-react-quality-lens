@@ -210,6 +210,7 @@
         "id": { "type": "string" },
         "rule_id": { "type": "string" },
         "kind": { "type": "string" },
+        "react_category": { "enum": ["correctness", "optimization", "configuration", "unknown", "tool-failure"] },
         "evidence_kind": { "enum": ["diagnostic", "tool-rule", "test", "metric", "heuristic"] },
         "disposition": { "enum": ["block", "warn", "review", "info"] },
         "finding_confidence": { "enum": ["low", "medium", "high"] },
