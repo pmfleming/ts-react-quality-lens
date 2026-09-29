@@ -37,7 +37,7 @@ Built-in excludes are `node_modules`, `.git`, `dist`, `build`, `coverage`, `.nex
 | Field | Supported options and defaults |
 | --- | --- |
 | `cache` | `enabled: true`; cache directory is fixed under `output_dir/.cache`. |
-| `react` | `ruleset: "recommended-v2"`; use `"classic-v1"` for just Rules of Hooks and exhaustive dependencies. |
+| `react` | `ruleset: "recommended-v2"`; use `"classic-v1"` for just Rules of Hooks and exhaustive dependencies. Optional `version` overrides the supported React range for all workspaces (for example `"^19.3.0"`). |
 | `accessibility` | `enabled: true`, `components: {}`, optional `polymorphic_prop_name`. Disabling managed analysis does not disable built-in fallback heuristics. |
 | `cleanup` | `knip: true`, `production: false`. Knip production mode changes its scope and therefore cross-check comparability. |
 | `type_coverage` | Optional `minimum_percent`, `per_file_minimum_percent`, `changed_file_minimum_percent` (0–100), and `baseline` pointing to an earlier `type_health.json`. No default floors. |

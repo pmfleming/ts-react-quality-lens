@@ -48,7 +48,7 @@ export type RawConfig = {
 export type PolicyConfig = { profile?: PolicyProfile; required_checks?: PolicyCheck[] };
 export type PublicApiConfig = { entry?: string[]; exports?: Array<{ file: string; names: string[] }> };
 type CacheConfig = { enabled?: boolean };
-export type ReactConfig = { ruleset?: ReactRuleset };
+export type ReactConfig = { ruleset?: ReactRuleset; version?: string };
 export type AccessibilityConfig = {
   enabled?: boolean; components?: Record<string, string>; polymorphic_prop_name?: string;
 };
@@ -139,6 +139,7 @@ export type Config = {
   };
   react: {
     ruleset: ReactRuleset;
+    version: string | null;
   };
   accessibility: {
     enabled: boolean;

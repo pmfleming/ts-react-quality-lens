@@ -9,9 +9,11 @@ import { loadConfig } from "../src/config.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { analysisIdentity, compilerProvenance } from "../src/provenance.js";
 import { readArtifact } from "../src/writer.js";
+import { featureSupport, reactSupport } from "../src/react-support.js";
+import { discoverWorkspaces } from "../src/workspaces.js";
 import type { Config } from "../src/types.js";
 
-export function fixture(run: (root: string, config: Config) => void): void {
+function fixture(run: (root: string, config: Config) => void): void {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lens-modern-"));
   fs.mkdirSync(path.join(root, "src"));
   fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "modern", type: "module" }));
@@ -40,6 +42,52 @@ test("compiler evidence identifies the API that ran without claiming native anal
   assert.deepEqual(diagnostic.compiler, compilers.analysis);
   assert.equal(analysisIdentity(config).compiler_api_version, ts.version);
   assert.equal(analysisIdentity(config).integration_versions.typescript_native, compilers.native.version);
+  const schema: unknown = JSON.parse(fs.readFileSync("ts-react-quality-lens.schema.json", "utf8"));
+  const validate = new Ajv2020({ strict: false }).compile(schema as object);
+  assert.ok(validate(artifact), JSON.stringify(validate.errors));
+}));
+
+test("React capabilities require support throughout the declared range", () => {
+  for (const [range, expected] of [
+    ["^18.3.0", "unsupported"], ["^19.2.0", "mixed"], ["^19.3.0", "supported"],
+    ["^18 || ^19", "mixed"], [">=19.3 <20", "supported"], ["19.3.0", "supported"],
+    ["19.3.0-canary-abc", "unknown"], ["catalog:", "unknown"], ["latest", "unknown"],
+    ["garbage", "unknown"], ["", "unknown"], [">=20 <19", "unknown"], [null, "unknown"],
+  ] as const) assert.equal(featureSupport(range, "19.3.0"), expected, String(range));
+});
+
+test("workspace React guidance respects peer ranges, unknowns, and explicit overrides", () => fixture((root, config) => {
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({
+    name: "modern", workspaces: ["packages/*"], dependencies: { react: "^19.3.0" },
+  }));
+  for (const [name, manifest] of [
+    ["library", { peerDependencies: { react: "^18 || ^19" }, devDependencies: { react: "19.3.0" } }],
+    ["unknown", {}], ["old", { dependencies: { react: "18.3.0" } }],
+  ] as const) {
+    fs.mkdirSync(path.join(root, "packages", name), { recursive: true });
+    fs.writeFileSync(path.join(root, "packages", name, "package.json"), JSON.stringify({ name, ...manifest }));
+  }
+  const workspaces = discoverWorkspaces(config).records;
+  const support = reactSupport(config, workspaces);
+  assert.equal(support.find((item) => item.workspace_id === "modern")?.guidance.length, 5);
+  for (const name of ["library", "unknown", "old"]) {
+    assert.deepEqual(support.find((item) => item.workspace_id === name)?.guidance, []);
+  }
+  assert.equal(support.find((item) => item.workspace_id === "library")?.range_source, "peerDependencies.react");
+  config.react.version = "^19.3.0";
+  assert.ok(reactSupport(config, workspaces).every((item) => item.guidance.length === 5));
+  config.react.version = "catalog:";
+  assert.ok(reactSupport(config, workspaces).every((item) => item.guidance.length === 0));
+  fs.writeFileSync(config.configPath, JSON.stringify({ react: { version: "^19.3.0" } }));
+  assert.equal(loadConfig(config.configPath).react.version, "^19.3.0");
+}));
+
+test("React capability metadata is written and validated with the artifact", () => fixture((root, config) => {
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "modern", dependencies: { react: "19.3.0" } }));
+  runMeasure(config, "quality.react_health", "test");
+  const artifact = readArtifact(config, "react_health.json");
+  assert.ok(artifact);
+  assert.deepEqual(artifact.react_support, reactSupport(config, discoverWorkspaces(config).records));
   const schema: unknown = JSON.parse(fs.readFileSync("ts-react-quality-lens.schema.json", "utf8"));
   const validate = new Ajv2020({ strict: false }).compile(schema as object);
   assert.ok(validate(artifact), JSON.stringify(validate.errors));

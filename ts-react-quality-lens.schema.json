@@ -105,6 +105,47 @@
       "type": "object",
       "additionalProperties": true
     },
+    "react_support": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["workspace_id", "root", "declared_range", "range_source", "capabilities", "guidance"],
+        "properties": {
+          "workspace_id": { "type": "string" },
+          "root": { "type": "string" },
+          "declared_range": { "type": ["string", "null"] },
+          "range_source": { "type": "string" },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "minimum_react", "support", "source"],
+              "properties": {
+                "id": { "type": "string" },
+                "minimum_react": { "type": "string" },
+                "support": { "enum": ["supported", "unsupported", "mixed", "unknown"] },
+                "source": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "guidance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["capability", "message", "source"],
+              "properties": {
+                "capability": { "type": "string" },
+                "message": { "type": "string" },
+                "source": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "records": {
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }

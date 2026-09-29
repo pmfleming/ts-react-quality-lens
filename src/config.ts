@@ -325,7 +325,7 @@ function normalizeCache(outputDir: string, value: RawConfig["cache"] | undefined
 }
 
 function normalizeReact(value: ReactConfig | undefined): Config["react"] {
-  return { ruleset: value?.ruleset ?? "recommended-v2" };
+  return { ruleset: value?.ruleset ?? "recommended-v2", version: value?.version ?? null };
 }
 
 function normalizeAccessibility(value: AccessibilityConfig | undefined): Config["accessibility"] {

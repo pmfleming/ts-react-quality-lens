@@ -8,7 +8,7 @@ This document separates the current **0.3.0** implementation from research propo
 | --- | --- | --- |
 | Policy and evidence | Dispositions, required checks, incomplete verdicts, compiler/test blockers, baseline/recommended/strict/react/library profiles. | Numeric scores do not gate. Required checks are not task-selection switches. |
 | TypeScript | Compiler diagnostics, inherited compiler inputs, safety posture, managed typed lint, per-file/project type coverage and ratchets. | Typed lint uses the root configured tsconfig; no arbitrary custom-project lint ingestion. |
-| React/accessibility | Official recommended-v2 and classic-v1 rulesets; managed jsx-a11y with fallback heuristics. | Not a general version/capability-gated framework rule engine; static a11y is not a required-check option. |
+| React/accessibility | Official recommended-v2 and classic-v1 rulesets; managed jsx-a11y with fallback heuristics; per-workspace React range and API guidance. | Capability guidance does not detect compiler activation or framework/browser support; static a11y is not a required-check option. |
 | Cleanup | Built-in candidates plus Knip normalization, comparison outcomes, public API/entrypoint handling. | Dynamic/runtime contracts can remain unresolved; removal is not automatically safe. |
 | Packages | Temporary declaration emit, npm pack, publint, ATTW, library policy. | No API Extractor integration, API compatibility diff, or independent per-workspace package validation. |
 | External reports | SARIF 2.1.0, React Profiler commit summaries, axe, React Doctor JSON. | No scanner/browser launch, runtime collection, or universal raw trace/bundler format support. |

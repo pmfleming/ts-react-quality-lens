@@ -67,7 +67,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "ruleset": { "enum": ["classic-v1", "recommended-v2"] }
+        "ruleset": { "enum": ["classic-v1", "recommended-v2"] },
+        "version": { "type": "string", "minLength": 1, "description": "Explicit supported React range for all workspaces; otherwise use each package manifest." }
       }
     },
     "accessibility": {

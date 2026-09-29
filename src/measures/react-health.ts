@@ -2,6 +2,7 @@ import { analysisConfidence, createAnalysisContext } from "../analysis-context.j
 import { eslintFindingRecord } from "../integrations/eslint-findings.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { riskForScore } from "../risk-model.js";
+import { reactSupport } from "../react-support.js";
 import { frameworkRiskRecords } from "../scoring.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, EslintMessage, FindingDisposition, FunctionRecord, ModuleRecord, ScoredRecord } from "../types.js";
@@ -35,6 +36,7 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       high_risk_components: records.filter((record) => record.risk === "high").length,
     },
     framework: project.frameworkDetails,
+    react_support: reactSupport(config, project.workspaces),
     tool_status: {
       eslint_react_hooks: {
         available: hooksLint.available,
