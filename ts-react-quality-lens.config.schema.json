@@ -63,6 +63,13 @@
         "enabled": { "type": "boolean" }
       }
     },
+    "typed_lint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["auto", "project-service", "project"], "default": "auto" }
+      }
+    },
     "react": {
       "type": "object",
       "additionalProperties": false,

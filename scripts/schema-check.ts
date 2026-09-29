@@ -39,6 +39,7 @@ for (const key of [
   "public_api",
   "cache",
   "react",
+  "typed_lint",
   "accessibility",
   "cleanup",
   "type_coverage",
@@ -149,7 +150,8 @@ function representativeConfig() {
     test_command: null,
     public_api: { entry: ["src/index.ts"], exports: [{ file: "src/lib.ts", names: ["publicHelper"] }] },
     cache: { enabled: true },
-    react: { ruleset: "recommended-v2" },
+    react: { ruleset: "recommended-v2", version: "^19.3.0" },
+    typed_lint: { mode: "project-service" },
     accessibility: { enabled: true, components: { Image: "img" }, polymorphic_prop_name: "as" },
     cleanup: { knip: true, production: false },
     type_coverage: {

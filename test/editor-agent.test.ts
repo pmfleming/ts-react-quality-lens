@@ -103,7 +103,7 @@ test("LSP handles shutdown while analysis is pending without publishing stale re
   session.dispose();
 }));
 
-test("MCP restricts resources and explains grouped and audit findings", () => fixture((_root, config) => {
+test("MCP restricts resources and explains grouped and audit findings", () => fixture((root, config) => {
   writeArtifact(config, "hotspots.json", { ...artifact(), groups: [finding] });
   const request = { method: "tools/call", params: { name: "explain", arguments: { finding_id: finding.id } } };
   let response = dispatchMcp(config, request) as { structuredContent: { finding: ScoredRecord } };
@@ -114,7 +114,9 @@ test("MCP restricts resources and explains grouped and audit findings", () => fi
   assert.throws(() => dispatchMcp(config, { method: "resources/read", params: { uri: "tsrqlens://artifact/../../private.json" } }));
   assert.throws(() => dispatchMcp(config, { method: "resources/read", params: { uri: "tsrqlens://artifact/private.json" } }));
   fs.rmSync(path.join(config.outputDir, "hotspots.json"));
-  fs.symlinkSync(config.configPath, path.join(config.outputDir, "hotspots.json"));
+  // Junctions exercise real-path containment on Windows without file-symlink privileges.
+  fs.symlinkSync(process.platform === "win32" ? root : config.configPath,
+    path.join(config.outputDir, "hotspots.json"), process.platform === "win32" ? "junction" : "file");
   assert.throws(() => dispatchMcp(config, { method: "resources/read", params: { uri: "tsrqlens://artifact/hotspots.json" } }), /outside/);
 }));
 

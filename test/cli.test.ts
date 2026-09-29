@@ -1087,7 +1087,7 @@ test("react hooks lint resolves dependencies when output dir is outside the proj
   assert.equal(reactHooks.complete, true);
   assert.equal(typeof reactHooks.version, "string");
   assert.equal(reactHooks.ruleset, "recommended-v2");
-  assert.ok(reactHealth.records?.some((record) => record.rule_id === "react-hooks/set-state-in-effect" && record.disposition === "review"));
+  assert.ok(reactHealth.records?.some((record) => record.rule_id === "react-hooks/set-state-in-effect" && record.disposition === "info" && record.react_category === "optimization"));
   fs.rmSync(config.outputDir, { recursive: true, force: true });
 });
 
@@ -1185,7 +1185,7 @@ test("dependency health tolerates dependency-cruiser cycle shape variants", () =
       version: null,
       complete: false,
     }),
-    typedLint: () => ({ available: false, ran: false, reason: "not used", messages: [], version: null, complete: false }),
+    typedLint: () => ({ available: false, ran: false, reason: "not used", messages: [], version: null, complete: false, project_mode: "project", configured_project: null }),
   };
 
   const [dependencyHealth] = runMeasure(config, "quality.dependency_health", "test depcruise cycle shape", { context }) as [

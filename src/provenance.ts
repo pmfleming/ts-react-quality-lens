@@ -85,6 +85,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     file_discovery: "project-relative-test-paths-v2",
     architecture: "risk-model-v3",
     typed_lint: "tsrqlens-typescript-recommended-v1",
+    typed_lint_projects: "project-service-auto-v1",
     react: config.react.ruleset,
     react_support: "declared-range-capabilities-v1",
     react_classification: "correctness-optimization-v1",

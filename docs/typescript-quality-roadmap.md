@@ -7,7 +7,7 @@ This document separates the current **0.3.0** implementation from research propo
 | Area | Current implementation | Important boundary |
 | --- | --- | --- |
 | Policy and evidence | Dispositions, required checks, incomplete verdicts, compiler/test blockers, baseline/recommended/strict/react/library profiles. | Numeric scores do not gate. Required checks are not task-selection switches. |
-| TypeScript | Compiler diagnostics, inherited compiler inputs, safety posture, managed typed lint, per-file/project type coverage and ratchets. | Typed lint uses the root configured tsconfig; no arbitrary custom-project lint ingestion. |
+| TypeScript | Explicit compiler provenance, compiler diagnostics, inherited compiler inputs, safety posture, managed typed lint with automatic project service, per-file/project type coverage and ratchets. | Custom selected configs use explicit project mode; managed lint does not ingest arbitrary custom lint policy. |
 | React/accessibility | Official recommended-v2 and classic-v1 rulesets; managed jsx-a11y with fallback heuristics; per-workspace React range and API guidance. | Capability guidance does not detect compiler activation or framework/browser support; static a11y is not a required-check option. |
 | Cleanup | Built-in candidates plus Knip normalization, comparison outcomes, public API/entrypoint handling. | Dynamic/runtime contracts can remain unresolved; removal is not automatically safe. |
 | Packages | Temporary declaration emit, npm pack, publint, ATTW, library policy. | No API Extractor integration, API compatibility diff, or independent per-workspace package validation. |
@@ -36,11 +36,11 @@ Any future integration should preserve unknown/optional evidence, source-path id
 
 ### Package and workspace depth
 
-Potential work includes API Extractor/API report ingestion, public API compatibility review, independent workspace policy execution, and a stronger typed-lint project selection model. Avoid presenting workspace metadata overrides as implemented enforcement.
+Potential work includes API Extractor/API report ingestion, public API compatibility review, and independent workspace policy execution. Typed lint now supports project-service discovery and explicit custom-config selection; per-file coverage reports remain future work. Avoid presenting workspace metadata overrides as implemented enforcement.
 
 ### Rule precision and calibration
 
-Expand contracts beyond the initial four rules, add pinned public-project comparisons and real false-positive adjudication, and publish per-rule precision/abstention measurements before claiming predictive scoring. The current mutation harness tests specified text substitutions, not arbitrary semantic rewrites.
+Expand contracts beyond the eight registered rules, add pinned public-project comparisons and real false-positive adjudication, and publish per-rule precision/abstention measurements before claiming predictive scoring. The current mutation harness tests specified text substitutions, not arbitrary semantic rewrites.
 
 ### Caching and editor scope
 

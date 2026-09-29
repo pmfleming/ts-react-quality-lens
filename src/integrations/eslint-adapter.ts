@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { isRecord, parseJson } from "../collections.js";
 import { packageJsonUrl } from "../package-root.js";
+import { discoverWorkspaces } from "../workspaces.js";
 import type { Config, EslintAccessibilityResult, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult, ReactRuleset } from "../types.js";
 import {
   existingRelativeRoots,
@@ -17,22 +18,37 @@ import {
 
 export function runTypedLint(config: Config): EslintTypeAwareResult {
   const version = toolPackageVersion("@typescript-eslint/eslint-plugin");
-  if (!config.tsconfig || !fs.existsSync(config.tsconfig)) {
+  const customProject = config.tsconfig && path.resolve(config.tsconfig) !== path.join(config.projectRoot, "tsconfig.json");
+  const projectMode = config.typedLint.mode === "auto"
+    ? (customProject ? "project" : "project-service")
+    : config.typedLint.mode;
+  const selection = {
+    project_mode: projectMode,
+    configured_project: projectMode === "project" && config.tsconfig ? relativePath(config.projectRoot, config.tsconfig) : null,
+  };
+  const hasConfig = projectMode === "project"
+    ? Boolean(config.tsconfig && fs.existsSync(config.tsconfig))
+    : discoverWorkspaces(config).tsconfigPaths.length > 0;
+  if (!hasConfig || !existingRelativeRoots(config).length) {
     return {
+      ...selection,
       available: toolAvailable(config.projectRoot, "eslint", true),
       ran: false,
-      reason: "typed lint requires a readable tsconfig",
+      reason: hasConfig ? "typed lint has no existing source roots" : "typed lint requires a readable tsconfig",
       messages: [],
       version,
       complete: false,
       duration_ms: 0,
     };
   }
-  const result = runTemporaryEslint(config, "typed", typedLintConfig(config), undefined, true);
+  const result = runTemporaryEslint(config, "typed", typedLintConfig(config, projectMode), undefined, true);
+  const parserFailures = result.messages.filter((message) => message.rule_id === "eslint/parser");
   return {
     ...result,
+    ...selection,
     version,
-    complete: result.ran && !result.messages.some((message) => message.rule_id === "eslint/parser"),
+    reason: result.reason ?? (parserFailures.length ? `Typed lint could not obtain type information or parse ${parserFailures.length} file(s). See eslint/parser findings.` : null),
+    complete: result.ran && parserFailures.length === 0,
   };
 }
 
@@ -124,7 +140,10 @@ function recoverEslint(error: ExecError, parse: (stdout: string) => { messages: 
 }
 
 
-function typedLintConfig(config: Config): string {
+function typedLintConfig(config: Config, mode: EslintTypeAwareResult["project_mode"]): string {
+  const projectOptions = mode === "project-service"
+    ? { projectService: { loadTypeScriptPlugins: false } }
+    : { project: [config.tsconfig] };
   return `import { createRequire } from "node:module";
 const toolRequire = createRequire(${JSON.stringify(managedPackageJsonUrl())});
 const parser = toolRequire("@typescript-eslint/parser");
@@ -135,7 +154,7 @@ export default [{
   languageOptions: {
     parser,
     parserOptions: {
-      project: [${JSON.stringify(config.tsconfig)}],
+      ...${JSON.stringify(projectOptions)},
       tsconfigRootDir: ${JSON.stringify(config.projectRoot)},
       ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module"
     }

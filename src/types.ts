@@ -12,6 +12,7 @@ export type FindingConfidence = "low" | "medium" | "high";
 export type PolicyProfile = "baseline" | "recommended" | "strict" | "react" | "library";
 export type PolicyCheck = "compiler" | "typed-lint" | "tests" | "react-hooks" | "package";
 export type ReactRuleset = "classic-v1" | "recommended-v2";
+export type TypedLintMode = "auto" | "project-service" | "project";
 export type ImportKind = "static" | "dynamic" | "type";
 type ImportTargetKind = "external" | "relative" | "unresolved";
 
@@ -33,6 +34,7 @@ export type RawConfig = {
   public_api?: PublicApiConfig;
   cache?: CacheConfig;
   react?: ReactConfig;
+  typed_lint?: { mode?: TypedLintMode };
   accessibility?: AccessibilityConfig;
   cleanup?: CleanupConfig;
   type_coverage?: TypeCoverageConfig;
@@ -141,6 +143,7 @@ export type Config = {
     ruleset: ReactRuleset;
     version: string | null;
   };
+  typedLint: { mode: TypedLintMode };
   accessibility: {
     enabled: boolean;
     components: Record<string, string>;
@@ -678,6 +681,8 @@ export type EslintAccessibilityResult = ToolResult & {
 };
 export type EslintTypeAwareResult = ToolResult & {
   messages: EslintMessage[]; version: string | null; complete: boolean;
+  project_mode: Exclude<TypedLintMode, "auto">;
+  configured_project: string | null;
 };
 
 export type DiagnosticRecord = {
