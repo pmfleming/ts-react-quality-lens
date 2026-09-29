@@ -4,7 +4,7 @@ import { changedFilesSince, defaultBase } from "../audit/change-set.js";
 import { stableHash } from "../clone-utils.js";
 import { countBy, isRecord, parseJson } from "../collections.js";
 import { eslintFindingRecord } from "../integrations/eslint-findings.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase, compilerProvenance, sourceSetHash } from "../provenance.js";
 import { riskForScore } from "../risk-model.js";
 import { escapeRecords, typeHealthRecords } from "../scoring.js";
 import { writeArtifact } from "../writer.js";
@@ -43,6 +43,14 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
       : null,
   }, records, {
     compiler_options: project.tsProject.compiler_options ?? null,
+    tool_status: {
+      compiler_api: {
+        ...compilerProvenance().analysis,
+        available: project.tsProject.available,
+        loaded: project.tsProject.loaded,
+        reason: project.tsProject.reason,
+      },
+    },
     diagnostics,
     type_coverage: coverage ?? null,
   });
@@ -101,6 +109,7 @@ function compilerDiagnosticFinding(diagnostic: DiagnosticRecord): ScoredRecord {
     score: error ? 100 : 50,
     risk: error ? "high" : "medium",
     source: "typescript-compiler",
+    compiler: compilerProvenance().analysis,
     message: diagnostic.message,
     diagnostic_code: diagnostic.code,
     signals: [{ kind: `TS${diagnostic.code}`, message: diagnostic.message }],

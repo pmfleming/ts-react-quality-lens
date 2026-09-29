@@ -17,6 +17,19 @@ function provenance(command: string, sourceType = "static") {
     host: os.hostname(),
     measured_at: new Date().toISOString(),
     source_type: sourceType,
+    compilers: compilerProvenance(),
+  };
+}
+
+export function compilerProvenance() {
+  return {
+    analysis: { engine: "typescript-compiler-api", package: "typescript", version: ts.version },
+    native: {
+      package: "@typescript/native",
+      version: toolPackageVersion("@typescript/native"),
+      role: "lens-build-tool",
+      analysis_executed: false,
+    },
   };
 }
 
@@ -52,6 +65,7 @@ export function artifactBase(
 
 export function analysisIdentity(config: Config): AnalysisIdentity {
   const integrationVersions = {
+    typescript_native: toolPackageVersion("@typescript/native"),
     typescript_eslint: toolPackageVersion("@typescript-eslint/eslint-plugin"),
     react_hooks: toolPackageVersion("eslint-plugin-react-hooks"),
     jsx_a11y: toolPackageVersion("eslint-plugin-jsx-a11y"),
@@ -77,7 +91,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   };
   const identity = {
     schema_version: SCHEMA_VERSION,
-    compiler_api_version: toolPackageVersion("typescript"),
+    compiler_api_version: ts.version,
     config_closure_hash: configHash,
     rulesets,
     integration_versions: integrationVersions,

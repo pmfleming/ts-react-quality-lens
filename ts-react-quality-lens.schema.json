@@ -52,7 +52,35 @@
         "command": { "type": "string" },
         "host": { "type": "string" },
         "measured_at": { "type": "string" },
-        "source_type": { "type": "string" }
+        "source_type": { "type": "string" },
+        "compilers": {
+          "type": "object",
+          "required": ["analysis", "native"],
+          "properties": {
+            "analysis": {
+              "type": "object",
+              "required": ["engine", "package", "version"],
+              "properties": {
+                "engine": { "const": "typescript-compiler-api" },
+                "package": { "const": "typescript" },
+                "version": { "type": "string" }
+              },
+              "additionalProperties": false
+            },
+            "native": {
+              "type": "object",
+              "required": ["package", "version", "role", "analysis_executed"],
+              "properties": {
+                "package": { "const": "@typescript/native" },
+                "version": { "type": ["string", "null"] },
+                "role": { "const": "lens-build-tool" },
+                "analysis_executed": { "const": false }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": true
     },

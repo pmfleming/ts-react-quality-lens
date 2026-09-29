@@ -2,6 +2,8 @@
 
 ## Execution boundaries
 
+Every artifact records `provenance.compilers`: `analysis` identifies the loaded TypeScript compiler API and its actual runtime version; `native` identifies the installed `@typescript/native` build tool (or a null version when unavailable). Native availability is not execution evidence: `analysis_executed` is false. The lens builds with TS7, while diagnostics, type coverage, and typed lint currently use the TS6 compatibility API. `type_health.json` also exposes compiler API load status and stamps compiler diagnostics with their engine/version. Analysis identity includes both versions so toolchain changes invalidate comparisons.
+
 The lens writes artifacts/cache files and temporary tool configurations. It does not invoke upstream `--fix` operations or directly rewrite measured source. This is **not** a read-only sandbox: project tooling may execute configuration, and configured/inferred test commands run arbitrary project code and can modify files.
 
 ESLint/plugins, Knip, jscpd, dependency-cruiser, publint, and Are The Types Wrong are package dependencies, not just optional peer installations. Tool lookup and successful execution still depend on the environment. Inspect each artifact's `tool_status` and confidence fields for availability, completion, reason, and timing where supplied.
