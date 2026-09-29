@@ -13,7 +13,13 @@
       ],
       "evidence_kind": "tool-rule",
       "precision": "scope",
-      "scope": ["javascript", "typescript", "jsx", "tsx", "react"],
+      "scope": [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx",
+        "react"
+      ],
       "default_disposition": "block",
       "positive_examples": [
         "Calling useState after an early return in a component."
@@ -35,7 +41,13 @@
       ],
       "evidence_kind": "tool-rule",
       "precision": "scope",
-      "scope": ["javascript", "typescript", "jsx", "tsx", "react"],
+      "scope": [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx",
+        "react"
+      ],
       "default_disposition": "block",
       "positive_examples": [
         "Calling a useState setter directly in the component body."
@@ -58,7 +70,11 @@
       ],
       "evidence_kind": "tool-rule",
       "precision": "syntax",
-      "scope": ["jsx", "tsx", "react"],
+      "scope": [
+        "jsx",
+        "tsx",
+        "react"
+      ],
       "default_disposition": "warn",
       "positive_examples": [
         "An img element with a src attribute and no alt attribute."
@@ -80,7 +96,11 @@
       ],
       "evidence_kind": "heuristic",
       "precision": "syntax",
-      "scope": ["jsx", "tsx", "react"],
+      "scope": [
+        "jsx",
+        "tsx",
+        "react"
+      ],
       "default_disposition": "review",
       "positive_examples": [
         "A literal img opening element with no alt attribute."
@@ -90,6 +110,118 @@
       ],
       "out_of_scope": [
         "Spread-provided attributes, custom image components, and semantic quality of alternative text."
+      ]
+    },
+    {
+      "id": "react-hooks/exhaustive-deps",
+      "owner": "upstream",
+      "behavior": "Reports missing reactive dependencies in Effects and memoization Hooks.",
+      "runtime_rationale": "Missing dependencies can leave callbacks reading stale props or state.",
+      "authoritative_sources": [
+        "https://react.dev/reference/eslint-plugin-react-hooks/lints/exhaustive-deps"
+      ],
+      "evidence_kind": "tool-rule",
+      "precision": "scope",
+      "scope": [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx",
+        "react"
+      ],
+      "default_disposition": "warn",
+      "positive_examples": [
+        "An Effect reads a prop but omits it from its dependencies."
+      ],
+      "false_positive_traps": [
+        "Effect Events read current values without becoming reactive dependencies."
+      ],
+      "out_of_scope": [
+        "Custom runtime abstractions not recognized by the installed upstream plugin."
+      ]
+    },
+    {
+      "id": "react-hooks/immutability",
+      "owner": "upstream",
+      "behavior": "Reports mutation of props, state, and values treated as immutable by React.",
+      "runtime_rationale": "Mutation can bypass updates and invalidate rendering assumptions.",
+      "authoritative_sources": [
+        "https://react.dev/reference/eslint-plugin-react-hooks/lints/immutability"
+      ],
+      "evidence_kind": "tool-rule",
+      "precision": "scope",
+      "scope": [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx",
+        "react"
+      ],
+      "default_disposition": "warn",
+      "positive_examples": [
+        "Assigning a new value to a property of a prop object during rendering."
+      ],
+      "false_positive_traps": [
+        "Mutating a fresh local copy does not mutate props or state."
+      ],
+      "out_of_scope": [
+        "Custom runtime abstractions not recognized by the installed upstream plugin."
+      ]
+    },
+    {
+      "id": "react-hooks/set-state-in-effect",
+      "owner": "upstream",
+      "behavior": "Reports avoidable synchronous state updates directly inside Effects.",
+      "runtime_rationale": "Derived state updated in an Effect causes an additional render pass.",
+      "authoritative_sources": [
+        "https://react.dev/reference/eslint-plugin-react-hooks/lints/set-state-in-effect"
+      ],
+      "evidence_kind": "tool-rule",
+      "precision": "scope",
+      "scope": [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx",
+        "react"
+      ],
+      "default_disposition": "info",
+      "positive_examples": [
+        "An Effect copies a prop into state synchronously."
+      ],
+      "false_positive_traps": [
+        "Deriving a value during render needs no synchronization Effect."
+      ],
+      "out_of_scope": [
+        "Custom runtime abstractions not recognized by the installed upstream plugin."
+      ]
+    },
+    {
+      "id": "react-hooks/refs",
+      "owner": "upstream",
+      "behavior": "Reports inappropriate ref reads or writes during rendering.",
+      "runtime_rationale": "Render-time ref access can break rendering consistency.",
+      "authoritative_sources": [
+        "https://react.dev/reference/eslint-plugin-react-hooks/lints/refs"
+      ],
+      "evidence_kind": "tool-rule",
+      "precision": "scope",
+      "scope": [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx",
+        "react"
+      ],
+      "default_disposition": "warn",
+      "positive_examples": [
+        "Reading a ref current value to produce JSX."
+      ],
+      "false_positive_traps": [
+        "Passing a React 19 ref prop to a DOM element is valid."
+      ],
+      "out_of_scope": [
+        "Custom runtime abstractions not recognized by the installed upstream plugin."
       ]
     }
   ]

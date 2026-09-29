@@ -17,9 +17,11 @@ type CorpusCase = {
 };
 
 type Corpus = { schema_version: string; cases: CorpusCase[] };
+type Contracts = { rules: Array<{ id: string; default_disposition: string }> };
 
 const repoRoot = path.resolve();
 const corpus = JSON.parse(fs.readFileSync(path.join(repoRoot, "test", "rule-corpus", "cases.json"), "utf8")) as Corpus;
+const contracts = JSON.parse(fs.readFileSync(path.join(repoRoot, "rule-contracts.json"), "utf8")) as Contracts;
 
 test("rule corpus preserves true and false-positive verdicts after identifier and location mutations", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-${process.pid}-rule-corpus-`));
@@ -27,7 +29,7 @@ test("rule corpus preserves true and false-positive verdicts after identifier an
   fs.mkdirSync(sourceDir, { recursive: true });
   fs.writeFileSync(
     path.join(tempDir, "package.json"),
-    JSON.stringify({ name: "rule-corpus", type: "module", dependencies: { react: "catalog:" } }),
+    JSON.stringify({ name: "rule-corpus", type: "module", dependencies: { react: "^19.3.0" } }),
     "utf8",
   );
   for (const item of corpus.cases) writeCaseFiles(sourceDir, item);
@@ -41,6 +43,8 @@ test("rule corpus preserves true and false-positive verdicts after identifier an
   try {
     const config = loadConfig(configPath);
     const [managed] = runMeasure(config, "quality.react_health", "rule corpus managed") as [Artifact];
+    assert.equal(managed.tool_status?.eslint_react_hooks?.complete, true, "negative cases require complete Hooks analysis");
+    assert.equal(managed.tool_status?.jsx_a11y?.complete, true, "negative cases require complete accessibility analysis");
     assertCorpus(managed, corpus.cases.filter((item) => item.contract_id !== "ts-react-quality-lens/img_missing_alt"));
 
     config.accessibility.enabled = false;
@@ -71,6 +75,14 @@ function assertVerdict(artifact: Artifact, item: CorpusCase, file: string): void
     item.verdict === "true-positive",
     `${item.id} should remain ${item.verdict} for ${file}`,
   );
+  if (present) {
+    const expected = contracts.rules.find((rule) => rule.id === item.contract_id)?.default_disposition;
+    for (const record of artifact.records ?? []) {
+      if (record.rule_id === item.contract_id && record.file === file) {
+        assert.equal(record.disposition, expected, `${item.id} must preserve its contract disposition`);
+      }
+    }
+  }
 }
 
 function mutatedFile(file: string): string {

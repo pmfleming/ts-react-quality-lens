@@ -7,7 +7,10 @@
       "verdict": "true-positive",
       "file": "conditional-hook.tsx",
       "source": "import { useState } from \"react\";\nexport function ConditionalHook({ enabled }: { enabled: boolean }) {\n  if (!enabled) return null;\n  const [value] = useState(0);\n  return <span>{value}</span>;\n}\n",
-      "mutation": { "search": "enabled", "replace": "isEnabled" }
+      "mutation": {
+        "search": "enabled",
+        "replace": "isEnabled"
+      }
     },
     {
       "id": "rules-of-hooks-top-level",
@@ -15,7 +18,10 @@
       "verdict": "false-positive",
       "file": "valid-hook.tsx",
       "source": "import { useState } from \"react\";\nexport function ValidHook({ enabled }: { enabled: boolean }) {\n  const [value] = useState(0);\n  if (!enabled) return null;\n  return <span>{value}</span>;\n}\n",
-      "mutation": { "search": "value", "replace": "currentValue" }
+      "mutation": {
+        "search": "value",
+        "replace": "currentValue"
+      }
     },
     {
       "id": "set-state-during-render",
@@ -23,7 +29,10 @@
       "verdict": "true-positive",
       "file": "render-update.tsx",
       "source": "import { useState } from \"react\";\nexport function RenderUpdate() {\n  const [count, setCount] = useState(0);\n  setCount(1);\n  return <span>{count}</span>;\n}\n",
-      "mutation": { "search": "count", "replace": "value" }
+      "mutation": {
+        "search": "count",
+        "replace": "value"
+      }
     },
     {
       "id": "set-state-in-handler",
@@ -31,7 +40,10 @@
       "verdict": "false-positive",
       "file": "event-update.tsx",
       "source": "import { useState } from \"react\";\nexport function EventUpdate() {\n  const [count, setCount] = useState(0);\n  return <button onClick={() => setCount(count + 1)}>{count}</button>;\n}\n",
-      "mutation": { "search": "count", "replace": "clickCount" }
+      "mutation": {
+        "search": "count",
+        "replace": "clickCount"
+      }
     },
     {
       "id": "image-without-alt",
@@ -39,7 +51,10 @@
       "verdict": "true-positive",
       "file": "missing-alt.tsx",
       "source": "export function Avatar() {\n  return <img src=\"avatar.png\" />;\n}\n",
-      "mutation": { "search": "Avatar", "replace": "ProfileImage" }
+      "mutation": {
+        "search": "Avatar",
+        "replace": "ProfileImage"
+      }
     },
     {
       "id": "image-with-alt",
@@ -47,7 +62,10 @@
       "verdict": "false-positive",
       "file": "described-image.tsx",
       "source": "export function Logo() {\n  return <img src=\"logo.png\" alt=\"Company logo\" />;\n}\n",
-      "mutation": { "search": "Logo", "replace": "BrandMark" }
+      "mutation": {
+        "search": "Logo",
+        "replace": "BrandMark"
+      }
     },
     {
       "id": "fallback-image-without-alt",
@@ -55,7 +73,10 @@
       "verdict": "true-positive",
       "file": "fallback-missing-alt.tsx",
       "source": "export function FallbackAvatar() {\n  return <img src=\"avatar.png\" />;\n}\n",
-      "mutation": { "search": "FallbackAvatar", "replace": "FallbackProfileImage" }
+      "mutation": {
+        "search": "FallbackAvatar",
+        "replace": "FallbackProfileImage"
+      }
     },
     {
       "id": "fallback-image-with-alt",
@@ -63,7 +84,164 @@
       "verdict": "false-positive",
       "file": "fallback-described-image.tsx",
       "source": "export function FallbackLogo() {\n  return <img src=\"logo.png\" alt=\"Company logo\" />;\n}\n",
-      "mutation": { "search": "FallbackLogo", "replace": "FallbackBrandMark" }
+      "mutation": {
+        "search": "FallbackLogo",
+        "replace": "FallbackBrandMark"
+      }
+    },
+    {
+      "id": "conditional-use-valid",
+      "contract_id": "react-hooks/rules-of-hooks",
+      "verdict": "false-positive",
+      "file": "conditional-use-valid.tsx",
+      "source": "import { use } from \"react\";\nexport function ConditionalUse({ enabled, data }: { enabled: boolean; data: Promise<string> }) {\n  if (enabled) return <span>{use(data)}</span>;\n  return null;\n}\n",
+      "mutation": {
+        "search": "enabled",
+        "replace": "isEnabled"
+      }
+    },
+    {
+      "id": "loop-use-valid",
+      "contract_id": "react-hooks/rules-of-hooks",
+      "verdict": "false-positive",
+      "file": "loop-use-valid.tsx",
+      "source": "import { use } from \"react\";\nexport function LoopUse({ values }: { values: Promise<string>[] }) {\n  const items = [];\n  for (const value of values) items.push(use(value));\n  return <span>{items.join(\",\")}</span>;\n}\n",
+      "mutation": {
+        "search": "values",
+        "replace": "promises"
+      }
+    },
+    {
+      "id": "action-state-valid",
+      "contract_id": "react-hooks/rules-of-hooks",
+      "verdict": "false-positive",
+      "file": "action-state-valid.tsx",
+      "source": "import { useActionState } from \"react\";\nexport function ActionForm({ save }: { save: (state: string, data: FormData) => Promise<string> }) {\n  const [state, action, pending] = useActionState(save, \"\");\n  return <form action={action}><button disabled={pending}>{state}</button></form>;\n}\n",
+      "mutation": {
+        "search": "pending",
+        "replace": "isPending"
+      }
+    },
+    {
+      "id": "guarded-render-update-valid",
+      "contract_id": "react-hooks/set-state-in-render",
+      "verdict": "false-positive",
+      "file": "guarded-render-update-valid.tsx",
+      "source": "import { useState } from \"react\";\nexport function GuardedUpdate({ items }: { items: string[] }) {\n  const [previous, setPrevious] = useState(items);\n  const [selection, setSelection] = useState<string | null>(null);\n  if (items !== previous) { setPrevious(items); setSelection(null); }\n  return <span>{selection}</span>;\n}\n",
+      "mutation": {
+        "search": "items",
+        "replace": "entries"
+      }
+    },
+    {
+      "id": "effect-missing-dependency",
+      "contract_id": "react-hooks/exhaustive-deps",
+      "verdict": "true-positive",
+      "file": "effect-missing-dependency.tsx",
+      "source": "import { useEffect } from \"react\";\nexport function MissingDependency({ value }: { value: string }) {\n  useEffect(() => { console.log(value); }, []);\n  return null;\n}\n",
+      "mutation": {
+        "search": "value",
+        "replace": "message"
+      }
+    },
+    {
+      "id": "effect-complete-dependencies",
+      "contract_id": "react-hooks/exhaustive-deps",
+      "verdict": "false-positive",
+      "file": "effect-complete-dependencies.tsx",
+      "source": "import { useEffect } from \"react\";\nexport function CompleteDependencies({ value }: { value: string }) {\n  useEffect(() => { console.log(value); }, [value]);\n  return null;\n}\n",
+      "mutation": {
+        "search": "value",
+        "replace": "message"
+      }
+    },
+    {
+      "id": "effect-event-current-value",
+      "contract_id": "react-hooks/exhaustive-deps",
+      "verdict": "false-positive",
+      "file": "effect-event-current-value.tsx",
+      "source": "import { useEffect, useEffectEvent } from \"react\";\nexport function Timer({ value }: { value: string }) {\n  const onTick = useEffectEvent(() => { console.log(value); });\n  useEffect(() => {\n    const timer = setInterval(() => onTick(), 1000);\n    return () => clearInterval(timer);\n  }, []);\n  return null;\n}\n",
+      "mutation": {
+        "search": "value",
+        "replace": "message"
+      }
+    },
+    {
+      "id": "mutated-prop",
+      "contract_id": "react-hooks/immutability",
+      "verdict": "true-positive",
+      "file": "mutated-prop.tsx",
+      "source": "export function RenamedUser({ user }: { user: { name: string } }) {\n  user.name = \"changed\";\n  return <span>{user.name}</span>;\n}\n",
+      "mutation": {
+        "search": "user",
+        "replace": "profile"
+      }
+    },
+    {
+      "id": "local-copy-mutation",
+      "contract_id": "react-hooks/immutability",
+      "verdict": "false-positive",
+      "file": "local-copy-mutation.tsx",
+      "source": "export function SortedCopy({ items }: { items: string[] }) {\n  const sorted = [...items];\n  sorted.sort();\n  return <span>{sorted.join(\",\")}</span>;\n}\n",
+      "mutation": {
+        "search": "items",
+        "replace": "entries"
+      }
+    },
+    {
+      "id": "effect-derived-state",
+      "contract_id": "react-hooks/set-state-in-effect",
+      "verdict": "true-positive",
+      "file": "effect-derived-state.tsx",
+      "source": "import { useEffect, useState } from \"react\";\nexport function DerivedEffect({ value }: { value: string }) {\n  const [label, setLabel] = useState(\"\");\n  useEffect(() => { setLabel(value.toUpperCase()); }, [value]);\n  return <span>{label}</span>;\n}\n",
+      "mutation": {
+        "search": "value",
+        "replace": "text"
+      }
+    },
+    {
+      "id": "render-derived-state",
+      "contract_id": "react-hooks/set-state-in-effect",
+      "verdict": "false-positive",
+      "file": "render-derived-state.tsx",
+      "source": "export function DerivedRender({ value }: { value: string }) {\n  const label = value.toUpperCase();\n  return <span>{label}</span>;\n}\n",
+      "mutation": {
+        "search": "value",
+        "replace": "text"
+      }
+    },
+    {
+      "id": "render-ref-read",
+      "contract_id": "react-hooks/refs",
+      "verdict": "true-positive",
+      "file": "render-ref-read.tsx",
+      "source": "import { useRef } from \"react\";\nexport function RefRead() {\n  const value = useRef(0);\n  return <span>{value.current}</span>;\n}\n",
+      "mutation": {
+        "search": "value",
+        "replace": "counter"
+      }
+    },
+    {
+      "id": "ref-prop-valid",
+      "contract_id": "react-hooks/refs",
+      "verdict": "false-positive",
+      "file": "ref-prop-valid.tsx",
+      "source": "import type { Ref } from \"react\";\nexport function Input({ ref, label }: { ref?: Ref<HTMLInputElement>; label: string }) {\n  return <input ref={ref} aria-label={label} />;\n}\n",
+      "mutation": {
+        "search": "label",
+        "replace": "name"
+      }
+    },
+    {
+      "id": "fragment-ref-valid",
+      "contract_id": "react-hooks/refs",
+      "verdict": "false-positive",
+      "file": "fragment-ref-valid.tsx",
+      "source": "import { Fragment, useRef } from \"react\";\nexport function FragmentGroup() {\n  const groupRef = useRef(null);\n  return <Fragment ref={groupRef}><span>A</span><span>B</span></Fragment>;\n}\n",
+      "mutation": {
+        "search": "groupRef",
+        "replace": "fragmentRef"
+      }
     }
   ]
 }

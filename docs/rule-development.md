@@ -1,6 +1,8 @@
 # Rule development and validation
 
-The rule-contract and mutation corpus is an initial precision harness, not exhaustive coverage of the analyzer. [`rule-contracts.json`](../rule-contracts.json) currently registers four rules: React Rules of Hooks, render-time state updates, managed alt-text, and the missing-alt fallback. Other compiler, lint, import, cleanup, and heuristic behavior is covered by broader tests but not necessarily by a registered contract.
+The rule-contract and mutation corpus is a focused precision harness, not exhaustive coverage of the analyzer. [`rule-contracts.json`](../rule-contracts.json) registers eight rules: React Rules of Hooks, render-time state updates, exhaustive dependencies, immutability, synchronous Effect state updates, ref access, managed alt-text, and the missing-alt fallback. The 22 cases run both original and mutated sources (44 inputs). Other compiler, lint, import, cleanup, and heuristic behavior is covered by broader tests but not necessarily by a registered contract.
+
+Modern React false-positive traps cover conditional/looped `use`, `useActionState`, Effect Events, guarded render updates, mutation of fresh local copies, derived values, ref props, and Fragment refs. These are static lint fixtures, not runtime or browser compatibility tests. The immutability contract confirms direct property mutation; opaque mutating method calls are outside this corpus's guarantee.
 
 ## Contributor workflow
 
@@ -25,7 +27,7 @@ A heuristic-only registered contract cannot have default disposition `block`. Av
 - `true-positive`: the contract's rule ID must occur in both versions;
 - `false-positive`: it must occur in neither version.
 
-These are rule-presence verdicts, not a complete assertion of audit pass/fail behavior. Mutations are explicit search/replace cases, not a general AST fuzzer. Add dedicated audit tests when changing disposition, attribution, or completeness behavior.
+The harness requires complete managed analysis before accepting negative cases and checks the contract disposition for positive cases. These are rule-presence and disposition verdicts, not a complete assertion of audit pass/fail behavior. Mutations are explicit search/replace cases, not a general AST fuzzer. `modern-tooling.test.ts` separately checks that optimization findings remain informational through audit policy.
 
 ## Public-project evaluation (recommended, not automated)
 

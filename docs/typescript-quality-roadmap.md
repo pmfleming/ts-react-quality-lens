@@ -19,7 +19,7 @@ This document separates the current **0.3.0** implementation from research propo
 | Architecture | Risk model v3, eleven input prerequisites, task-input freshness, lint/cleanup quality input, explicit execution-aware correctness. | Scores are static prioritization, not predictive probabilities. Runtime/SARIF/package artifacts do not directly feed the map. |
 | Caching/performance | Reusable project snapshot, compiler/config/content fingerprints, per-context tool memoization, synthetic benchmark, smoke budget. | No persisted live Program/checker, per-file incremental scheduler, or external-tool result cache. |
 | Agent/editor | MCP tools/resources with explicit test execution; worker-based LSP diagnostics and config suppression edits. | Saved-file LSP analysis only; not every task/project finding is exposed as a diagnostic. |
-| Validation/distribution | Schema checks, selected rule contracts with mutations, regression tests, package/performance smoke, Ubuntu/Windows CI. | Contract corpus is four selected rules, not universal rule coverage or real-project calibration. |
+| Validation/distribution | Schema checks, eight rule contracts with 22 original/mutated cases, regression tests, package/performance smoke, Ubuntu/Windows CI. | Contract corpus is selected-rule coverage, not universal coverage or real-project calibration. |
 
 ## Remaining work
 
