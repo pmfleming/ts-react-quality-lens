@@ -127,6 +127,8 @@ The bundled dependencies include ESLint/plugins, Knip, jscpd, dependency-cruiser
 
 The build uses the TypeScript 7 native compiler through `@typescript/native`. Runtime compiler-API analysis uses `typescript`, aliased to `@typescript/typescript6`. GitHub Actions runs CI on Ubuntu and Windows with Node 24.
 
+See the [self-refactoring report](docs/self-refactor.md) for measured before/after results, hotspot summary fields, and the interpretation of leverage and locality evidence.
+
 Artifacts identify the analysis API and native build tool separately under `provenance.compilers`. React health reports each workspace's declared React support range and applicable API guidance, with separate correctness and optimization categories. Typed lint defaults to project-service discovery for conventional projects and preserves explicit custom tsconfigs. See [integrations](docs/integrations.md) and [configuration](docs/configuration.md) for scope and overrides.
 
 The enabled-by-default disk cache stores a reusable project-analysis snapshot at `output_dir/.cache/analysis-v2.json` (internal cache format 4). It fingerprints source/test/compiler inputs, compiler file-discovery and resolution queries (including missing dependencies), and analysis identity; it does not persist external-tool results or a live TypeScript Program. Projects with no source files or unloaded configured TypeScript projects are not cached; external-tool completion is not part of that cache-admission check. Tool results are memoized within one analysis context. This is project-snapshot reuse, not changed-file-only incremental checking.

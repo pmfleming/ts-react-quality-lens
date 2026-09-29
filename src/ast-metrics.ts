@@ -1,4 +1,5 @@
 import * as ts from "typescript";
+import { countMatchingNodes, isFunctionWithBody } from "./ts-ast.js";
 
 const CYCLOMATIC_CHECKS = [
   ts.isIfStatement,
@@ -65,7 +66,7 @@ export function cognitiveComplexityForNode(node: ts.Node): number {
   return complexity;
 
   function visit(current: ts.Node, nesting: number, root: boolean): void {
-    if (!root && isFunctionLike(current)) return;
+    if (!root && isFunctionWithBody(current)) return;
     const structuralBreak = COGNITIVE_BREAKS.some((check) => check(current));
     if (structuralBreak) complexity += 1 + nesting;
     else if (isLogicalExpression(current)) complexity += 1;
@@ -103,7 +104,7 @@ export function halsteadMetricsForNode(node: ts.Node): HalsteadMetrics {
 export function maxNestingDepthForNode(node: ts.Node): number {
   let max = 0;
   function visit(current: ts.Node, depth: number, root: boolean): void {
-    if (!root && isFunctionLike(current)) return;
+    if (!root && isFunctionWithBody(current)) return;
     const nextDepth = NESTING_CHECKS.some((check) => check(current)) ? depth + 1 : depth;
     max = Math.max(max, nextDepth);
     ts.forEachChild(current, (child) => visit(child, nextDepth, false));
@@ -125,15 +126,8 @@ export function countTypeFieldsForNode(node: ts.Node): number {
 }
 
 export function countOptionalTypeFields(node: ts.Node): number {
-  let count = 0;
-  function visit(current: ts.Node): void {
-    if ((ts.isPropertySignature(current) || ts.isPropertyDeclaration(current) || ts.isParameter(current)) && current.questionToken) {
-      count += 1;
-    }
-    ts.forEachChild(current, visit);
-  }
-  visit(node);
-  return count;
+  return countMatchingNodes(node, (current) =>
+    (ts.isPropertySignature(current) || ts.isPropertyDeclaration(current) || ts.isParameter(current)) && Boolean(current.questionToken));
 }
 
 export function countUnionMembers(node: ts.Node): number {
@@ -148,21 +142,11 @@ export function countUnionMembers(node: ts.Node): number {
 
 function visitChildrenOutsideNestedFunctions(node: ts.Node, visitNode: (node: ts.Node) => void): void {
   function visit(current: ts.Node, root: boolean): void {
-    if (!root && isFunctionLike(current)) return;
+    if (!root && isFunctionWithBody(current)) return;
     visitNode(current);
     ts.forEachChild(current, (child) => visit(child, false));
   }
   visit(node, true);
-}
-
-function countMatchingNodes(node: ts.Node, predicate: (node: ts.Node) => boolean): number {
-  let count = 0;
-  function visit(current: ts.Node): void {
-    if (predicate(current)) count += 1;
-    ts.forEachChild(current, visit);
-  }
-  visit(node);
-  return count;
 }
 
 function hasJsx(node: ts.Node): boolean {
@@ -203,10 +187,6 @@ function isMapJsx(node: ts.Node): boolean {
     node.expression.name.text === "map" &&
     node.arguments.some((argument) => hasJsx(argument))
   );
-}
-
-function isFunctionLike(node: ts.Node): boolean {
-  return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
 }
 
 function isOperandToken(token: ts.SyntaxKind): boolean {

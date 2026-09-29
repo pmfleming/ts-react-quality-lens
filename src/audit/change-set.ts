@@ -1,7 +1,7 @@
-import childProcess from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { isRecord } from "../collections.js";
+import { gitOutput } from "../history.js";
 import type { Config, ScoredRecord } from "../types.js";
 
 export type LineRange = { start: number; end: number };
@@ -44,17 +44,9 @@ export function changedFilesSince(config: Config, base: string): string[] {
   return changeSetSince(config, base).files;
 }
 
-export function changedLineRangesSince(config: Config, base: string): Map<string, LineRange[]> {
-  return changeSetSince(config, base).lines;
-}
-
 export function defaultBase(config: Config): string | null {
   try {
-    const stdout = childProcess.execFileSync("git", ["rev-parse", "--verify", "origin/main"], {
-      cwd: config.projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    const stdout = gitOutput(config, ["rev-parse", "--verify", "origin/main"]);
     return stdout.trim() ? "origin/main" : null;
   } catch {
     return null;
@@ -109,16 +101,6 @@ function instanceTouchesLine(instance: FindingInstance, changedLines: Map<string
 
 function rangesOverlap(target: LineRange, ranges: LineRange[]): boolean {
   return ranges.some((range) => target.start <= range.end && range.start <= target.end);
-}
-
-function gitOutput(config: Config, args: string[]): string {
-  return childProcess.execFileSync("git", args, {
-    cwd: config.projectRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: 30000,
-    maxBuffer: 64 * 1024 * 1024,
-  });
 }
 
 function parseChangedLineRanges(diff: string): Map<string, LineRange[]> {

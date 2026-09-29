@@ -85,6 +85,9 @@ test("measure all writes MVP artifacts", () => {
   const hotspots = JSON.parse(fs.readFileSync(path.join(config.outputDir, "hotspots.json"), "utf8")) as Artifact;
   assert.match(hotspots.analysis_identity?.id ?? "", /^sha256:[a-f0-9]{64}$/);
   assert.equal(typeof hotspots.analysis_identity?.config_closure_hash, "string");
+  assert.ok(Number(hotspots.summary.source_lines) > 0);
+  assert.equal(hotspots.summary.functions, hotspots.records?.filter((record) => record.kind !== "file").length);
+  assert.ok(hotspots.records?.every((record) => record.evidence_kind === "metric" && record.message?.includes("lines")));
   assert.ok(hotspots.records?.some((record) =>
     record.kind !== "file" &&
     record.signals?.some((signal) => signal.kind === "cyclomatic_complexity") &&

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import * as tsTypes from "typescript";
-import { isRecord } from "../collections.js";
+import * as ts from "typescript";
+import { dedupeBy, isRecord } from "../collections.js";
 import { trackCompilerInputs } from "./compiler-inputs.js";
 import { relativeModuleId, toPosix } from "../files.js";
 import type {
@@ -21,7 +21,7 @@ type LoadedWorkspaceProject = {
 };
 
 type ParsedConfigResult =
-  | { parsed: tsTypes.ParsedCommandLine; failure?: never }
+  | { parsed: ts.ParsedCommandLine; failure?: never }
   | { parsed?: never; failure: TypeScriptProject };
 
 export function loadTypeScriptProjects(
@@ -29,8 +29,7 @@ export function loadTypeScriptProjects(
   sourceFiles: SourceFileRecord[],
   projectConfigs: Array<{ workspaceId: string; path: string }>,
 ): TypeScriptProject {
-  const uniqueConfigs = projectConfigs.filter((item, index, values) =>
-    values.findIndex((candidate) => path.resolve(candidate.path) === path.resolve(item.path)) === index);
+  const uniqueConfigs = dedupeBy(projectConfigs, (item) => path.resolve(item.path));
   if (!uniqueConfigs.length) return loadTypeScriptProject(config, sourceFiles);
   const projects: LoadedWorkspaceProject[] = uniqueConfigs.map((item) => ({
     item,
@@ -47,14 +46,6 @@ export function loadTypeScriptProjects(
     for (const file of project.type_coverage?.files ?? []) coverageFiles.set(file.file, file);
   }
   const files = [...coverageFiles.values()];
-  const totals = files.reduce((result, file) => ({
-    analyzed_symbols: result.analyzed_symbols + file.analyzed_symbols,
-    typed_symbols: result.typed_symbols + file.typed_symbols,
-    explicit_any: result.explicit_any + file.explicit_any,
-    inferred_any: result.inferred_any + file.inferred_any,
-    error_types: result.error_types + file.error_types,
-    unknown: result.unknown + file.unknown,
-  }), emptyCoverageCounts());
   const loaded = projects.every(({ project }) => project.loaded);
   return {
     available: projects.every(({ project }) => project.available),
@@ -66,14 +57,7 @@ export function loadTypeScriptProjects(
     input_queries: projects.flatMap(({ project }) => project.input_queries ?? []),
     modules,
     ...firstCompilerOptions(projects),
-    type_coverage: {
-      summary: {
-        files: files.length,
-        ...totals,
-        type_coverage_percent: coveragePercent(totals.typed_symbols, totals.analyzed_symbols),
-      },
-      files,
-    },
+    type_coverage: summarizeCoverage(files),
     project_configs: projects.map(({ item, project }) => ({
       tsconfig: toPosix(path.relative(config.projectRoot, item.path)),
       workspace_id: item.workspaceId,
@@ -89,18 +73,17 @@ function firstCompilerOptions(projects: LoadedWorkspaceProject[]): Pick<TypeScri
 }
 
 function loadTypeScriptProject(config: Config, sourceFiles: SourceFileRecord[]): TypeScriptProject {
-  const ts = tsTypes;
   if (!config.tsconfig || !fs.existsSync(config.tsconfig)) return unloadedProject(true, "tsconfig was not found");
   try {
     const inputs = trackCompilerInputs();
-    const result = parseCompilerConfig(ts, config, inputs.system);
-    return result.failure ?? createTypedProject(ts, config, sourceFiles, result.parsed, inputs);
+    const result = parseCompilerConfig(config, inputs.system);
+    return result.failure ?? createTypedProject(config, sourceFiles, result.parsed, inputs);
   } catch (error) {
     return unloadedProject(true, error instanceof Error ? error.message : String(error));
   }
 }
 
-function parseCompilerConfig(ts: typeof tsTypes, config: Config, system: tsTypes.System): ParsedConfigResult {
+function parseCompilerConfig(config: Config, system: ts.System): ParsedConfigResult {
   const configPath = config.tsconfig;
   if (!configPath) return { failure: unloadedProject(true, "tsconfig was not found") };
   const configText = system.readFile(configPath);
@@ -108,8 +91,8 @@ function parseCompilerConfig(ts: typeof tsTypes, config: Config, system: tsTypes
   const parsedJson = ts.parseConfigFileTextToJson(configPath, configText);
   if (parsedJson.error) {
     return {
-      failure: unloadedProject(true, flattenMessage(ts, parsedJson.error.messageText), [
-        diagnosticRecord(ts, parsedJson.error, config.projectRoot),
+      failure: unloadedProject(true, flattenMessage(parsedJson.error.messageText), [
+        diagnosticRecord(parsedJson.error, config.projectRoot),
       ]),
     };
   }
@@ -117,17 +100,16 @@ function parseCompilerConfig(ts: typeof tsTypes, config: Config, system: tsTypes
   if (parsed.errors.length) {
     return {
       failure: unloadedProject(true, "TypeScript configuration is invalid", parsed.errors.map((diagnostic) =>
-        diagnosticRecord(ts, diagnostic, config.projectRoot))),
+        diagnosticRecord(diagnostic, config.projectRoot))),
     };
   }
   return { parsed };
 }
 
 function createTypedProject(
-  ts: typeof tsTypes,
   config: Config,
   sourceFiles: SourceFileRecord[],
-  parsed: tsTypes.ParsedCommandLine,
+  parsed: ts.ParsedCommandLine,
   inputs: ReturnType<typeof trackCompilerInputs>,
 ): TypeScriptProject {
   const options = { ...parsed.options, noEmit: true };
@@ -147,7 +129,7 @@ function createTypedProject(
     ...(parsed.projectReferences ? { projectReferences: parsed.projectReferences } : {}),
   });
   const checker = program.getTypeChecker();
-  const diagnostics = ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnosticRecord(ts, diagnostic, config.projectRoot));
+  const diagnostics = ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnosticRecord(diagnostic, config.projectRoot));
   return {
     available: true,
     loaded: true,
@@ -159,17 +141,16 @@ function createTypedProject(
     ])],
     input_queries: [...inputs.queries.values()],
     diagnostics,
-    modules: collectTypedModules(ts, config, sourceFiles, program, checker),
-    type_coverage: collectTypeCoverage(ts, config, sourceFiles, program, checker),
+    modules: collectTypedModules(config, sourceFiles, program, checker),
+    type_coverage: collectTypeCoverage(config, sourceFiles, program, checker),
   };
 }
 
 function collectTypedModules(
-  ts: typeof tsTypes,
   config: Config,
   sourceFiles: SourceFileRecord[],
-  program: tsTypes.Program,
-  checker: tsTypes.TypeChecker,
+  program: ts.Program,
+  checker: ts.TypeChecker,
 ): Map<string, TypedModuleRecord> {
   const wanted = new Set(sourceFiles.map((file) => path.resolve(file.path).toLowerCase()));
   const modules = new Map<string, TypedModuleRecord>();
@@ -177,23 +158,26 @@ function collectTypedModules(
     if (sourceFile.isDeclarationFile || !wanted.has(path.resolve(sourceFile.fileName).toLowerCase())) continue;
     modules.set(
       relativeModuleId(config.projectRoot, sourceFile.fileName),
-      typedModuleRecord(ts, checker, config, sourceFile),
+      typedModuleRecord(checker, config, sourceFile),
     );
   }
   return modules;
 }
 
 function collectTypeCoverage(
-  ts: typeof tsTypes,
   config: Config,
   sourceFiles: SourceFileRecord[],
-  program: tsTypes.Program,
-  checker: tsTypes.TypeChecker,
+  program: ts.Program,
+  checker: ts.TypeChecker,
 ): { summary: TypeCoverageSummary; files: TypeCoverageFile[] } {
   const wanted = new Set(sourceFiles.map((file) => path.resolve(file.path).toLowerCase()));
   const files = program.getSourceFiles()
     .filter((sourceFile) => !sourceFile.isDeclarationFile && wanted.has(path.resolve(sourceFile.fileName).toLowerCase()))
-    .map((sourceFile) => typeCoverageForFile(ts, checker, config, sourceFile));
+    .map((sourceFile) => typeCoverageForFile(checker, config, sourceFile));
+  return summarizeCoverage(files);
+}
+
+function summarizeCoverage(files: TypeCoverageFile[]): { summary: TypeCoverageSummary; files: TypeCoverageFile[] } {
   const totals = files.reduce((result, file) => ({
     analyzed_symbols: result.analyzed_symbols + file.analyzed_symbols,
     typed_symbols: result.typed_symbols + file.typed_symbols,
@@ -213,10 +197,9 @@ function collectTypeCoverage(
 }
 
 function typeCoverageForFile(
-  ts: typeof tsTypes,
-  checker: tsTypes.TypeChecker,
+  checker: ts.TypeChecker,
   config: Config,
-  sourceFile: tsTypes.SourceFile,
+  sourceFile: ts.SourceFile,
 ): TypeCoverageFile {
   const counts = emptyCoverageCounts();
   visit(sourceFile);
@@ -226,8 +209,8 @@ function typeCoverageForFile(
     type_coverage_percent: coveragePercent(counts.typed_symbols, counts.analyzed_symbols),
   };
 
-  function visit(node: tsTypes.Node): void {
-    if (ts.isIdentifier(node) && countableIdentifier(ts, node)) classifyIdentifier(ts, checker, node, counts);
+  function visit(node: ts.Node): void {
+    if (ts.isIdentifier(node) && countableIdentifier(node)) classifyIdentifier(checker, node, counts);
     ts.forEachChild(node, visit);
   }
 }
@@ -237,9 +220,8 @@ function emptyCoverageCounts() {
 }
 
 function classifyIdentifier(
-  ts: typeof tsTypes,
-  checker: tsTypes.TypeChecker,
-  node: tsTypes.Identifier,
+  checker: ts.TypeChecker,
+  node: ts.Identifier,
   counts: ReturnType<typeof emptyCoverageCounts>,
 ): void {
   try {
@@ -248,7 +230,7 @@ function classifyIdentifier(
     if ((type.flags & ts.TypeFlags.Any) !== 0) {
       const intrinsicName = isRecord(type) && typeof type.intrinsicName === "string" ? type.intrinsicName : null;
       if (intrinsicName === "error") counts.error_types += 1;
-      else if (symbolHasExplicitAny(ts, checker.getSymbolAtLocation(node))) counts.explicit_any += 1;
+      else if (symbolHasExplicitAny(checker.getSymbolAtLocation(node))) counts.explicit_any += 1;
       else counts.inferred_any += 1;
       return;
     }
@@ -260,14 +242,14 @@ function classifyIdentifier(
   }
 }
 
-function symbolHasExplicitAny(ts: typeof tsTypes, symbol: tsTypes.Symbol | undefined): boolean {
+function symbolHasExplicitAny(symbol: ts.Symbol | undefined): boolean {
   return symbol?.declarations?.some((declaration) => {
-    const typeNode = declarationTypeNode(ts, declaration);
-    return typeNode ? containsAnyKeyword(ts, typeNode) : false;
+    const typeNode = declarationTypeNode(declaration);
+    return typeNode ? containsAnyKeyword(typeNode) : false;
   }) ?? false;
 }
 
-function declarationTypeNode(ts: typeof tsTypes, declaration: tsTypes.Declaration): tsTypes.TypeNode | undefined {
+function declarationTypeNode(declaration: ts.Declaration): ts.TypeNode | undefined {
   if (ts.isVariableDeclaration(declaration) || ts.isParameter(declaration) || ts.isPropertyDeclaration(declaration) ||
       ts.isPropertySignature(declaration) || ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration)) {
     return declaration.type;
@@ -275,23 +257,23 @@ function declarationTypeNode(ts: typeof tsTypes, declaration: tsTypes.Declaratio
   return undefined;
 }
 
-function containsAnyKeyword(ts: typeof tsTypes, node: tsTypes.Node): boolean {
+function containsAnyKeyword(node: ts.Node): boolean {
   if (node.kind === ts.SyntaxKind.AnyKeyword) return true;
   let found = false;
   ts.forEachChild(node, (child) => {
-    if (!found && containsAnyKeyword(ts, child)) found = true;
+    if (!found && containsAnyKeyword(child)) found = true;
   });
   return found;
 }
 
-const IGNORED_IDENTIFIER_PARENTS = new Set<tsTypes.SyntaxKind>([
-  tsTypes.SyntaxKind.ImportSpecifier, tsTypes.SyntaxKind.ExportSpecifier, tsTypes.SyntaxKind.ImportClause,
-  tsTypes.SyntaxKind.NamespaceImport, tsTypes.SyntaxKind.TypeReference, tsTypes.SyntaxKind.TypeQuery,
-  tsTypes.SyntaxKind.QualifiedName, tsTypes.SyntaxKind.TypeParameter, tsTypes.SyntaxKind.JsxOpeningElement,
-  tsTypes.SyntaxKind.JsxClosingElement, tsTypes.SyntaxKind.JsxSelfClosingElement, tsTypes.SyntaxKind.JsxAttribute,
+const IGNORED_IDENTIFIER_PARENTS = new Set<ts.SyntaxKind>([
+  ts.SyntaxKind.ImportSpecifier, ts.SyntaxKind.ExportSpecifier, ts.SyntaxKind.ImportClause,
+  ts.SyntaxKind.NamespaceImport, ts.SyntaxKind.TypeReference, ts.SyntaxKind.TypeQuery,
+  ts.SyntaxKind.QualifiedName, ts.SyntaxKind.TypeParameter, ts.SyntaxKind.JsxOpeningElement,
+  ts.SyntaxKind.JsxClosingElement, ts.SyntaxKind.JsxSelfClosingElement, ts.SyntaxKind.JsxAttribute,
 ]);
 
-function countableIdentifier(ts: typeof tsTypes, node: tsTypes.Identifier): boolean {
+function countableIdentifier(node: ts.Identifier): boolean {
   const parent = node.parent;
   if (IGNORED_IDENTIFIER_PARENTS.has(parent.kind)) return false;
   if (ts.isPropertyAccessExpression(parent)) return parent.name !== node;
@@ -308,10 +290,9 @@ function unloadedProject(available: boolean, reason: string, diagnostics: Diagno
 }
 
 function typedModuleRecord(
-  ts: typeof tsTypes,
-  checker: tsTypes.TypeChecker,
+  checker: ts.TypeChecker,
   config: Config,
-  sourceFile: tsTypes.SourceFile,
+  sourceFile: ts.SourceFile,
 ): TypedModuleRecord {
   const exports = moduleExports(checker, sourceFile);
   const declarations: TypedDeclaration[] = [];
@@ -325,35 +306,35 @@ function typedModuleRecord(
   Object.defineProperty(record, "sourceFile", { value: sourceFile, enumerable: false });
   return record;
 
-  function visit(node: tsTypes.Node): void {
-    if (isNamedDeclarationNode(ts, node)) declarations.push(typedDeclaration(ts, checker, sourceFile, node));
+  function visit(node: ts.Node): void {
+    if (isNamedDeclarationNode(node)) declarations.push(typedDeclaration(checker, sourceFile, node));
     ts.forEachChild(node, visit);
   }
 }
 
-function moduleSurfaceTypeReferences(checker: tsTypes.TypeChecker, sourceFile: tsTypes.SourceFile): string[] {
+function moduleSurfaceTypeReferences(checker: ts.TypeChecker, sourceFile: ts.SourceFile): string[] {
   const references = new Set<string>();
   for (const statement of sourceFile.statements) {
-    if (!hasModifier(tsTypes, statement, tsTypes.SyntaxKind.ExportKeyword)) continue;
+    if (!hasModifier(statement, ts.SyntaxKind.ExportKeyword)) continue;
     visit(statement);
   }
   return [...references].sort();
 
-  function visit(node: tsTypes.Node): void {
-    if (tsTypes.isBlock(node)) return;
-    if (tsTypes.isTypeReferenceNode(node)) addLocalSymbol(node.typeName);
-    if (tsTypes.isExpressionWithTypeArguments(node)) addLocalSymbol(node.expression);
-    if (tsTypes.isTypeQueryNode(node)) addLocalSymbol(node.exprName);
-    tsTypes.forEachChild(node, visit);
+  function visit(node: ts.Node): void {
+    if (ts.isBlock(node)) return;
+    if (ts.isTypeReferenceNode(node)) addLocalSymbol(node.typeName);
+    if (ts.isExpressionWithTypeArguments(node)) addLocalSymbol(node.expression);
+    if (ts.isTypeQueryNode(node)) addLocalSymbol(node.exprName);
+    ts.forEachChild(node, visit);
   }
 
-  function addLocalSymbol(node: tsTypes.Node): void {
+  function addLocalSymbol(node: ts.Node): void {
     const symbol = checker.getSymbolAtLocation(node);
     if (symbol?.declarations?.some((declaration) => declaration.getSourceFile() === sourceFile)) references.add(symbol.getName());
   }
 }
 
-function moduleExports(checker: tsTypes.TypeChecker, sourceFile: tsTypes.SourceFile) {
+function moduleExports(checker: ts.TypeChecker, sourceFile: ts.SourceFile) {
   const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
   return moduleSymbol
     ? checker.getExportsOfModule(moduleSymbol).map((symbol) => ({
@@ -364,10 +345,9 @@ function moduleExports(checker: tsTypes.TypeChecker, sourceFile: tsTypes.SourceF
 }
 
 function typedDeclaration(
-  ts: typeof tsTypes,
-  checker: tsTypes.TypeChecker,
-  sourceFile: tsTypes.SourceFile,
-  node: tsTypes.Declaration & { name: tsTypes.Identifier },
+  checker: ts.TypeChecker,
+  sourceFile: ts.SourceFile,
+  node: ts.Declaration & { name: ts.Identifier },
 ): TypedDeclaration {
   const symbol = checker.getSymbolAtLocation(node.name);
   return {
@@ -375,11 +355,11 @@ function typedDeclaration(
     kind: ts.SyntaxKind[node.kind],
     line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
     type: symbol ? safeTypeString(checker, symbol, node) : null,
-    exported: hasModifier(ts, node, ts.SyntaxKind.ExportKeyword),
+    exported: hasModifier(node, ts.SyntaxKind.ExportKeyword),
   };
 }
 
-function diagnosticRecord(ts: typeof tsTypes, diagnostic: tsTypes.Diagnostic, projectRoot: string): DiagnosticRecord {
+function diagnosticRecord(diagnostic: ts.Diagnostic, projectRoot: string): DiagnosticRecord {
   const file = diagnostic.file?.fileName ? toPosix(path.relative(projectRoot, diagnostic.file.fileName)) : null;
   const lineChar = diagnostic.file && typeof diagnostic.start === "number"
     ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
@@ -395,14 +375,13 @@ function diagnosticRecord(ts: typeof tsTypes, diagnostic: tsTypes.Diagnostic, pr
     character: lineChar ? lineChar.character + 1 : null,
     end_line: endLineChar ? endLineChar.line + 1 : null,
     end_character: endLineChar ? endLineChar.character + 1 : null,
-    message: flattenMessage(ts, diagnostic.messageText),
+    message: flattenMessage(diagnostic.messageText),
   };
 }
 
 function isNamedDeclarationNode(
-  ts: typeof tsTypes,
-  node: tsTypes.Node,
-): node is tsTypes.Declaration & { name: tsTypes.Identifier } {
+  node: ts.Node,
+): node is ts.Declaration & { name: ts.Identifier } {
   const named = ts.isFunctionDeclaration(node) ||
     ts.isClassDeclaration(node) ||
     ts.isInterfaceDeclaration(node) ||
@@ -412,11 +391,11 @@ function isNamedDeclarationNode(
   return named && Boolean(node.name && ts.isIdentifier(node.name));
 }
 
-function hasModifier(ts: typeof tsTypes, node: tsTypes.Node, kind: tsTypes.SyntaxKind): boolean {
+function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
   return ts.canHaveModifiers(node) && Boolean(ts.getModifiers(node)?.some((modifier) => modifier.kind === kind));
 }
 
-function safeTypeString(checker: tsTypes.TypeChecker, symbol: tsTypes.Symbol, node?: tsTypes.Node): string | null {
+function safeTypeString(checker: ts.TypeChecker, symbol: ts.Symbol, node?: ts.Node): string | null {
   try {
     const declaration = node ?? symbol.valueDeclaration ?? symbol.declarations?.[0];
     if (!declaration) return null;
@@ -429,7 +408,7 @@ function safeTypeString(checker: tsTypes.TypeChecker, symbol: tsTypes.Symbol, no
   }
 }
 
-function compilerOptionSummary(options: tsTypes.CompilerOptions) {
+function compilerOptionSummary(options: ts.CompilerOptions) {
   return {
     strict: Boolean(options.strict),
     noImplicitAny: Boolean(options.noImplicitAny || options.strict),
@@ -453,6 +432,6 @@ function compilerOptionSummary(options: tsTypes.CompilerOptions) {
   };
 }
 
-function flattenMessage(ts: typeof tsTypes, message: string | tsTypes.DiagnosticMessageChain): string {
+function flattenMessage(message: string | ts.DiagnosticMessageChain): string {
   return ts.flattenDiagnosticMessageText(message, "\n");
 }

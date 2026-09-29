@@ -13,7 +13,7 @@ import {
   toolAvailable,
   toolPackageVersion,
   toolRunOptions,
-  type ExecError,
+  recoverToolJson,
 } from "./tool-runner.js";
 
 export function runTypedLint(config: Config): EslintTypeAwareResult {
@@ -129,16 +129,10 @@ function runEslint(config: Config, configPath: string, rulePrefix: string | unde
     preferManaged ? "managed eslint executable was not found" : "eslint executable was not found",
     { messages: [] },
     (executable) => parse(runLocalTool(executable, args, toolRunOptions(config))),
-    (error: ExecError) => recoverEslint(error, parse),
+    (error) => recoverToolJson(error, "[", parse),
     preferManaged,
   );
 }
-
-function recoverEslint(error: ExecError, parse: (stdout: string) => { messages: EslintMessage[] }) {
-  const stdout = String(error.stdout ?? "");
-  return stdout.trim().startsWith("[") ? parse(stdout) : null;
-}
-
 
 function typedLintConfig(config: Config, mode: EslintTypeAwareResult["project_mode"]): string {
   const projectOptions = mode === "project-service"

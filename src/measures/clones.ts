@@ -1,9 +1,10 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { cloneGroup, cloneGroupFromBlocks, jscpdCloneGroup, normalizeCloneLine, stableHash } from "../clone-utils.js";
-import { groupBy } from "../collections.js";
+import { compareRisk, groupBy } from "../collections.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { riskForScore } from "../risk-model.js";
 import { writeArtifact } from "../writer.js";
+import { isFunctionWithBody } from "../ts-ast.js";
 import * as ts from "typescript";
 import type { AnalysisContext, CloneBlock, CloneGroup, CloneInstance, Config, EntryPointRole, ModuleRecord, ProjectAnalysis, ScoredRecord } from "../types.js";
 
@@ -30,7 +31,7 @@ export function measureClones(config: Config, command: string, context: Analysis
   const groups = dedupeCloneRegions([...jscpdGroups, ...heuristicGroups, ...astGroups]).sort((left, right) => right.score - left.score);
   const duplicationPressure = duplicationPressureRecords(project, groups);
   const samePurpose = samePurposeRecords(project);
-  const records = [...duplicationPressure, ...samePurpose].sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || left.id.localeCompare(right.id));
+  const records = [...duplicationPressure, ...samePurpose].sort(compareRisk);
   const artifact = {
     ...artifactBase(
       config,
@@ -77,7 +78,7 @@ function samePurposeRecords(project: ProjectAnalysis): ScoredRecord[] {
     .filter((group) => group[0]?.category !== "export" || new Set(group.map((candidate) => candidate.name)).size > 1)
     .map(samePurposeRecord)
     .filter((record): record is ScoredRecord => Boolean(record))
-    .sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || left.id.localeCompare(right.id));
+    .sort(compareRisk);
 }
 
 function purposeCandidatesForModule(module: ModuleRecord): PurposeCandidate[] {
@@ -260,7 +261,7 @@ function duplicationPressureRecords(project: ProjectAnalysis, groups: CloneGroup
         ],
       }];
     })
-    .sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || left.id.localeCompare(right.id));
+    .sort(compareRisk);
 }
 
 function duplicatedLineCount(instances: CloneInstance[]): number {
@@ -301,7 +302,7 @@ function structuralCloneBlocks(sourceFile: ts.SourceFile | undefined, file: stri
   const astSourceFile = sourceFile;
   const blocks: CloneBlock[] = [];
   function visit(node: ts.Node): void {
-    const body = functionBody(node);
+    const body = isFunctionWithBody(node) && node.body;
     if (body) {
       const normalized = normalizeAst(body);
       const nodeCount = normalized.split(" ").length;
@@ -329,13 +330,6 @@ function astCloneGroup(group: CloneBlock[]): CloneGroup {
     extraSignals: [{ kind: "confidence_scope", value: "syntax_facts" }],
     weights: { block: 12, file: 18, source: 12 },
   });
-}
-
-function functionBody(node: ts.Node): ts.Node | null {
-  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node)) {
-    return node.body ?? null;
-  }
-  return null;
 }
 
 function normalizeAst(node: ts.Node): string {

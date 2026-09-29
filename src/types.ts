@@ -12,7 +12,7 @@ export type FindingConfidence = "low" | "medium" | "high";
 export type PolicyProfile = "baseline" | "recommended" | "strict" | "react" | "library";
 export type PolicyCheck = "compiler" | "typed-lint" | "tests" | "react-hooks" | "package";
 export type ReactRuleset = "classic-v1" | "recommended-v2";
-export type TypedLintMode = "auto" | "project-service" | "project";
+type TypedLintMode = "auto" | "project-service" | "project";
 export type ImportKind = "static" | "dynamic" | "type";
 type ImportTargetKind = "external" | "relative" | "unresolved";
 

@@ -13,7 +13,7 @@ import {
   toolAvailable,
   toolPackageVersion,
   toolRunOptions,
-  type ExecError,
+  recoverToolJson,
 } from "./tool-runner.js";
 
 const require = createRequire(import.meta.url);
@@ -198,10 +198,7 @@ function runAttw(config: Config, tarball: string): PackageHealthResult["attw"] {
       "--no-emoji",
       "--no-color",
     ], toolRunOptions(config))),
-    (error: ExecError) => {
-      const stdout = String(error.stdout ?? "");
-      return stdout.trim().startsWith("{") ? parse(stdout) : null;
-    },
+    (error) => recoverToolJson(error, "{", parse),
     true,
   );
 }

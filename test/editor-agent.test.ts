@@ -8,7 +8,7 @@ import { loadConfig } from "../src/config.js";
 import { createLspSession } from "../src/lsp.js";
 import { dispatchMcp } from "../src/mcp.js";
 import { MEASURE_TASKS } from "../src/measures/registry.js";
-import { enrichArtifactFindings } from "../src/actions.js";
+import { enrichArtifactFindings, enrichFinding } from "../src/actions.js";
 import { writeArtifact } from "../src/writer.js";
 import type { Artifact, Config, ScoredRecord } from "../src/types.js";
 
@@ -40,9 +40,15 @@ test("LSP clears resolved diagnostics and respects configured suppressions after
   try {
     await session.handle({ method: "initialized" });
     assert.equal(notifications.at(-1)?.diagnostics.length, 1);
+    assert.equal(await session.handle({ id: 1, method: "toString" }), null);
+    assert.deepEqual(await session.handle({ method: "workspace/executeCommand", params: {
+      command: "tsrqlens.explainFinding", arguments: [finding.id],
+    } }), { ...finding, suppressed: false });
     records = [];
     await session.handle({ method: "textDocument/didSave" });
     assert.equal(notifications.at(-1)?.diagnostics.length, 0);
+    const workspace = await session.handle({ method: "workspace/diagnostic" }) as { items: Array<{ items: unknown[] }> };
+    assert.deepEqual(workspace.items.map((item) => item.items), [[]]);
     records = [finding];
     fs.writeFileSync(config.configPath, JSON.stringify({ source_roots: ["src"], suppressions: [{ id: finding.id, reason: "intentional" }] }));
     await session.handle({ method: "workspace/didChangeConfiguration" });
@@ -86,6 +92,9 @@ test("editor suppression actions are executable JSONC-preserving edits", () => f
   }
   const enriched = enrichArtifactFindings(config, { ...artifact(), records: [finding] });
   assert.ok(enriched.records?.every((record) => record.actions?.every((action) => action.type !== "suppress-line" && action.type !== "suppress-file")));
+  assert.equal(enrichFinding(config, { id: "diagnostic", kind: "compiler_diagnostic" }).finding_confidence, "high");
+  assert.equal(enrichFinding(config, { id: "heuristic", source: "structural-type-scan" }).finding_confidence, "medium");
+  assert.equal(enrichFinding(config, { id: "explicit", evidence_kind: "metric", finding_confidence: "low" }).finding_confidence, "low");
 }));
 
 test("LSP handles shutdown while analysis is pending without publishing stale results", () => fixture(async (_root, config) => {

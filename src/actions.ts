@@ -19,22 +19,14 @@ export function enrichArtifactFindings(config: Config, value: Artifact): Artifac
 export function enrichArtifactFindings(config: Config, value: unknown): unknown;
 export function enrichArtifactFindings(config: Config, value: unknown): unknown {
   if (!isRecord(value)) return value;
-  const records = Array.isArray(value.records)
-    ? normalizeFindingIdentities(config, value.records).map((record) => enrichFinding(config, record)) : value.records;
-  const groups = Array.isArray(value.groups) ? value.groups.map((record) => enrichFinding(config, record)) : value.groups;
-  const disagreements = Array.isArray(value.disagreements)
-    ? value.disagreements.map((record) => enrichFinding(config, record))
-    : value.disagreements;
-  const unconfirmed = Array.isArray(value.unconfirmed)
-    ? value.unconfirmed.map((record) => enrichFinding(config, record))
-    : value.unconfirmed;
-  return {
-    ...value,
-    ...(Array.isArray(value.records) ? { records } : {}),
-    ...(Array.isArray(value.groups) ? { groups } : {}),
-    ...(Array.isArray(value.disagreements) ? { disagreements } : {}),
-    ...(Array.isArray(value.unconfirmed) ? { unconfirmed } : {}),
-  };
+  const enriched = { ...value };
+  for (const key of ["records", "groups", "disagreements", "unconfirmed"]) {
+    const items: unknown = value[key];
+    if (!Array.isArray(items)) continue;
+    const records = key === "records" ? normalizeFindingIdentities(config, items) : items;
+    enriched[key] = records.map((record) => enrichFinding(config, record));
+  }
+  return enriched;
 }
 
 export function enrichFinding(config: Config, value: ScoredRecord): ScoredRecord;
@@ -44,9 +36,6 @@ export function enrichFinding(config: Config, value: unknown): unknown {
   const record = value;
   const suppression = matchingSuppression(config.suppressions, record);
   const kind = findingKind(record);
-  const ruleId = record.rule_id ?? defaultRuleId(record, kind);
-  const evidenceKind = record.evidence_kind ?? defaultEvidenceKind(record, kind);
-  const disposition = record.disposition ?? defaultDisposition(kind);
   const actions = record.actions?.length ? record.actions : actionsForRecord(record, kind);
   const relatedLocations = record.related_locations ?? relatedLocationsFor(record);
   const fixGroupId = record.fix_group_id ?? (relatedLocations.length > 1 ? record.id : null);
@@ -54,19 +43,26 @@ export function enrichFinding(config: Config, value: unknown): unknown {
   return {
     ...record,
     kind,
-    rule_id: ruleId,
-    evidence_kind: evidenceKind,
-    disposition,
-    finding_confidence: record.finding_confidence ?? defaultFindingConfidence(record),
-    message: record.message ?? defaultMessage(record, kind),
-    reason_code: record.reason_code ?? ruleId,
+    ...findingAssessment(record, kind),
     ...(workspace ? { workspace_id: record.workspace_id ?? workspace.id, workspace_name: record.workspace_name ?? workspace.name } : {}),
-    semantic_decision: record.semantic_decision ?? defaultSemanticDecision(record, evidenceKind, kind),
-    estimated_effort: record.estimated_effort ?? defaultEstimatedEffort(disposition),
     ...(relatedLocations.length ? { related_locations: relatedLocations } : {}),
     ...(fixGroupId ? { fix_group_id: fixGroupId } : {}),
     actions,
     ...(suppression ? { suppressed: true, suppression_reason: suppression.reason ?? "Configured suppression." } : {}),
+  };
+}
+
+function findingAssessment(record: ScoredRecord, kind: string) {
+  const ruleId = record.rule_id ?? defaultRuleId(record, kind);
+  const evidence = record.evidence_kind ?? defaultEvidenceKind(record, kind);
+  const disposition = record.disposition ?? defaultDisposition(kind);
+  return {
+    rule_id: ruleId, evidence_kind: evidence, disposition,
+    finding_confidence: record.finding_confidence ?? defaultFindingConfidence(evidence),
+    message: record.message ?? defaultMessage(record, kind),
+    reason_code: record.reason_code ?? ruleId,
+    semantic_decision: record.semantic_decision ?? defaultSemanticDecision(record, evidence, kind),
+    estimated_effort: record.estimated_effort ?? { block: 60, warn: 30, review: 15, info: 5 }[disposition],
   };
 }
 
@@ -117,10 +113,8 @@ function defaultDisposition(kind: string): FindingDisposition {
   return "review";
 }
 
-function defaultFindingConfidence(record: ScoredRecord): FindingConfidence {
-  if (record.evidence_kind === "diagnostic" || record.evidence_kind === "test" || record.evidence_kind === "tool-rule") return "high";
-  if (typeof record.source === "string" && !record.source.includes("heuristic")) return "high";
-  return "medium";
+function defaultFindingConfidence(evidence: EvidenceKind): FindingConfidence {
+  return evidence === "heuristic" ? "medium" : "high";
 }
 
 function defaultSemanticDecision(record: ScoredRecord, evidence: EvidenceKind, kind: string): SemanticDecision {
@@ -133,13 +127,6 @@ function defaultSemanticDecision(record: ScoredRecord, evidence: EvidenceKind, k
   if (kind === "unsupported_pattern") return "abstained";
   if (evidence === "heuristic") return "unresolved";
   return "confirmed";
-}
-
-function defaultEstimatedEffort(disposition: FindingDisposition): number {
-  if (disposition === "block") return 60;
-  if (disposition === "warn") return 30;
-  if (disposition === "review") return 15;
-  return 5;
 }
 
 function relatedLocationsFor(record: ScoredRecord): RelatedLocation[] {
@@ -202,31 +189,18 @@ function actionsForRecord(record: ScoredRecord, kind: string): IssueAction[] {
   return actions;
 }
 
+const FIX_GUIDANCE = [
+  { kinds: /unused/, fix: "remove-unused-code",
+    description: "Remove the unused code or mark it as intentional public surface." },
+  { kinds: /dependency|import/, fix: "repair-dependency-edge",
+    description: "Update the import or dependency declaration so the graph matches runtime intent." },
+  { kinds: /clone|duplication|same_purpose/, fix: "deduplicate-code",
+    description: "Extract the duplicated logic or document why the clone should remain." },
+];
+
 function fixAction(record: ScoredRecord, kind: string): IssueAction | null {
-  if (kind.includes("unused") || kind === "unused_file" || kind === "unused_export") {
-    return {
-      type: "fix",
-      auto_fixable: false,
-      description: "Remove the unused code or mark it as intentional public surface.",
-      fix: "remove-unused-code",
-    };
-  }
-  if (kind.includes("dependency") || kind.includes("import")) {
-    return {
-      type: "fix",
-      auto_fixable: false,
-      description: "Update the import or dependency declaration so the graph matches runtime intent.",
-      fix: "repair-dependency-edge",
-    };
-  }
-  if (kind.includes("clone") || kind.includes("duplication") || kind.includes("same_purpose")) {
-    return {
-      type: "fix",
-      auto_fixable: false,
-      description: "Extract the duplicated logic or document why the clone should remain.",
-      fix: "deduplicate-code",
-    };
-  }
+  const guidance = FIX_GUIDANCE.find((item) => item.kinds.test(kind));
+  if (guidance) return { type: "fix", auto_fixable: false, description: guidance.description, fix: guidance.fix };
   if (Number(record.score ?? 0) >= 70 || record.risk === "high" || record.severity === "high") {
     return {
       type: "fix",

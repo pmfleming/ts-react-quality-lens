@@ -11,6 +11,15 @@ type LspRequest = { jsonrpc?: string; id?: unknown; method?: string; params?: un
 type Notify = (method: string, params: unknown) => void;
 type Measure = (config: Config) => Promise<ScoredRecord[]>;
 const NO_RESPONSE = Symbol("no-response");
+const INITIALIZE_RESULT = {
+  capabilities: {
+    textDocumentSync: { openClose: true, change: 0, save: true },
+    diagnosticProvider: { interFileDependencies: true, workspaceDiagnostics: true },
+    codeActionProvider: true,
+    executeCommandProvider: { commands: ["tsrqlens.explainFinding"] },
+  },
+  serverInfo: { name: "ts-react-quality-lens", version: "0.3.0" },
+};
 
 export function runLspServer(config: Config): void {
   let buffer = Buffer.alloc(0);
@@ -91,16 +100,21 @@ export function createLspSession(initialConfig: Config, measure?: Measure, notif
     return [];
   }
 
+  const handlers = new Map<string, (params: unknown) => Promise<unknown>>([
+    ["textDocument/diagnostic", async (params) => {
+      const records = await currentFindings();
+      return documentReport(config, params, records);
+    }],
+    ["workspace/diagnostic", async () => {
+      const records = await currentFindings();
+      return workspaceReport(config, published, records);
+    }],
+    ["textDocument/codeAction", async (params) => codeActions(config, params, await currentFindings())],
+    ["workspace/executeCommand", async (params) => executeCommand(params, await currentFindings())],
+  ]);
+
   async function handleRequest(request: LspRequest): Promise<unknown> {
-    if (request.method === "initialize") return {
-      capabilities: {
-        textDocumentSync: { openClose: true, change: 0, save: true },
-        diagnosticProvider: { interFileDependencies: true, workspaceDiagnostics: true },
-        codeActionProvider: true,
-        executeCommandProvider: { commands: ["tsrqlens.explainFinding"] },
-      },
-      serverInfo: { name: "ts-react-quality-lens", version: "0.3.0" },
-    };
+    if (request.method === "initialize") return INITIALIZE_RESULT;
     if (request.method === "shutdown") { shutdown = true; return null; }
     if (request.method === "exit") return NO_RESPONSE;
     if (shutdown || disposed) throw new Error("LSP server has shut down");
@@ -117,32 +131,14 @@ export function createLspSession(initialConfig: Config, measure?: Measure, notif
       if (!disposed && !shutdown) publish(records);
       return NO_RESPONSE;
     }
-    if (request.method === "textDocument/diagnostic") {
-      const records = await currentFindings();
-      const uri = documentUri(request.params);
-      if (!uri) throw new Error("textDocument/diagnostic requires a document URI");
-      return { kind: "full", items: diagnostics(records, relativeUri(config, uri)) };
-    }
-    if (request.method === "workspace/diagnostic") {
-      const records = await currentFindings();
-      const files = new Set([...published, ...records.flatMap((finding) => finding.file ? [finding.file] : [])]);
-      return { items: [...files].map((file) => ({
-        uri: pathToFileURL(path.resolve(config.projectRoot, file)).href, kind: "full", items: diagnostics(records, file),
-      })) };
-    }
-    if (request.method === "textDocument/codeAction") return codeActions(config, request.params, await currentFindings());
-    if (request.method === "workspace/executeCommand") return executeCommand(request.params, await currentFindings());
-    return request.id === undefined ? NO_RESPONSE : null;
-  }
-
-  function diagnostics(records: ScoredRecord[], file: string) {
-    return records.filter((finding) => finding.file === file).map((finding) => diagnosticForFinding(config, finding));
+    const handler = handlers.get(request.method ?? "");
+    return handler ? handler(request.params) : request.id === undefined ? NO_RESPONSE : null;
   }
 
   function publish(records: ScoredRecord[]): void {
     for (const finding of records) if (finding.file) published.add(finding.file);
     for (const file of published) notify("textDocument/publishDiagnostics", {
-      uri: pathToFileURL(path.resolve(config.projectRoot, file)).href, diagnostics: diagnostics(records, file),
+      uri: pathToFileURL(path.resolve(config.projectRoot, file)).href, diagnostics: diagnostics(config, records, file),
     });
   }
 
@@ -160,6 +156,23 @@ export function createLspSession(initialConfig: Config, measure?: Measure, notif
       for (const worker of workers) void worker.terminate();
     },
   };
+}
+
+function diagnostics(config: Config, records: ScoredRecord[], file: string) {
+  return records.filter((finding) => finding.file === file).map((finding) => diagnosticForFinding(config, finding));
+}
+
+function documentReport(config: Config, params: unknown, records: ScoredRecord[]) {
+  const uri = documentUri(params);
+  if (!uri) throw new Error("textDocument/diagnostic requires a document URI");
+  return { kind: "full", items: diagnostics(config, records, relativeUri(config, uri)) };
+}
+
+function workspaceReport(config: Config, published: Set<string>, records: ScoredRecord[]) {
+  const files = new Set([...published, ...records.flatMap((finding) => finding.file ? [finding.file] : [])]);
+  return { items: [...files].map((file) => ({
+    uri: pathToFileURL(path.resolve(config.projectRoot, file)).href, kind: "full", items: diagnostics(config, records, file),
+  })) };
 }
 
 function workerFindings(config: Config, workers: Set<Worker>): Promise<ScoredRecord[]> {

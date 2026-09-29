@@ -44,3 +44,7 @@ export function dedupeBy<T, K>(values: T[], keyFn: (value: T) => K): T[] {
 export function countMatches(text: string, re: RegExp): number {
   return [...text.matchAll(re)].length;
 }
+
+export function compareRisk(left: { score?: number; id: string }, right: { score?: number; id: string }): number {
+  return (right.score ?? 0) - (left.score ?? 0) || left.id.localeCompare(right.id);
+}

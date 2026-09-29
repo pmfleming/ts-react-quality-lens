@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isRecord, parseJson } from "../collections.js";
+import { dedupeBy, isRecord, parseJson } from "../collections.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { stableHash } from "../clone-utils.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
@@ -134,41 +134,28 @@ function parseResult(
   const message = sarifMessage(value.message) ?? `${tool.name} reported ${ruleId}.`;
   const locations = Array.isArray(value.locations) ? value.locations : [];
   const primary = physicalLocation(config, locations[0]);
+  const codeFlows = normalizeCodeFlows(config, value.codeFlows);
   const related = [
     ...sarifRelatedLocations(config, value.relatedLocations),
-    ...sarifCodeFlowLocations(config, value.codeFlows),
+    ...codeFlows.flatMap((flow) => flow.map((location, index) => ({ ...location, role: codeFlowRole(index, flow.length) }))),
   ];
   const fingerprints = isRecord(value.partialFingerprints) ? value.partialFingerprints : {};
-  const identity = JSON.stringify([
-    input.name, tool.name, ruleId, primary?.file ?? "project",
-    Object.keys(fingerprints).length
-      ? Object.entries(fingerprints).sort(([left], [right]) => left.localeCompare(right))
-      : [primary?.start_line ?? 0, primary?.start_column ?? 0, message],
-  ]);
+  const identity = resultIdentity([input.name, tool.name, ruleId], primary, fingerprints, message);
   const securitySeverity = isRecord(value.properties) && typeof value.properties["security-severity"] === "string"
     ? value.properties["security-severity"]
     : null;
   return [{
-    id: `sarif:v2:${crypto.createHash("sha256").update(identity).digest("hex")}`,
+    id: identity,
     rule_id: `${tool.name}/${ruleId}`,
     kind: "sarif_finding",
     evidence_kind: "tool-rule",
     disposition,
     finding_confidence: "high",
-    scope: primary ? "file" : "project",
-    ...(primary
-      ? {
-          file: primary.file,
-          line: primary.start_line,
-          column: primary.start_column ?? null,
-          end_line: primary.end_line ?? null,
-          end_column: primary.end_column ?? null,
-        }
-      : {}),
+    ...resultLocation(primary),
     ...(related.length ? { related_locations: dedupeLocations(related) } : {}),
     score: sarifScore(level, securitySeverity),
     severity: level,
-    risk: level === "error" ? "high" : level === "warning" ? "medium" : "low",
+    risk: LEVEL_DETAILS[level].risk,
     source: tool.name,
     message,
     sarif_level: level,
@@ -179,7 +166,7 @@ function parseResult(
     partial_fingerprints: fingerprints,
     baseline_state: typeof value.baselineState === "string" ? value.baselineState : null,
     automation_details: automationDetails,
-    code_flows: normalizeCodeFlows(config, value.codeFlows),
+    code_flows: codeFlows,
     sarif_fixes: normalizeFixes(config, value.fixes),
     properties: isRecord(value.properties) ? value.properties : {},
     input_name: input.name,
@@ -187,6 +174,20 @@ function parseResult(
     run_index: runIndex,
     signals: [{ kind: ruleId, message }],
   }];
+}
+
+function resultIdentity(scope: string[], primary: RelatedLocation | null, fingerprints: Record<string, unknown>, message: string): string {
+  const position = [primary?.start_line ?? 0, primary?.start_column ?? 0, message];
+  const stable = Object.entries(fingerprints).sort(([left], [right]) => left.localeCompare(right));
+  const identity = JSON.stringify([...scope, primary?.file ?? "project", stable.length ? stable : position]);
+  return `sarif:v2:${crypto.createHash("sha256").update(identity).digest("hex")}`;
+}
+
+function resultLocation(primary: RelatedLocation | null): Partial<ScoredRecord> {
+  return primary ? {
+    scope: "file", file: primary.file, line: primary.start_line,
+    column: primary.start_column ?? null, end_line: primary.end_line ?? null, end_column: primary.end_column ?? null,
+  } : { scope: "project" };
 }
 
 function invocationFailures(
@@ -268,6 +269,13 @@ function sarifRules(value: unknown): Map<string, Record<string, unknown>> {
 
 type SarifLevel = "error" | "warning" | "note" | "none";
 
+const LEVEL_DETAILS: Record<SarifLevel, { disposition: FindingDisposition; risk: string; score: number }> = {
+  error: { disposition: "block", risk: "high", score: 100 },
+  warning: { disposition: "warn", risk: "medium", score: 60 },
+  note: { disposition: "info", risk: "low", score: 20 },
+  none: { disposition: "review", risk: "low", score: 10 },
+};
+
 function sarifLevel(value: unknown, defaultConfiguration: unknown): SarifLevel {
   const direct = asSarifLevel(value);
   if (direct) return direct;
@@ -287,16 +295,13 @@ function asSarifLevel(value: unknown): SarifLevel | null {
 }
 
 function dispositionForLevel(level: "error" | "warning" | "note" | "none"): FindingDisposition {
-  if (level === "error") return "block";
-  if (level === "warning") return "warn";
-  if (level === "note") return "info";
-  return "review";
+  return LEVEL_DETAILS[level].disposition;
 }
 
-function sarifScore(level: string, securitySeverity: string | null): number {
+function sarifScore(level: SarifLevel, securitySeverity: string | null): number {
   const numericSecurity = securitySeverity === null ? 0 : Number(securitySeverity);
   if (Number.isFinite(numericSecurity) && numericSecurity > 0) return Math.min(100, Math.round(numericSecurity * 10));
-  return level === "error" ? 100 : level === "warning" ? 60 : level === "note" ? 20 : 10;
+  return LEVEL_DETAILS[level].score;
 }
 
 function sarifMessage(value: unknown): string | null {
@@ -329,14 +334,6 @@ function sarifRelatedLocations(config: Config, value: unknown): RelatedLocation[
     const parsed = physicalLocation(config, location);
     return parsed ? [{ ...parsed, role: "related" }] : [];
   });
-}
-
-function sarifCodeFlowLocations(config: Config, value: unknown): RelatedLocation[] {
-  const flows = normalizeCodeFlows(config, value);
-  return flows.flatMap((flow) => flow.map((location, index): RelatedLocation => ({
-    ...location,
-    role: codeFlowRole(index, flow.length),
-  })));
 }
 
 function codeFlowRole(index: number, length: number): RelatedLocation["role"] {
@@ -388,13 +385,7 @@ function normalizeSarifPath(config: Config, uri: string): string {
 }
 
 function dedupeLocations(locations: RelatedLocation[]): RelatedLocation[] {
-  const seen = new Set<string>();
-  return locations.filter((location) => {
-    const key = `${location.role}:${location.file}:${location.start_line}:${location.start_column ?? 0}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return dedupeBy(locations, (location) => `${location.role}:${location.file}:${location.start_line}:${location.start_column ?? 0}`);
 }
 
 function toolStatusKey(name: string, index: number): string {

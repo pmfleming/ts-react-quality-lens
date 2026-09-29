@@ -47,6 +47,10 @@ function historyOutput(config: Config): string {
   const scopedRoots = config.sourceRoots.map((root) => toPosix(path.relative(config.projectRoot, root))).filter(Boolean);
   const args = ["log", "--relative", "--name-only", "--format=commit:%H%x1f%an%x1f%s", "--since=2 years ago"];
   if (scopedRoots.length) args.push("--", ...scopedRoots);
+  return gitOutput(config, args);
+}
+
+export function gitOutput(config: Config, args: string[]): string {
   return childProcess.execFileSync("git", args, {
     cwd: config.projectRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
     timeout: 30000, maxBuffer: 64 * 1024 * 1024,

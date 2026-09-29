@@ -8,6 +8,7 @@ import { isEntrypointFile, packageEntryFiles, readPackageJson } from "../entrypo
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
+import { workspacePackageName } from "../workspaces.js";
 import type { AnalysisContext, Config, KnipResult, ModuleRecord, PackageJson, ProjectAnalysis, ScoredRecord } from "../types.js";
 
 const BUILTINS = new Set([...module.builtinModules, ...module.builtinModules.map((name) => `node:${name}`)]);
@@ -296,7 +297,7 @@ function collectImportUsage(modules: ModuleRecord[], usage: CleanupUsage, edge: 
     else addImportedNames(usage.importedNamesByModule, edge.to, edge.imported_names ?? []);
   }
   if (edge.to_kind !== "external" || BUILTINS.has(edge.specifier)) return;
-  const packageName = externalPackageName(edge.specifier);
+  const packageName = workspacePackageName(edge.specifier);
   const fromIsTest = modules.find((moduleRecord) => moduleRecord.id === edge.from)?.sourceFile.isTest ?? false;
   markExternalUsage(usage.externalImports, packageName, {
     source: !fromIsTest,
@@ -569,11 +570,6 @@ function markExternalUsage(imports: Map<string, ExternalUsage>, dependency: stri
     test: previous.test || usage.test,
     typeOnly: previous.typeOnly && usage.typeOnly,
   });
-}
-
-function externalPackageName(specifier: string): string {
-  if (specifier.startsWith("@")) return specifier.split("/").slice(0, 2).join("/");
-  return specifier.split("/")[0] ?? specifier;
 }
 
 function packageObservedDependencies(config: Config, packageJson: PackageJson | null, declared: Set<string>): Set<string> {

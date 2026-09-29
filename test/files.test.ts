@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { loadConfig } from "../src/config.js";
 import { measureCorrectnessCatalog } from "../src/measures/correctness.js";
+import { measureLeverage, measureLocality } from "../src/measures/locality.js";
 import type { Config } from "../src/types.js";
 
 function fixture(run: (root: string, config: Config) => void): void {
@@ -49,10 +50,14 @@ test("exact tsconfig aliases produce internal graph edges on fresh and cached an
   fs.writeFileSync(path.join(root, "tsconfig.json"), "// User tsconfigs accept JSONC comments.\n" + JSON.stringify({
     compilerOptions: { strict: true, types: [], paths: { "@app": ["./src/index.ts"] } }, include: ["src"],
   }));
-  fs.writeFileSync(path.join(root, "src/consumer.ts"), 'import { value } from "@app"; export const result = value;\n');
+  fs.writeFileSync(path.join(root, "src/consumer.ts"), 'import { value } from "@app"; import { value as again } from "./index"; export const result = value + again;\n');
+  fs.writeFileSync(path.join(root, "src/index.ts"), 'import "./index"; export const value = 1;\n');
+  fs.mkdirSync(path.join(root, "src/deep/nested"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src/deep/nested/consumer.ts"), 'import { value } from "@app"; export const nested = value;\n');
   const config = loadConfig(path.join(root, "lens.json"));
   for (const status of ["miss", "hit"]) {
-    const project = createAnalysisContext(config).project();
+    const context = createAnalysisContext(config);
+    const project = context.project();
     assert.equal(project.cache.status, status);
     assert.deepEqual(project.tsProject.diagnostics, []);
     const edge = project.imports.find((item) => item.specifier === "@app");
@@ -61,5 +66,10 @@ test("exact tsconfig aliases produce internal graph edges on fresh and cached an
     assert.equal(edge.to, "src/index");
     assert.equal(edge.to_kind, "relative");
     assert.equal(edge.resolved, path.join(root, "src/index.ts"));
+    const leverage = measureLeverage(config, "test", context).records?.find((record) => record.file === "src/index.ts");
+    assert.equal(leverage?.inbound_reach, 2, "Count consumers, excluding duplicate statements and self imports");
+    const locality = measureLocality(config, "test", context).records;
+    assert.equal(locality?.find((record) => record.file === "src/deep/nested/consumer.ts")?.dependency_distance, 1);
+    assert.equal(locality?.find((record) => record.file === "src/consumer.ts")?.dependency_distance, 0);
   }
 }));

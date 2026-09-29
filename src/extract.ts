@@ -2,7 +2,7 @@ import * as ts from "typescript";
 import { normalizeImportPath, relativeModuleId } from "./files.js";
 import { cognitiveComplexityForNode, complexityForNode, countJsxConditionals, countOptionalTypeFields, countTypeFieldsForNode, countUnionMembers, halsteadMetricsForNode, maxNestingDepthForNode } from "./ast-metrics.js";
 import { countMatches, dedupeBy } from "./collections.js";
-import { callExpressionName, lineForNode } from "./ts-ast.js";
+import { callExpressionName, countMatchingNodes, lineForNode } from "./ts-ast.js";
 import type { Config, ConfidenceSignal, ExportRecord, FunctionRecord, ImportKind, ImportRecord, ModuleRecord, SourceFileRecord, TypeRecord, TypeScriptProject } from "./types.js";
 
 type ImportExtraction = { imports: ImportRecord[]; unsupportedPatterns: ConfidenceSignal[] };
@@ -415,24 +415,12 @@ function countAstEscapeHatches(file: SourceFileRecord, sourceFile: ts.SourceFile
 }
 
 function countJsxElements(node: ts.Node): number {
-  let count = 0;
-  function visit(current: ts.Node): void {
-    if (ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current) || ts.isJsxFragment(current)) count += 1;
-    ts.forEachChild(current, visit);
-  }
-  visit(node);
-  return count;
+  return countMatchingNodes(node, (current) => ts.isJsxElement(current) || ts.isJsxSelfClosingElement(current) || ts.isJsxFragment(current));
 }
 
 function countCallsMatching(node: ts.Node, namePattern: RegExp): number {
-  let count = 0;
-  function visit(current: ts.Node): void {
-    if (ts.isCallExpression(current)) {
-      const name = callExpressionName(current);
-      if (name && namePattern.test(name)) count += 1;
-    }
-    ts.forEachChild(current, visit);
-  }
-  visit(node);
-  return count;
+  return countMatchingNodes(node, (current) => {
+    const name = ts.isCallExpression(current) && callExpressionName(current);
+    return Boolean(name && namePattern.test(name));
+  });
 }

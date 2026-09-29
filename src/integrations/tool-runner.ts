@@ -40,6 +40,11 @@ export function toolAvailable(projectRoot: string, name: string, preferManaged =
   return Boolean(localBin(projectRoot, name, preferManaged));
 }
 
+export function recoverToolJson<T>(error: ExecError, prefix: "[" | "{", parse: (stdout: string) => T): T | null {
+  const stdout = String(error.stdout ?? "");
+  return stdout.trim().startsWith(prefix) ? parse(stdout) : null;
+}
+
 export function runLocalTool(executable: string, args: string[], options: ToolRunOptions): string {
   if (process.platform === "win32" && executable.toLowerCase().endsWith(".cmd")) {
     const commandLine = [executable, ...args].map(quoteWindowsArg).join(" ");
@@ -69,17 +74,7 @@ export function managedPackageJsonUrl(): string {
 
 export function executablePackageVersion(config: Config, executableName: string, packageName: string): string | null {
   const executable = localBin(config.projectRoot, executableName, false);
-  if (!executable) return null;
-  let directory = path.dirname(fs.realpathSync(executable));
-  while (directory !== path.dirname(directory)) {
-    const manifestPath = path.join(directory, "package.json");
-    if (fs.existsSync(manifestPath)) {
-      const manifest = parseJson(fs.readFileSync(manifestPath, "utf8"));
-      if (isRecord(manifest) && manifest.name === packageName && typeof manifest.version === "string") return manifest.version;
-    }
-    directory = path.dirname(directory);
-  }
-  return null;
+  return executable ? packageVersionAbove(fs.realpathSync(executable), packageName) : null;
 }
 
 export function toolPackageVersion(name: string): string | null {
@@ -93,17 +88,18 @@ export function toolPackageVersion(name: string): string | null {
 
 function packageVersionFromResolvedEntry(name: string): string | null {
   try {
-    let directory = path.dirname(require.resolve(name));
-    while (directory !== path.dirname(directory)) {
-      const manifestPath = path.join(directory, "package.json");
-      if (fs.existsSync(manifestPath)) {
-        const manifest = parseJson(fs.readFileSync(manifestPath, "utf8"));
-        if (isRecord(manifest) && manifest.name === name && typeof manifest.version === "string") return manifest.version;
-      }
-      directory = path.dirname(directory);
-    }
+    return packageVersionAbove(require.resolve(name), name);
   } catch {
     return null;
+  }
+}
+
+function packageVersionAbove(entry: string, name: string): string | null {
+  for (let directory = path.dirname(entry); directory !== path.dirname(directory); directory = path.dirname(directory)) {
+    const manifestPath = path.join(directory, "package.json");
+    if (!fs.existsSync(manifestPath)) continue;
+    const manifest = parseJson(fs.readFileSync(manifestPath, "utf8"));
+    if (isRecord(manifest) && manifest.name === name && typeof manifest.version === "string") return manifest.version;
   }
   return null;
 }

@@ -19,6 +19,8 @@ export function fileHotspotRecord(module: ModuleRecord): ScoredRecord {
     line: 1,
     score,
     risk: riskForScore(score),
+    evidence_kind: "metric",
+    message: `${module.file}: ${module.lines} lines, ${branchCount} branches, ${module.imports.length} imports.`,
     signals: [
       { kind: "line_count", value: module.lines },
       { kind: "branch_count", value: branchCount },
@@ -46,6 +48,8 @@ export function functionHotspotRecord(module: ModuleRecord, fn: FunctionRecord):
     line: fn.line,
     score,
     risk: riskForScore(score),
+    evidence_kind: "metric",
+    message: `${fn.name}: cyclomatic ${fn.cyclomatic_complexity}, cognitive ${fn.cognitive_complexity}, nesting ${fn.nesting_depth}, Halstead effort ${fn.halstead_effort}, ${fn.lines} lines.`,
     signals: [
       { kind: "cyclomatic_complexity", value: fn.cyclomatic_complexity },
       { kind: "cognitive_complexity", value: fn.cognitive_complexity },

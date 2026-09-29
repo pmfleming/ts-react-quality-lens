@@ -1,4 +1,6 @@
 import { createAnalysisContext } from "../analysis-context.js";
+import path from "node:path";
+import { dedupeBy, groupBy } from "../collections.js";
 import { gitHistory } from "../history.js";
 import { riskForScore } from "../risk-model.js";
 import { escapeRecords, hiddenCouplingSignals } from "../scoring.js";
@@ -12,8 +14,9 @@ export function measureLocality(config: Config, command: string, context: Analys
   const testCatalog = readArtifact(config, "test_catalog.json");
   const testEvidence = new Set((testCatalog?.tests ?? []).flatMap(directTestSources));
   const history = gitHistory(config);
-  const records = project.modules.map((module) => {
-    const farImports = module.imports.filter((edge) => edge.to_kind === "relative" && edge.specifier.startsWith("../../"));
+  const records = project.modules.map((module): ScoredRecord => {
+    const farImports = module.imports.filter((edge) => edge.to_kind === "relative" &&
+      path.posix.relative(path.posix.dirname(module.id), edge.to).startsWith("../../"));
     const hiddenCoupling = hiddenCouplingSignals(module);
     const hasTestEvidence = testEvidence.has(module.file);
     const historyRecord = history.get(module.file) ?? { commits: 0, contributors: 0, defect_commits: 0, cochange_partners: [] };
@@ -28,6 +31,8 @@ export function measureLocality(config: Config, command: string, context: Analys
       file: module.file,
       score,
       risk: riskForScore(score),
+      evidence_kind: "heuristic",
+      message: `${module.file}: ${farImports.length} distant imports, ${hiddenCoupling.length} hidden-coupling signals; ${hasTestEvidence ? "direct test import found" : "no direct test import found"}. Import associations are not measured coverage.`,
       dependency_distance: farImports.length,
       hidden_coupling: hiddenCoupling,
       test_locality: hasTestEvidence ? "direct_import_association" : "no_direct_import_association",
@@ -52,11 +57,10 @@ export function measureLocality(config: Config, command: string, context: Analys
 
 export function measureLeverage(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
-  const inbound = new Map<string, number>();
-  for (const edge of project.imports.filter((item) => item.to_kind === "relative")) {
-    inbound.set(edge.to, (inbound.get(edge.to) ?? 0) + 1);
-  }
-  const records = project.modules.map((module) => leverageRecord(module, inbound.get(module.id) ?? 0));
+  const consumers = dedupeBy(project.imports.filter((edge) => edge.to_kind === "relative" && edge.from !== edge.to),
+    (edge) => `${edge.from}:${edge.to}`);
+  const inbound = groupBy(consumers, (edge) => edge.to);
+  const records = project.modules.map((module) => leverageRecord(module, inbound.get(module.id)?.length ?? 0));
   return writeQualityArtifact(config, "leverage_metrics.json", "quality.locality_leverage", command, project, {
     records: records.length,
     shared_hubs: records.filter((record) => record.classification === "shared_hub").length,
@@ -79,6 +83,8 @@ function leverageRecord(module: ModuleRecord, inboundReach: number): ScoredRecor
     file: module.file,
     score,
     risk: riskForScore(score),
+    evidence_kind: "heuristic",
+    message: `${module.file}: ${inboundReach} consuming modules, ${publicSurface} public names, ${weakSurface} module escape hatches.`,
     leverage_score: leverageScore,
     inbound_reach: inboundReach,
     public_surface: publicSurface,
@@ -87,7 +93,7 @@ function leverageRecord(module: ModuleRecord, inboundReach: number): ScoredRecor
     classification: inboundReach > 3 ? "shared_hub" : inboundReach === 0 ? "leaf" : "local_dependency",
     signals: [
       ...(inboundReach > 3 ? [{ kind: "broad_inbound_reach", value: inboundReach }] : []),
-      ...(weakSurface > 0 ? [{ kind: "weak_public_surface", value: weakSurface }] : []),
+      ...(weakSurface > 0 ? [{ kind: "module_escape_hatches", value: weakSurface }] : []),
       ...(deadExportSurface > 0 ? [{ kind: "unused_export_surface", value: deadExportSurface }] : []),
     ],
   };
