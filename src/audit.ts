@@ -2,6 +2,7 @@ import { isSuppressed } from "./actions.js";
 import { analysisConfidence, createAnalysisContext } from "./analysis-context.js";
 import { analysisIdentity, artifactBase, sourceSetHash } from "./provenance.js";
 import { writeArtifact } from "./writer.js";
+import { inputSnapshot } from "./input-snapshot.js";
 import { baseSnapshotFindingIds, readBaselineIds, writeBaseline } from "./audit/baseline.js";
 import { changeSetSince, defaultBase, type LineRange } from "./audit/change-set.js";
 import auditMarkdown from "./audit/render.js";
@@ -46,6 +47,7 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
   const scope = auditScope(config, options);
   config = { ...config, audit: { ...config.audit, base: scope.base, changedSince: scope.base } };
   const context = createAnalysisContext(config);
+  const changedInputs = inputSnapshot(config, context.project());
   runAuditMeasurements(config, command, context, options.runTests !== false);
   const baselineIds = readBaselineIds(options.baseline ?? config.audit.baseline);
   const baseSnapshot = scope.comparisonBase ? baseSnapshotFindingIds(config, scope.comparisonBase, command, baselineIds) : null;
@@ -59,9 +61,11 @@ export function runAudit(config: Config, command: string, options: AuditOptions 
   if (baseSnapshot && baseSnapshotCompatible === false) {
     sets.incompleteReasons.push("Base snapshot analysis identity differs from the current compiler, config, ruleset, or integration identity.");
   }
+  const inputChange = changedInputs();
+  if (inputChange) sets.incompleteReasons.push(inputChange);
   const artifact = auditArtifact(config, command, context, scope, sets, baseSnapshot !== null, baseSnapshotCompatible);
   writeArtifact(config, "audit.json", artifact);
-  if (options.saveBaseline) writeBaseline(options.saveBaseline, sets.findings);
+  if (options.saveBaseline && !inputChange) writeBaseline(options.saveBaseline, sets.findings);
   return artifact;
 }
 

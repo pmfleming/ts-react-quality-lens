@@ -83,7 +83,8 @@ export function escapeRecords(module: ModuleRecord): ScoredRecord[] {
   function visit(node: ts.Node): void {
     if (node.kind === ts.SyntaxKind.AnyKeyword) add("explicit_any", "medium", node);
     if (ts.isNonNullExpression(node)) add("non_null_assertion", "medium", node);
-    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
+    if ((ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) &&
+        !(ts.isTypeReferenceNode(node.type) && ts.isIdentifier(node.type.typeName) && node.type.typeName.text === "const")) {
       add(nestedAssertion(node) ? "double_assertion" : "type_assertion", nestedAssertion(node) ? "high" : "medium", node);
     }
     if (isTopLevelMutableStatement(astSourceFile, node)) add("module_level_mutable_state", "medium", node);
@@ -367,14 +368,6 @@ function isEvalLikeCall(node: ts.Node): boolean {
 }
 
 function isDirectDomMutation(node: ts.Node): boolean {
-  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-    const receiver = node.expression.expression;
-    return (
-      ts.isIdentifier(receiver) &&
-      receiver.text === "document" &&
-      ["querySelector", "getElementById"].includes(node.expression.name.text)
-    );
-  }
   return (
     ts.isBinaryExpression(node) &&
     node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
