@@ -75,7 +75,7 @@ function leverageRecord(module: ModuleRecord, inboundReach: number): ScoredRecor
   const publicSurface = publicNames.size;
   const deadExportSurface = inboundReach === 0 && module.entrypointRoles.length === 0 ? module.exports.length : 0;
   const weakSurface = escapeRecords(module).filter((record) => WEAK_SURFACE_KINDS.has(String(record.kind))).length;
-  const leverageScore = Math.min(100, inboundReach * 10 + publicSurface * 2);
+  const leverageScore = Math.min(100, inboundReach * 10);
   const score = Math.min(100, weakSurface * 12 + deadExportSurface * 6 + (inboundReach > 4 && weakSurface > 0 ? 20 : 0));
   return {
     id: `leverage:${module.id}`,
@@ -86,6 +86,10 @@ function leverageRecord(module: ModuleRecord, inboundReach: number): ScoredRecor
     evidence_kind: "heuristic",
     message: `${module.file}: ${inboundReach} consuming modules, ${publicSurface} public names, ${weakSurface} module escape hatches.`,
     leverage_score: leverageScore,
+    leverage_model: "observed-reuse-v2",
+    calibration: "uncalibrated-advisory",
+    implementation_lines: module.lines,
+    outbound_dependencies: new Set(module.imports.map((edge) => edge.to)).size,
     inbound_reach: inboundReach,
     public_surface: publicSurface,
     weak_surface: weakSurface,

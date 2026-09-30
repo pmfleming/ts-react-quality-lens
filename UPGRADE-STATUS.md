@@ -21,3 +21,9 @@ Installation audit reported three high-severity dependency advisories; no unrela
 - Runtime reports require source/producer/environment provenance for current-source certainty. Legacy observations remain visible as low-confidence review findings.
 - Full CI: 57 tests passed, schema/contract checks and package/performance smoke passed.
 - See `contracts/execution-evidence.md`. No source-map engine or branch-coverage claim is included; V8 attribution is limited to original JavaScript.
+
+## Phase 4 — Calibration and anti-gaming
+- Added language-idiom positive/negative cases, identifier/location mutations, explicit development/holdout partitions, and shared precision/recall/abstention conformance cases.
+- Unused exports no longer improve leverage. Reuse, surface, implementation size and outbound dependencies are reported separately with advisory model identity.
+- Full CI: 59 tests passed; package/performance smoke passed.
+- These are regression corpora, not independent real-world validation. Ranking remains uncalibrated; see `contracts/calibration-design.md` for release criteria and remaining independent-corpus work.

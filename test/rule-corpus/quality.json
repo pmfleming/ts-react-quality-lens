@@ -1,0 +1,9 @@
+[
+  {"id":"const-literal","partition":"development","rule":"type_assertion","expected":false,"source":"export const value = { kind: 'ready' } as const;\n"},
+  {"id":"unchecked-assertion","partition":"development","rule":"type_assertion","expected":true,"source":"export const value = input as number;\n"},
+  {"id":"satisfies","partition":"holdout","rule":"type_assertion","expected":false,"source":"export const value = { kind: 'ready' } satisfies { kind: string };\n"},
+  {"id":"tuple-literal","partition":"holdout","rule":"type_assertion","expected":false,"source":"export const value = [1, 2] as const;\n"},
+  {"id":"unsafe-boundary","partition":"holdout","rule":"type_assertion","expected":true,"source":"export const value = JSON.parse(input) as { name: string };\n"},
+  {"id":"read-only-dom","partition":"holdout","rule":"direct_dom_mutation","expected":false,"source":"export const value = document.getElementById('app');\n"},
+  {"id":"write-dom","partition":"holdout","rule":"direct_dom_mutation","expected":true,"source":"node.innerHTML = value;\n"}
+]
