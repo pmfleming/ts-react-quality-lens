@@ -54,8 +54,7 @@ export function measureSarif(config: Config, command: string, context: AnalysisC
     ])),
     records,
   };
-  writeArtifact(config, "sarif_findings.json", artifact);
-  return artifact;
+  return writeArtifact(config, "sarif_findings.json", artifact);
 }
 
 function uniqueResultIdentities(records: ScoredRecord[]): ScoredRecord[] {

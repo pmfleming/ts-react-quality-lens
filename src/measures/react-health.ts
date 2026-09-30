@@ -62,8 +62,7 @@ export function measureReactHealth(config: Config, command: string, context: Ana
     },
     records,
   };
-  writeArtifact(config, "react_health.json", artifact);
-  return artifact;
+  return writeArtifact(config, "react_health.json", artifact);
 }
 
 function isAccessibilityFinding(record: ScoredRecord): boolean {

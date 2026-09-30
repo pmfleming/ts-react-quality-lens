@@ -41,6 +41,8 @@
     "dist/",
     "src/",
     "bin/",
+    "contracts/",
+    "UPGRADE-STATUS.md",
     "README.md",
     "tsconfig.json",
     "ts-react-quality-lens.schema.json",

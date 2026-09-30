@@ -1,6 +1,6 @@
 # Cross-lens upgrade execution
 
-The review's phases 0–4 are executed as phases 1–5. Each phase has its own commit.
+The review's phases 0–4 are executed as phases 1–5. Each phase has its own commit. These are implementation iterations; full plan acceptance remains open (see `contracts/upgrade-validation.md`).
 
 ## Phase 1 — Trust repairs
 - Restored the declared dependency installation; full `npm run ci` passed (54 tests, schema/rule checks, performance and package smoke).
@@ -27,3 +27,10 @@ Installation audit reported three high-severity dependency advisories; no unrela
 - Unused exports no longer improve leverage. Reuse, surface, implementation size and outbound dependencies are reported separately with advisory model identity.
 - Full CI: 59 tests passed; package/performance smoke passed.
 - These are regression corpora, not independent real-world validation. Ranking remains uncalibrated; see `contracts/calibration-design.md` for release criteria and remaining independent-corpus work.
+
+## Phase 5 — Simplification and delivery validation
+- Capability states are discriminated unions. Producers return the same enriched evidence they write; removed duplicate runner enrichment. Atomic writes validate filenames and clean up failed temporary writes.
+- Required compiler/test failures cannot be hidden by finding suppressions or baselines; verification-policy identity is versioned.
+- Ship contract fixtures and status notes; benchmark cold/warm contexts and cumulative memory with execution scope documented.
+- Full CI: 60 passed; schema/rule/format, performance and package smoke passed. At 100 synthetic files: 4681 ms cold-context / 295 ms warm-context (single observations).
+- Broad per-rule typed finding migration, independent calibration and other shared acceptance gaps remain listed in `contracts/upgrade-validation.md`.

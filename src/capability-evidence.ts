@@ -1,24 +1,26 @@
+import { isRecord } from "./collections.js";
+
 /** Cross-lens capability contract v1. Quality verdict is deliberately separate. */
 export type CapabilityStatus = "completed" | "partial" | "unavailable" | "disabled" | "not_applicable" | "failed_execution";
 export type CapabilityEvidence = {
   schema_version: 1;
   capability: string;
   scope: string;
-  status: CapabilityStatus;
-  evaluated: number;
-  skipped: number;
-  reasons: string[];
-};
+} & (
+  | { status: "completed"; evaluated: number; skipped: 0; reasons: [] }
+  | { status: "partial"; evaluated: number; skipped: number; reasons: [string, ...string[]] }
+  | { status: "unavailable" | "disabled" | "not_applicable" | "failed_execution"; evaluated: 0; skipped: number; reasons: [string, ...string[]] }
+);
 
 export function capabilityEvidence(capability: string, scope: string, evaluated: number, skipped: number, reasons: string[] = [], status?: CapabilityStatus): CapabilityEvidence {
-  const result: CapabilityEvidence = { schema_version: 1, capability, scope, status: status ?? (skipped ? "partial" : "completed"), evaluated, skipped, reasons };
+  const result = { schema_version: 1, capability, scope, status: status ?? (skipped ? "partial" : "completed"), evaluated, skipped, reasons };
   if (!validCapabilityEvidence(result)) throw new Error("Invalid capability evidence");
   return result;
 }
 
 export function validCapabilityEvidence(value: unknown): value is CapabilityEvidence {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
+  const item = value;
   const statuses: string[] = ["completed", "partial", "unavailable", "disabled", "not_applicable", "failed_execution"];
   return item.schema_version === 1 && typeof item.capability === "string" && item.capability.trim().length > 0 &&
     typeof item.scope === "string" && item.scope.trim().length > 0 && typeof item.status === "string" && statuses.includes(item.status) &&

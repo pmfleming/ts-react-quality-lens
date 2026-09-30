@@ -66,8 +66,7 @@ export function measureClones(config: Config, command: string, context: Analysis
     groups,
     records,
   };
-  writeArtifact(config, "clones.json", artifact);
-  return artifact;
+  return writeArtifact(config, "clones.json", artifact);
 }
 
 function samePurposeRecords(project: ProjectAnalysis): ScoredRecord[] {

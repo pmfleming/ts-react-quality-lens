@@ -104,8 +104,7 @@ export function measureCleanup(config: Config, command: string, context: Analysi
     unconfirmed: reconciliation.unconfirmed,
     records,
   };
-  writeArtifact(config, "cleanup.json", artifact);
-  return artifact;
+  return writeArtifact(config, "cleanup.json", artifact);
 }
 
 const KNIP_KIND_BY_TYPE: Record<string, string> = {

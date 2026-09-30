@@ -117,8 +117,7 @@ export function measureDependencyHealth(config: Config, command: string, context
           })),
     },
   };
-  writeArtifact(config, "dependency_health.json", artifact);
-  return artifact;
+  return writeArtifact(config, "dependency_health.json", artifact);
 }
 
 function classifyLayer(file: string, rules: LayerRule[]): string | null {

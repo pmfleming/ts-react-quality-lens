@@ -542,6 +542,7 @@ export type AuditArtifact = Artifact & {
   task_id: "audit";
   summary: {
     verdict: AuditVerdict;
+    verification_failures?: string[];
     complete: boolean;
     incomplete_reasons: string[];
     gate: "new-only" | "all";

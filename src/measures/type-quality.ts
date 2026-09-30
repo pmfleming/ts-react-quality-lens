@@ -88,8 +88,7 @@ export function measureLint(config: Config, command: string, context: AnalysisCo
     },
     records,
   };
-  writeArtifact(config, "lint_health.json", artifact);
-  return artifact;
+  return writeArtifact(config, "lint_health.json", artifact);
 }
 
 function compilerDiagnosticFinding(diagnostic: DiagnosticRecord): ScoredRecord {

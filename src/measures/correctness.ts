@@ -53,9 +53,9 @@ export function measureCorrectnessCatalog(
       command_hint: config.testCommand,
     })),
   };
-  writeArtifact(config, "correctness_review.json", review);
+  const enriched = writeArtifact(config, "correctness_review.json", review);
   writeArtifact(config, "test_catalog.json", catalog);
-  return review;
+  return enriched;
 }
 
 function executionFindings(execution: TestExecution): ScoredRecord[] {

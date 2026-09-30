@@ -101,8 +101,7 @@ export function measureArchitectureMap(config: Config, command: string, context:
     nodes,
     edges,
   };
-  writeArtifact(config, "map.json", artifact);
-  return artifact;
+  return writeArtifact(config, "map.json", artifact);
 }
 
 export function artifactFreshness(

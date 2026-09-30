@@ -28,6 +28,7 @@ function summaryLines(artifact: AuditArtifact): string[] {
     `- Suppressed by baseline: ${summary.baseline_suppressed}`,
     `- Suppressed by config: ${summary.config_suppressed}`,
     `- Stale suppressions: ${summary.stale_suppressions}`,
+    ...(summary.verification_failures ?? []).map((reason) => `- Verification failed: ${reason}`),
     ...(summary.incomplete_reasons.length ? [`- Incomplete reasons: ${summary.incomplete_reasons.join("; ")}`] : []),
   ];
 }

@@ -46,6 +46,5 @@ export function measureExecutionCoverage(config: Config, command: string, contex
       changed_scope_status: changes ? changes.complete ? "available" : "incomplete" : "not_configured" },
     files, functions, records: [], limitations: ["Observed execution is not proof of correctness.", "Line/range observations are not branch coverage.", "Function risk is advisory, not a correctness verdict."],
   };
-  writeArtifact(config, "execution_coverage.json", artifact);
-  return artifact;
+  return writeArtifact(config, "execution_coverage.json", artifact);
 }

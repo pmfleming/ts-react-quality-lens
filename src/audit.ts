@@ -11,6 +11,7 @@ import {
   auditVerdict,
   collectFindings,
   requiredEvidenceReasons,
+  requiredVerificationFailures,
   runAuditMeasurements,
   staleSuppressionFindings,
 } from "./audit/findings.js";
@@ -128,6 +129,7 @@ function auditArtifact(
 ): AuditArtifact {
   const project = context.project();
   const incompleteReasons = sets.incompleteReasons;
+  const verificationFailures = requiredVerificationFailures(config);
   return {
     ...artifactBase(
       config,
@@ -144,7 +146,8 @@ function auditArtifact(
     ),
     task_id: "audit",
     summary: {
-      verdict: auditVerdict(sets.gated, incompleteReasons),
+      verdict: auditVerdict(sets.gated, incompleteReasons, verificationFailures),
+      verification_failures: verificationFailures,
       complete: incompleteReasons.length === 0,
       incomplete_reasons: incompleteReasons,
       gate: scope.gate,

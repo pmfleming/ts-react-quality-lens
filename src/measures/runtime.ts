@@ -45,8 +45,7 @@ export function measureRuntime(config: Config, command: string, context: Analysi
     tool_status: Object.fromEntries(parsed.map((item) => [item.name, item.status])),
     records,
   };
-  writeArtifact(config, "runtime_health.json", artifact);
-  return artifact;
+  return writeArtifact(config, "runtime_health.json", artifact);
 }
 function parseRuntimeInput(config: Config, input: RuntimeInput, sourceHash: string): { name: string; status: RuntimeStatus; records: ScoredRecord[] } {
   if (!input.file) return {

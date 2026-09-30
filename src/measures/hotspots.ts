@@ -14,7 +14,7 @@ export function measureHotspots(config: Config, command: string, context: Analys
     for (const fn of module.functions) records.push(functionHotspotRecord(module, fn));
   }
   records.sort(compareRisk);
-  const artifact = {
+  const artifact: Artifact = {
     ...artifactBase(config, "quality.hotspots", command, analysisConfidence(config, project), sourceSetHash(project)),
     summary: {
       source_files: project.sourceFiles.length,
@@ -30,8 +30,7 @@ export function measureHotspots(config: Config, command: string, context: Analys
     },
     records,
   };
-  writeArtifact(config, "hotspots.json", artifact);
-  return artifact;
+  return writeArtifact(config, "hotspots.json", artifact);
 }
 
 function distribution(values: number[]) {

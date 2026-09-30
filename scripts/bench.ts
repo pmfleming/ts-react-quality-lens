@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { loadConfig } from "../src/config.js";
+import { createAnalysisContext } from "../src/analysis-context.js";
 import { runMeasure } from "../src/measure-runner.js";
 
 const sizes = [10, 50, 100];
@@ -32,12 +33,20 @@ for (const files of sizes) {
       "utf8",
     );
     const config = loadConfig(path.join(root, "ts-react-quality-lens.config.json"));
-    const start = performance.now();
-    runMeasure(config, "all", `bench ${files}`);
-    results.push({ files, duration_ms: Math.round(performance.now() - start) });
+    const context = createAnalysisContext(config);
+    for (const run of ["cold-context", "warm-context"]) {
+      const before = process.memoryUsage();
+      const start = performance.now();
+      runMeasure(config, "all", `bench ${files}`, { context, allowTestExecution: false });
+      const memory = process.memoryUsage();
+      results.push({ files, run, duration_ms: Math.round(performance.now() - start),
+        rss_before_bytes: before.rss, rss_after_bytes: memory.rss, heap_used_after_bytes: memory.heapUsed,
+        process_peak_rss_kib: process.resourceUsage().maxRSS });
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
 
-console.log(JSON.stringify({ benchmark: "synthetic", results }, null, 2));
+console.log(JSON.stringify({ benchmark: "synthetic", node: process.version, platform: process.platform,
+  scope: "same process and context; disk cache disabled; no project tests; process RSS peak is cumulative", results }, null, 2));

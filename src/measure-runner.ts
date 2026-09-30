@@ -1,4 +1,3 @@
-import { enrichArtifactFindings } from "./actions.js";
 import { createAnalysisContext } from "./analysis-context.js";
 import { MEASURE_ORDER, MEASURE_TASKS } from "./measures/registry.js";
 import { analysisIdentity, sourceSetHash, taskInputHash } from "./provenance.js";
@@ -48,7 +47,7 @@ function measureTask(config: Config, taskId: string, command: string, state: Run
       } else measureTask(config, prerequisite, command, state);
     }
   }
-  const result = enrichArtifactFindings(config, task.handler(config, command, state.context));
+  const result = task.handler(config, command, state.context);
   state.completed.add(taskId);
   state.visiting.delete(taskId);
   return [result];

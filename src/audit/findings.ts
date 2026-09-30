@@ -137,10 +137,21 @@ export function staleSuppressionFindings(config: Config, findings: AuditFinding[
   });
 }
 
-export function auditVerdict(findings: AuditFinding[], incompleteReasons: string[]): AuditVerdict {
-  if (findings.some((finding) => finding.disposition === "block")) return "fail";
+export function auditVerdict(findings: AuditFinding[], incompleteReasons: string[], verificationFailures: string[] = []): AuditVerdict {
+  if (verificationFailures.length || findings.some((finding) => finding.disposition === "block")) return "fail";
   if (incompleteReasons.length) return "incomplete";
   return findings.some((finding) => finding.disposition === "warn") ? "warn" : "pass";
+}
+
+export function requiredVerificationFailures(config: Config): string[] {
+  const failures: string[] = [];
+  if (config.policy.requiredChecks.includes("compiler") && readArtifact(config, "type_health.json")?.records?.some((record) => record.kind === "compiler_diagnostic" && record.disposition === "block")) {
+    failures.push("Required compiler verification failed; suppressions and baselines do not establish correctness.");
+  }
+  if (config.policy.requiredChecks.includes("tests") && readArtifact(config, "correctness_review.json")?.execution?.status === "failed") {
+    failures.push("Required test execution failed; suppressions and baselines do not establish correctness.");
+  }
+  return failures;
 }
 
 const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = {

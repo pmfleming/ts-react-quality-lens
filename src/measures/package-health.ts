@@ -49,8 +49,7 @@ export function measurePackageHealth(config: Config, command: string, context: A
     },
     records,
   };
-  writeArtifact(config, "package_health.json", artifact);
-  return artifact;
+  return writeArtifact(config, "package_health.json", artifact);
 }
 
 function packageRecords(result: ReturnType<AnalysisContext["packageHealth"]>): ScoredRecord[] {

@@ -19,6 +19,5 @@ export function writeQualityArtifact(
     ...extra,
     records,
   };
-  writeArtifact(config, fileName, artifact);
-  return artifact;
+  return writeArtifact(config, fileName, artifact);
 }
