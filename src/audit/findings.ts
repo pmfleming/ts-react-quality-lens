@@ -29,6 +29,7 @@ const AUDIT_TASK_IDS = [
   "quality.package_health",
   "quality.sarif",
   "quality.runtime",
+  "testing.coverage",
 ];
 
 type FindingScope = {
@@ -164,6 +165,9 @@ export function requiredEvidenceReasons(config: Config): string[] {
   const reasons = config.policy.requiredChecks.flatMap((check) => EVIDENCE_CHECKS[check](config) ?? []);
   if (readArtifact(config, "runtime_health.json")?.summary.status === "incomplete") {
     reasons.push("Configured runtime evidence did not complete.");
+  }
+  if (config.coverageReport && readArtifact(config, "execution_coverage.json")?.summary.status !== "complete") {
+    reasons.push("Configured execution coverage is incomplete or stale.");
   }
   return reasons;
 }

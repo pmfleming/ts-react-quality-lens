@@ -509,12 +509,12 @@ test("runtime inputs normalize React Profiler, axe, and React Doctor evidence", 
 
   const config = loadConfig(configPath);
   const [artifact] = runMeasure(config, "quality.runtime", "test runtime") as [ToolArtifact];
-  assert.equal(artifact.summary.status, "complete");
-  assert.equal(requiredToolStatus(artifact, "react_profiler").complete, true);
-  assert.equal(requiredToolStatus(artifact, "axe").complete, true);
-  assert.equal(requiredToolStatus(artifact, "react_doctor").complete, true);
+  assert.equal(artifact.summary.status, "incomplete");
+  assert.equal(requiredToolStatus(artifact, "react_profiler").complete, false);
+  assert.equal(requiredToolStatus(artifact, "axe").complete, false);
+  assert.equal(requiredToolStatus(artifact, "react_doctor").complete, false);
   assert.ok(artifact.records?.some((record) => record.source === "react-profiler" && record.duration_ms === 64));
-  assert.ok(artifact.records?.some((record) => record.source === "axe" && record.disposition === "block"));
+  assert.ok(artifact.records?.some((record) => record.source === "axe" && record.disposition === "review"));
   assert.ok(artifact.records?.some((record) => record.source === "react-doctor" && record.fix_group_id === "split-app"));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });

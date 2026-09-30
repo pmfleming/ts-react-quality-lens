@@ -7,6 +7,7 @@ import { measureHotspots } from "./hotspots.js";
 import { measurePackageHealth } from "./package-health.js";
 import { measureSarif } from "./sarif.js";
 import { measureRuntime } from "./runtime.js";
+import { measureExecutionCoverage } from "./coverage.js";
 import { measureLeverage, measureLocality } from "./locality.js";
 import { measureReactHealth } from "./react-health.js";
 import { measureEscapeHatches, measureLint, measureTypeHealth } from "./type-quality.js";
@@ -33,6 +34,7 @@ export const MEASURE_ORDER = [
   "quality.sarif",
   "quality.runtime",
   "correctness.all",
+  "testing.coverage",
   "map.architecture",
 ] satisfies readonly string[];
 
@@ -48,6 +50,7 @@ export const MEASURE_TASKS = new Map<string, MeasureTask>(
     ["quality.package_health", { handler: measurePackageHealth }],
     ["quality.sarif", { handler: measureSarif }],
     ["quality.runtime", { handler: measureRuntime }],
+    ["testing.coverage", { handler: measureExecutionCoverage }],
     ["correctness.catalog", { handler: (config, command, context) => measureCorrectnessCatalog(config, command, false, context) }],
     ["quality.locality_dynamic", { handler: measureLocality, prerequisites: ["correctness.catalog"] }],
     ["quality.locality_leverage", { handler: measureLeverage }],

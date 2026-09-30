@@ -16,6 +16,7 @@
     "framework": { "type": "string" },
     "test_runner": { "type": "string" },
     "test_command": { "type": ["string", "null"] },
+    "coverage_report": { "type": "string" },
     "exclude": { "type": "array", "items": { "type": "string" } },
     "layer_rules": {
       "type": "array",

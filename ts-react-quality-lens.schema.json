@@ -28,6 +28,7 @@
         "quality.package_health",
         "correctness.catalog",
         "correctness.all",
+        "testing.coverage",
         "map.architecture"
       ]
     },

@@ -5,6 +5,10 @@ export const SCHEMA_VERSION = "0.3.0";
 
 export const TASKS = [
   {
+    id: "testing.coverage", category: "testing", title: "Execution coverage", artifact: "execution_coverage.json",
+    description: "Imports source-linked LCOV, Istanbul or original-JavaScript V8 evidence; reports changed-line and function observations.",
+  },
+  {
     id: "quality.hotspots",
     category: "quality",
     title: "Complexity hotspots",

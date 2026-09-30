@@ -22,7 +22,7 @@ export function measureRuntime(config: Config, command: string, context: Analysi
     { name: "axe", file: config.runtimeInputs.axe, parse: axeRecords },
     { name: "react_doctor", file: config.runtimeInputs.reactDoctor, parse: reactDoctorRecords },
   ];
-  const parsed = inputs.map((input) => parseRuntimeInput(config, input));
+  const parsed = inputs.map((input) => parseRuntimeInput(config, input, sourceSetHash(project)));
   const records = parsed.flatMap((item) => item.records);
   const configured = parsed.filter((item) => item.status.path !== null);
   const requiredInputs = configured.map((item) => `${item.name}_complete`);
@@ -48,7 +48,7 @@ export function measureRuntime(config: Config, command: string, context: Analysi
   writeArtifact(config, "runtime_health.json", artifact);
   return artifact;
 }
-function parseRuntimeInput(config: Config, input: RuntimeInput): { name: string; status: RuntimeStatus; records: ScoredRecord[] } {
+function parseRuntimeInput(config: Config, input: RuntimeInput, sourceHash: string): { name: string; status: RuntimeStatus; records: ScoredRecord[] } {
   if (!input.file) return {
     name: input.name,
     status: { available: false, ran: false, complete: false, reason: "input is not configured", path: null, records: 0 },
@@ -60,11 +60,16 @@ function parseRuntimeInput(config: Config, input: RuntimeInput): { name: string;
     records: [runtimeInputFailure(input.name, input.file, "Configured runtime input file does not exist.")],
   };
   try {
-    const records = input.parse(config, parseJson(fs.readFileSync(input.file, "utf8")));
+    const value = parseJson(fs.readFileSync(input.file, "utf8"));
+    const linked = isRecord(value) && isRecord(value.provenance) && value.provenance.source_set_hash === sourceHash &&
+      isRecord(value.producer) && typeof value.producer.name === "string" && Boolean(value.producer.name.trim()) &&
+      typeof value.producer.version === "string" && Boolean(value.producer.version.trim()) &&
+      isRecord(value.environment) && Object.keys(value.environment).length > 0;
+    const records = input.parse(config, isRecord(value) && "data" in value ? value.data : value);
     return {
       name: input.name,
-      status: { available: true, ran: true, complete: true, reason: null, path: input.file, records: records.length },
-      records,
+      status: { available: true, ran: true, complete: linked, reason: linked ? null : "Imported observations lack matching source/producer/environment provenance.", path: input.file, records: records.length },
+      records: linked ? records : records.map((record) => ({ ...record, disposition: "review", finding_confidence: "low", semantic_decision: "unresolved", reason_code: "unverified-runtime-provenance" })),
     };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);

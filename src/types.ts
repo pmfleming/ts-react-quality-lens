@@ -28,6 +28,7 @@ export type RawConfig = {
   framework?: string;
   test_runner?: string;
   test_command?: string | null;
+  coverage_report?: string;
   exclude?: string[];
   layer_rules?: LayerRule[];
   performance_inputs?: PerformanceInputConfig;
@@ -125,6 +126,7 @@ export type Config = {
   framework: string;
   testRunner: string;
   testCommand: string | null;
+  coverageReport: string | null;
   exclude: string[];
   layerRules: LayerRule[];
   performanceInputs: {

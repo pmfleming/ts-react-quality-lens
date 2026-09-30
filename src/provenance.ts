@@ -81,7 +81,8 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   };
   const configHash = configClosureHash(config);
   const rulesets = {
-    builtin: "tsrqlens-analysis-v2",
+    builtin: "tsrqlens-analysis-v3",
+    execution_coverage: "source-linked-v1",
     finding_identity: "semantic-occurrence-v1",
     sarif: "namespaced-fingerprint-occurrence-v2",
     test_mapping: "compiler-imports-v1",
@@ -162,6 +163,7 @@ export function taskInputHash(config: Config, taskId: string, sourceHash: string
   const files = taskId === "quality.runtime"
     ? Object.values(config.runtimeInputs)
     : taskId === "quality.sarif" ? config.sarifInputs.map((input) => input.path)
+    : taskId === "testing.coverage" ? [config.coverageReport]
     : taskId === "quality.type_health" ? [config.typeCoverage.baseline]
     : taskId === "map.architecture" ? Object.values(config.performanceInputs) : [];
   return contentHash(files.filter((file): file is string => file !== null).map((file) => ({

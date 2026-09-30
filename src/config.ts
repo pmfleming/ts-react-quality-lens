@@ -130,6 +130,7 @@ export function loadConfig(configArg?: string | null): Config {
     framework: normalizeAuto(rawConfig.framework, () => detectFramework(root, packageJson)),
     testRunner: normalizeAuto(rawConfig.test_runner, () => detectTestRunner(root, packageJson)),
     testCommand,
+    coverageReport: resolveOptional(configDir, rawConfig.coverage_report),
     exclude: [...DEFAULT_EXCLUDES, ...(rawConfig.exclude ?? [])],
     layerRules: normalizeLayerRules(rawConfig.layer_rules),
     performanceInputs: normalizePerformanceInputs(configDir, rawConfig.performance_inputs),

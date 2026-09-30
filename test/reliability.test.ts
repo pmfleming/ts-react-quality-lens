@@ -59,7 +59,7 @@ function stubMeasurements(run: () => void): void {
   finally { for (const [id, task] of tasks) MEASURE_TASKS.set(id, task); }
 }
 
-test("runtime inputs reject unsupported shapes and invalid entries but accept valid empty reports", () => fixture((root, config) => {
+test("runtime inputs require provenance even for valid empty reports", () => fixture((root, config) => {
   const file = path.join(root, "runtime.json");
   for (const [key, invalid, empty] of [
     ["axe", { violations: [null] }, { violations: [] }],
@@ -74,6 +74,11 @@ test("runtime inputs reject unsupported shapes and invalid entries but accept va
       assert.ok(requiredEvidenceReasons(config).some((reason) => reason.includes("runtime")));
     }
     fs.writeFileSync(file, JSON.stringify(empty));
+    assert.equal(runMeasure(config, "quality.runtime", "test")[0]?.summary.status, "incomplete");
+    fs.writeFileSync(file, JSON.stringify({ data: empty,
+      provenance: { source_set_hash: sourceSetHash(createAnalysisContext(config).project()) },
+      producer: { name: key, version: "1" }, environment: { platform: "test" },
+    }));
     assert.equal(runMeasure(config, "quality.runtime", "test")[0]?.summary.status, "complete");
   }
 }));

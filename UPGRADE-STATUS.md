@@ -15,3 +15,9 @@ Installation audit reported three high-severity dependency advisories; no unrela
 - Audit producers run in an isolated staging directory with an exclusive publication lock. Producer failures preserve prior evidence; changed snapshots publish only an incomplete audit, not the staged measurements.
 - Full suite: 55 passed; subsequent staging/conformance tests: 2 passed (56 total tests now).
 - Capability granularity is currently project-input level; per-rule coverage for all TS rule families remains outstanding. Native finding/run envelopes remain language-specific, as documented in `contracts/README.md`.
+
+## Phase 3 — Measurement parity
+- Added source-linked LCOV/Istanbul/original-JavaScript V8 coverage, changed-line observations and advisory function complexity/coverage risk; configured missing/stale coverage reaches audit incompleteness.
+- Runtime reports require source/producer/environment provenance for current-source certainty. Legacy observations remain visible as low-confidence review findings.
+- Full CI: 57 tests passed, schema/contract checks and package/performance smoke passed.
+- See `contracts/execution-evidence.md`. No source-map engine or branch-coverage claim is included; V8 attribution is limited to original JavaScript.

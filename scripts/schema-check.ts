@@ -33,6 +33,7 @@ for (const key of [
   "framework",
   "test_runner",
   "test_command",
+  "coverage_report",
   "exclude",
   "layer_rules",
   "performance_inputs",
