@@ -1,4 +1,5 @@
 import os from "node:os";
+import { capabilityEvidence } from "./capability-evidence.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -59,6 +60,9 @@ export function artifactBase(
       } : {}),
     },
     analysis_identity: identity,
+    capabilities: [capabilityEvidence("project-inputs", String(confidence.confidence_scope ?? "project"), confidence.complete === true && confidence.partial !== true ? 1 : 0,
+      confidence.complete === true && confidence.partial !== true ? 0 : 1,
+      confidence.complete === true && confidence.partial !== true ? [] : ["See confidence for missing, stale or unsupported inputs."])],
     confidence,
   };
 }

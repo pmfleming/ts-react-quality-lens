@@ -181,7 +181,7 @@ export function createConfidence(config: Config, extra: Record<string, JsonValue
 
   return {
     ...base,
-    complete: missingInput.length === 0 && staleInput.length === 0,
+    complete: missingInput.length === 0 && staleInput.length === 0 && unsupportedPattern.length === 0,
     partial: missingInput.length > 0 || staleInput.length > 0 || unsupportedPattern.length > 0,
     confidence_scope: typeof base.confidence_scope === "string" ? base.confidence_scope : "project_static_analysis",
     required_inputs: requiredInputs,
