@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "classification": "agent-authored regression candidates, not independent acceptance labels",
+  "independent_review": null,
+  "thresholds": { "minimum_independent_pairs": 20, "minimum_independent_projects": 3, "minimum_pairwise_agreement": 0.8, "blocking_false_positives": 0, "supported_abstentions": 0, "missing_declared_positives": 0 },
+  "frozen_candidates": [
+    { "path": "test/rule-corpus/quality.json", "sha256": "477c9e493432e94dbeb60b8cf0299bff1f8126afb50b200e409e831a53196bb1" },
+    { "path": "contracts/refactor-candidates.json", "sha256": "ecce705a021082f7231730ff3c6737b26112d3b2d026e950ce2742caaa0d54e2" },
+    { "path": "test/refactor-behavior.test.ts", "sha256": "bd07bf990fb339b0f900ce23f7c8340993cdb8ba1ecf5a29b261c899d9d54f44" }
+  ]
+}

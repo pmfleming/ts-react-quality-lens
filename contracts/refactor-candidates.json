@@ -1,0 +1,10 @@
+{
+  "authorship": "agent-authored regression candidates; not independently reviewed labels",
+  "review_status": "pending",
+  "intent": "Clamp numeric input to [0,10], preserving NaN and signed zero. Preference/readability needs independent review.",
+  "before": "function clamp(value) { if (value < 0) return 0; if (value > 10) return 10; return value; }",
+  "equivalent": "function clamp(value) { return value < 0 ? 0 : value > 10 ? 10 : value; }",
+  "incorrect_smaller": "function clamp(value) { return Math.min(10, Math.max(0, value)); }",
+  "counterexample": "Object.is(clamp(-0), -0) must remain true",
+  "domain": "Sampled finite numbers, signed zeros, NaN and infinities; not proof for every runtime or an independently validated ranking"
+}
