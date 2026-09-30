@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { validWireExtension } from "./wire-evidence.js";
 import path from "node:path";
 import { enrichArtifactFindings } from "./actions.js";
 import { isRecord, parseJson } from "./collections.js";
@@ -8,6 +9,7 @@ export function writeArtifact<T extends Artifact>(config: Config, artifactName: 
 export function writeArtifact(config: Config, artifactName: string, value: unknown): unknown;
 export function writeArtifact(config: Config, artifactName: string, value: unknown): unknown {
   validateArtifactName(artifactName);
+  if (isRecord(value) && !validWireExtension(value.evidence_contract)) throw new Error("Invalid cross-lens evidence contract");
   const enriched = enrichArtifactFindings(config, value);
   fs.mkdirSync(config.outputDir, { recursive: true });
   const target = path.join(config.outputDir, artifactName);
@@ -50,7 +52,7 @@ export function readArtifact(config: Config, artifactName: string): Artifact | n
 }
 
 function isArtifact(value: unknown): value is Artifact {
-  return isRecord(value) &&
+  return isRecord(value) && validWireExtension(value.evidence_contract) &&
     typeof value.schema_version === "string" &&
     typeof value.task_id === "string" &&
     isRecord(value.project) &&

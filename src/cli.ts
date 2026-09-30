@@ -1,3 +1,4 @@
+import { auditSarif } from "./sarif-export.js";
 import { loadConfig } from "./config.js";
 import fs from "node:fs";
 import { catalogForConfig } from "./tasks.js";
@@ -18,7 +19,7 @@ type ParsedArgs = {
   gate: "new-only" | "all" | null;
   baseline: string | null;
   saveBaseline: string | null;
-  format: "json" | "summary" | "markdown";
+  format: "json" | "summary" | "markdown" | "sarif";
   force: boolean;
   help: boolean;
   positionals: string[];
@@ -43,7 +44,7 @@ const VALUE_FLAGS: ValueFlag[] = [
   {
     aliases: ["--format"],
     set: (args, value, flag) => {
-      args.format = oneOf(flag, value, ["json", "summary", "markdown"]);
+      args.format = oneOf(flag, value, ["json", "summary", "markdown", "sarif"]);
     },
   },
 ];
@@ -90,7 +91,8 @@ function runAuditCommand(config: Config, args: ParsedArgs): void {
 }
 
 function printAudit(config: Config, format: ParsedArgs["format"], artifact: ReturnType<typeof runAudit>): void {
-  if (format === "json") console.log(JSON.stringify(artifact, null, 2));
+  if (format === "sarif") console.log(JSON.stringify(auditSarif(artifact), null, 2));
+  else if (format === "json") console.log(JSON.stringify(artifact, null, 2));
   else if (format === "markdown") console.log(auditMarkdown(artifact));
   else console.log(JSON.stringify({ project_name: config.projectName, output_dir: config.outputDir, audit: artifact.summary }, null, 2));
 }
