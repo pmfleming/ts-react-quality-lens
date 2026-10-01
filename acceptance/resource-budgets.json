@@ -1,0 +1,10 @@
+{
+  "profile": "linux-x86_64, Node 24; synthetic source-only 10/50/100 files; cold/reused context, disk cache off",
+  "command": ["node", "dist/scripts/bench.js"],
+  "repetitions": 3,
+  "records_per_repetition": 6,
+  "max_duration_ms": 30000,
+  "rss_field": "process_peak_rss_kib",
+  "max_peak_rss_kib": 786432,
+  "limitations": "Regression resource ceilings fixed before this campaign, not general runtime bounds. RSS is cumulative within a process; OS caches may be warm. No project tests are executed."
+}

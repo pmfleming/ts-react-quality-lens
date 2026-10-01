@@ -1,5 +1,7 @@
 # TS validation map
 
+Latest clean Linux validation: 66 tests, full CI, actual installed-consumer/test-runner smoke and zero npm advisories. See `step-5.md`, `resource-results.json` and `criteria.json` for scoped results and unresolved acceptance. Reproduce with `npm ci && npm run ci && npm audit --json`, then `python3 acceptance/profile.py`.
+
 Baseline revision: c4241f2. Evidence is not automatically accepted from earlier test totals.
 
 | Criteria | Implementation / regression starting points | Reproduce |

@@ -10,30 +10,46 @@ export function writeArtifact(config: Config, artifactName: string, value: unkno
 export function writeArtifact(config: Config, artifactName: string, value: unknown): unknown {
   validateArtifactName(artifactName);
   if (isRecord(value) && !validWireExtension(value.evidence_contract)) throw new Error("Invalid cross-lens evidence contract");
-  const enriched = enrichArtifactFindings(config, value);
+  return withPublicationLock(config, () => {
+    const enriched = enrichArtifactFindings(config, value);
+    const target = path.join(config.outputDir, artifactName);
+    const temp = path.join(config.outputDir, `.${artifactName}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
+    try {
+      fs.writeFileSync(temp, `${JSON.stringify(enriched, null, 2)}\n`, "utf8");
+      fs.renameSync(temp, target);
+      return enriched;
+    } finally {
+      fs.rmSync(temp, { force: true });
+    }
+  });
+}
+
+/** Cooperative publication only; an interrupted batch requires explicit recovery. */
+export function withPublicationLock<T>(config: Config, run: () => T): T {
   fs.mkdirSync(config.outputDir, { recursive: true });
-  const target = path.join(config.outputDir, artifactName);
-  const temp = path.join(
-    config.outputDir,
-    `.${artifactName}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
-  );
+  const lock = path.join(config.outputDir, ".audit.lock");
+  const fd = fs.openSync(lock, "wx");
   try {
-    fs.writeFileSync(temp, `${JSON.stringify(enriched, null, 2)}\n`, "utf8");
-    fs.renameSync(temp, target);
-    return enriched;
-  } finally {
-    fs.rmSync(temp, { force: true });
+    if (fs.existsSync(path.join(config.outputDir, ".publication-incomplete"))) throw new Error("Interrupted evidence publication requires recovery.");
+    return run();
+  } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
+}
+
+function assertReadable(config: Config): void {
+  if ([".audit.lock", ".publication-incomplete"].some((name) => fs.existsSync(path.join(config.outputDir, name)))) {
+    throw new Error("Evidence publication is active or interrupted; refusing possibly mixed artifacts.");
   }
 }
 
 function validateArtifactName(artifactName: string): void {
-  if (artifactName !== path.basename(artifactName) || artifactName.includes("\\") || !artifactName.endsWith(".json")) {
+  if (artifactName !== path.basename(artifactName) || /[\\:]/.test(artifactName) || !artifactName.endsWith(".json")) {
     throw new Error("Artifact names must be JSON filenames without path components.");
   }
 }
 
 export function readArtifact(config: Config, artifactName: string): Artifact | null {
   validateArtifactName(artifactName);
+  assertReadable(config);
   const target = path.join(config.outputDir, artifactName);
   if (!fs.existsSync(target)) return null;
   const relative = path.relative(fs.realpathSync(config.outputDir), fs.realpathSync(target));
@@ -43,6 +59,7 @@ export function readArtifact(config: Config, artifactName: string): Artifact | n
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const value = parseJson(fs.readFileSync(target, "utf8"));
+      assertReadable(config);
       return isArtifact(value) ? value : null;
     } catch (error) {
       if (attempt === 2) throw error;

@@ -1,5 +1,13 @@
 # Cross-lens upgrade execution
 
+## Latest: acceptance closure steps 1–5
+
+Clean Linux Node 24.18 validation passed: 66 tests, full CI, an actually installed package/test runner, three resource-profile repetitions and zero dependency advisories. Publication rollback/recovery guards and clean runtime-only packaging are implemented.
+
+Acceptance is **not complete**: 4/25 required criteria are evidenced, 21 remain unresolved. No push is permitted yet. See the repository ledger `acceptance/criteria.json`, `acceptance/step-5.md`, and packaged recovery/limitations in `contracts/operational-scope.md`. Independent calibration/intent review and broader semantic, operational and platform obligations remain open.
+
+## Historical implementation record
+
 The review's phases 0–4 are executed as phases 1–5. Each phase has its own commit. These are implementation iterations; full plan acceptance remains open (see `contracts/upgrade-validation.md`).
 
 ## Phase 1 — Trust repairs

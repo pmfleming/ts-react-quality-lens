@@ -1,0 +1,215 @@
+{
+  "status": "passed",
+  "revision": "26a6708f4807ad0fcbedb2c51f4c8463835b77f2",
+  "platform": "Linux-6.18.39-x86_64-with-glibc2.42",
+  "budgets": {
+    "profile": "linux-x86_64, Node 24; synthetic source-only 10/50/100 files; cold/reused context, disk cache off",
+    "command": [
+      "node",
+      "dist/scripts/bench.js"
+    ],
+    "repetitions": 3,
+    "records_per_repetition": 6,
+    "max_duration_ms": 30000,
+    "rss_field": "process_peak_rss_kib",
+    "max_peak_rss_kib": 786432,
+    "limitations": "Regression resource ceilings fixed before this campaign, not general runtime bounds. RSS is cumulative within a process; OS caches may be warm. No project tests are executed."
+  },
+  "samples": [
+    {
+      "repetition": 1,
+      "environment": {
+        "benchmark": "synthetic",
+        "node": "v24.18.0",
+        "platform": "linux",
+        "scope": "same process and context; disk cache disabled; no project tests; process RSS peak is cumulative"
+      },
+      "records": [
+        {
+          "files": 10,
+          "run": "cold-context",
+          "duration_ms": 4563,
+          "rss_before_bytes": 125419520,
+          "rss_after_bytes": 376434688,
+          "heap_used_after_bytes": 47573864,
+          "process_peak_rss_kib": 423088
+        },
+        {
+          "files": 10,
+          "run": "warm-context",
+          "duration_ms": 269,
+          "rss_before_bytes": 376434688,
+          "rss_after_bytes": 410943488,
+          "heap_used_after_bytes": 87324656,
+          "process_peak_rss_kib": 425596
+        },
+        {
+          "files": 50,
+          "run": "cold-context",
+          "duration_ms": 4621,
+          "rss_before_bytes": 410943488,
+          "rss_after_bytes": 439144448,
+          "heap_used_after_bytes": 206654288,
+          "process_peak_rss_kib": 428852
+        },
+        {
+          "files": 50,
+          "run": "warm-context",
+          "duration_ms": 306,
+          "rss_before_bytes": 439144448,
+          "rss_after_bytes": 402231296,
+          "heap_used_after_bytes": 73949536,
+          "process_peak_rss_kib": 435124
+        },
+        {
+          "files": 100,
+          "run": "cold-context",
+          "duration_ms": 4945,
+          "rss_before_bytes": 402231296,
+          "rss_after_bytes": 410742784,
+          "heap_used_after_bytes": 83942496,
+          "process_peak_rss_kib": 435680
+        },
+        {
+          "files": 100,
+          "run": "warm-context",
+          "duration_ms": 306,
+          "rss_before_bytes": 410742784,
+          "rss_after_bytes": 446681088,
+          "heap_used_after_bytes": 131125848,
+          "process_peak_rss_kib": 436212
+        }
+      ]
+    },
+    {
+      "repetition": 2,
+      "environment": {
+        "benchmark": "synthetic",
+        "node": "v24.18.0",
+        "platform": "linux",
+        "scope": "same process and context; disk cache disabled; no project tests; process RSS peak is cumulative"
+      },
+      "records": [
+        {
+          "files": 10,
+          "run": "cold-context",
+          "duration_ms": 4548,
+          "rss_before_bytes": 126517248,
+          "rss_after_bytes": 377565184,
+          "heap_used_after_bytes": 47570024,
+          "process_peak_rss_kib": 429060
+        },
+        {
+          "files": 10,
+          "run": "warm-context",
+          "duration_ms": 267,
+          "rss_before_bytes": 377565184,
+          "rss_after_bytes": 412094464,
+          "heap_used_after_bytes": 87327480,
+          "process_peak_rss_kib": 429060
+        },
+        {
+          "files": 50,
+          "run": "cold-context",
+          "duration_ms": 4623,
+          "rss_before_bytes": 412094464,
+          "rss_after_bytes": 438697984,
+          "heap_used_after_bytes": 206518632,
+          "process_peak_rss_kib": 429060
+        },
+        {
+          "files": 50,
+          "run": "warm-context",
+          "duration_ms": 296,
+          "rss_before_bytes": 438697984,
+          "rss_after_bytes": 396435456,
+          "heap_used_after_bytes": 68581392,
+          "process_peak_rss_kib": 439808
+        },
+        {
+          "files": 100,
+          "run": "cold-context",
+          "duration_ms": 4986,
+          "rss_before_bytes": 396435456,
+          "rss_after_bytes": 405778432,
+          "heap_used_after_bytes": 77811880,
+          "process_peak_rss_kib": 439808
+        },
+        {
+          "files": 100,
+          "run": "warm-context",
+          "duration_ms": 291,
+          "rss_before_bytes": 405778432,
+          "rss_after_bytes": 441765888,
+          "heap_used_after_bytes": 124911680,
+          "process_peak_rss_kib": 439808
+        }
+      ]
+    },
+    {
+      "repetition": 3,
+      "environment": {
+        "benchmark": "synthetic",
+        "node": "v24.18.0",
+        "platform": "linux",
+        "scope": "same process and context; disk cache disabled; no project tests; process RSS peak is cumulative"
+      },
+      "records": [
+        {
+          "files": 10,
+          "run": "cold-context",
+          "duration_ms": 4534,
+          "rss_before_bytes": 125554688,
+          "rss_after_bytes": 373989376,
+          "heap_used_after_bytes": 41719016,
+          "process_peak_rss_kib": 425352
+        },
+        {
+          "files": 10,
+          "run": "warm-context",
+          "duration_ms": 277,
+          "rss_before_bytes": 373989376,
+          "rss_after_bytes": 408358912,
+          "heap_used_after_bytes": 81616896,
+          "process_peak_rss_kib": 427816
+        },
+        {
+          "files": 50,
+          "run": "cold-context",
+          "duration_ms": 4616,
+          "rss_before_bytes": 408358912,
+          "rss_after_bytes": 439144448,
+          "heap_used_after_bytes": 206620552,
+          "process_peak_rss_kib": 428852
+        },
+        {
+          "files": 50,
+          "run": "warm-context",
+          "duration_ms": 302,
+          "rss_before_bytes": 439144448,
+          "rss_after_bytes": 397017088,
+          "heap_used_after_bytes": 68582440,
+          "process_peak_rss_kib": 440372
+        },
+        {
+          "files": 100,
+          "run": "cold-context",
+          "duration_ms": 5028,
+          "rss_before_bytes": 397017088,
+          "rss_after_bytes": 400510976,
+          "heap_used_after_bytes": 72166344,
+          "process_peak_rss_kib": 440372
+        },
+        {
+          "files": 100,
+          "run": "warm-context",
+          "duration_ms": 292,
+          "rss_before_bytes": 400510976,
+          "rss_after_bytes": 436367360,
+          "heap_used_after_bytes": 117077112,
+          "process_peak_rss_kib": 440372
+        }
+      ]
+    }
+  ]
+}

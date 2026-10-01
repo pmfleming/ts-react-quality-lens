@@ -1,7 +1,6 @@
 import { isSuppressed } from "./actions.js";
 import { analysisConfidence, createAnalysisContext } from "./analysis-context.js";
 import { analysisIdentity, artifactBase, sourceSetHash } from "./provenance.js";
-import { writeArtifact } from "./writer.js";
 import { inputSnapshot } from "./input-snapshot.js";
 import { stagedAudit } from "./artifact-batch.js";
 import { baseSnapshotFindingIds, readBaselineIds, writeBaseline } from "./audit/baseline.js";
@@ -46,7 +45,9 @@ type FindingSets = {
 };
 
 export function runAudit(config: Config, command: string, options: AuditOptions = {}): AuditArtifact {
-  return stagedAudit(config, (staged) => runStagedAudit(staged, command, options));
+  const result = stagedAudit(config, (staged) => runStagedAudit(staged, command, options));
+  if (options.saveBaseline && result.confidence.inputs_unchanged !== false) writeBaseline(options.saveBaseline, result.findings);
+  return result;
 }
 
 function runStagedAudit(config: Config, command: string, options: AuditOptions): AuditArtifact {
@@ -72,8 +73,6 @@ function runStagedAudit(config: Config, command: string, options: AuditOptions):
   const artifact = auditArtifact(config, command, context, scope, sets, baseSnapshot !== null, baseSnapshotCompatible);
   artifact.confidence.inputs_unchanged = !inputChange;
   if (inputChange) { artifact.confidence.complete = false; artifact.confidence.partial = true; }
-  writeArtifact(config, "audit.json", artifact);
-  if (options.saveBaseline && !inputChange) writeBaseline(options.saveBaseline, sets.findings);
   return artifact;
 }
 
