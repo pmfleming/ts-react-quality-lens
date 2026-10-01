@@ -24,7 +24,7 @@
             version = "0.3.0";
             src = ./.;
             nodejs = pkgs.nodejs;
-            npmDepsHash = "sha256-xa4fCo5y+67BO7ZDnbu0cRMRlanL9SGVDDNIukR7MkE=";
+            npmDepsHash = "sha256-C2IEmd7BCDFBDpz2ftubDJR/i2To1sc/xh8adfODyVs=";
 
             npmBuildScript = "build";
             # Keep analyzer tool dependencies available at runtime. The CLI loads
