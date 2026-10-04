@@ -195,7 +195,8 @@ export function requiredEvidenceReasons(config: Config): string[] {
       }
     }
   }
-  if (readArtifact(config, "runtime_health.json")?.summary.status === "incomplete") {
+  if (Object.values(config.runtimeInputs).some((input) => input !== null) &&
+      readArtifact(config, "runtime_health.json")?.summary.status !== "complete") {
     reasons.push("Configured runtime evidence did not complete.");
   }
   if (config.coverageReport && readArtifact(config, "execution_coverage.json")?.summary.status !== "complete") {
