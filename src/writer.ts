@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { attachArtifactEvidence, validNativeEvidence } from "./artifact-evidence.js";
 import { validWireExtension } from "./wire-evidence.js";
 import path from "node:path";
 import { enrichArtifactFindings } from "./actions.js";
@@ -11,7 +12,8 @@ export function writeArtifact(config: Config, artifactName: string, value: unkno
   validateArtifactName(artifactName);
   if (isRecord(value) && !validWireExtension(value.evidence_contract)) throw new Error("Invalid cross-lens evidence contract");
   return withPublicationLock(config, () => {
-    const enriched = enrichArtifactFindings(config, value);
+    const normalized = enrichArtifactFindings(config, value);
+    const enriched = isArtifactEnvelope(normalized) ? attachArtifactEvidence(config, normalized) : normalized;
     const target = path.join(config.outputDir, artifactName);
     const temp = path.join(config.outputDir, `.${artifactName}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
     try {
@@ -60,7 +62,7 @@ export function readArtifact(config: Config, artifactName: string): Artifact | n
     try {
       const value = parseJson(fs.readFileSync(target, "utf8"));
       assertReadable(config);
-      return isArtifact(value) ? value : null;
+      return isArtifact(value, config) ? value : null;
     } catch (error) {
       if (attempt === 2) throw error;
     }
@@ -68,7 +70,11 @@ export function readArtifact(config: Config, artifactName: string): Artifact | n
   return null;
 }
 
-function isArtifact(value: unknown): value is Artifact {
+function isArtifact(value: unknown, config: Config): value is Artifact {
+  return isArtifactEnvelope(value) && validNativeEvidence(value, config);
+}
+
+function isArtifactEnvelope(value: unknown): value is Artifact {
   return isRecord(value) && validWireExtension(value.evidence_contract) &&
     typeof value.schema_version === "string" &&
     typeof value.task_id === "string" &&

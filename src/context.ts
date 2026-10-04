@@ -49,6 +49,5 @@ export function projectContext(config: Config, command: string) {
       components: module.components.map((component) => component.name),
     })),
   };
-  writeArtifact(config, "context.json", context);
-  return context;
+  return writeArtifact(config, "context.json", context);
 }

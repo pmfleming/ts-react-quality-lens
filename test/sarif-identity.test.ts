@@ -26,7 +26,7 @@ function result(ruleId = "rule-a", file = "src/a.ts", line = 1, fingerprints: Re
 }
 
 function run(name: string, results: ReturnType<typeof result>[]) {
-  return { tool: { driver: { name } }, results };
+  return { tool: { driver: { name } }, invocations: [{ executionSuccessful: true }], results };
 }
 
 function report(file: string, runs: ReturnType<typeof run>[]): void {

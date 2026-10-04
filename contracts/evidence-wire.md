@@ -12,4 +12,8 @@ Capability records remain specified by `capability-cases.json`. `wire-cases.json
 
 `reporting-cases.json` checks that impact and disposition remain distinct and waived findings remain visible in SARIF. TS now exports audit SARIF through `audit --format sarif`; QML exports accepted suppressions; Rust policy and export share disposition/waivability interpretation. Operational failures are not ordinary suppressible diagnostics.
 
-Still open: exhaustive rule-family contracts and complete end-to-end reporter equivalence, producer-wide projection to these wire records, and cross-artifact reference integrity. Do not infer these from a passing structural corpus.
+Native writers now attach run, finding and numeric-summary measurement projections to artifacts with a native run identity. Each producer invocation has its own run ID (distinct from the reusable analysis fingerprint), and native readers validate local references, unique identities and agreement with the native payload. Capability evaluated/skipped counts are explicitly **invocation counts**, not rule/file coverage. Disabled and unavailable producers cannot claim completed capability evidence. Legacy envelopes without run identity remain structurally readable; this is not current-source verification.
+
+Summary units not explicitly standardized are `producer-defined`, with formula/interpretation limitations; these must not be treated as interchangeable measurements. Producer version entries are the declared integration inventory, not proof those tools executed; capabilities carry execution state.
+
+Still open: exhaustive rule-family applicability/contracts, complete reporter equivalence, typed validation of every native payload, explicit comparison projection, and cross-artifact generation/reference integrity. Local projection validation is not a cryptographic authenticity or whole-run freshness guarantee.

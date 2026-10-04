@@ -76,7 +76,7 @@ function parseSarifInput(config: Config, input: Config["sarifInputs"][number]): 
     }
     const runResults = document.runs.flatMap((run, runIndex) => parseRun(config, input, run, runIndex));
     const records = runResults.flatMap((run) => run.records);
-    const invocationComplete = runResults.every((run) => run.complete);
+    const invocationComplete = runResults.length > 0 && runResults.every((run) => run.complete);
     return {
       status: {
         available: true,
@@ -112,6 +112,10 @@ function parseRun(
     parseResult(config, input, tool, rules, automationDetails, result, runIndex, resultIndex));
   const invocations = Array.isArray(value.invocations) ? value.invocations : [];
   const failures = invocations.flatMap((invocation, index) => invocationFailures(input, tool, invocation, runIndex, index));
+  if (!Array.isArray(value.results) || results.some((result) => !isRecord(result) || !sarifMessage(result.message))) {
+    failures.push(inputFailureRecord(input, `results-${runIndex}`, "SARIF results are missing or malformed"));
+  }
+  if (!invocations.length) failures.push(inputFailureRecord(input, `execution-${runIndex}`, "SARIF execution status is unknown"));
   return { records: [...resultRecords, ...failures], complete: failures.length === 0 };
 }
 
@@ -199,7 +203,7 @@ function invocationFailures(
   if (!isRecord(value)) return [inputFailureRecord(input, `${runIndex}:${invocationIndex}`, "SARIF invocation is malformed")];
   const notifications = Array.isArray(value.toolExecutionNotifications) ? value.toolExecutionNotifications : [];
   const errors = notifications.filter((notification) => isRecord(notification) && notification.level === "error");
-  if (value.executionSuccessful !== false && errors.length === 0) return [];
+  if (value.executionSuccessful === true && errors.length === 0) return [];
   const messages = errors.flatMap((notification) => isRecord(notification) ? [sarifMessage(notification.message) ?? "tool execution error"] : []);
   return [{
     ...inputFailureRecord(input, `${runIndex}:${invocationIndex}`, messages.join("; ") || "SARIF invocation reported unsuccessful execution"),

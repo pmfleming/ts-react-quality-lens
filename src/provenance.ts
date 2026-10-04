@@ -1,4 +1,5 @@
 import os from "node:os";
+import { packageRootFrom } from "./package-root.js";
 import { capabilityEvidence } from "./capability-evidence.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -10,9 +11,13 @@ import { discoverWorkspaces } from "./workspaces.js";
 import { gitHistoryFingerprint } from "./history.js";
 import type { AnalysisIdentity, Confidence, Config, ProjectAnalysis } from "./types.js";
 
+const analyzerVersion: string = JSON.parse(fs.readFileSync(path.join(packageRootFrom(import.meta.url), "package.json"), "utf8")).version;
+
 function provenance(command: string, sourceType = "static") {
   return {
     lens: LENS_NAME,
+    analyzer_version: analyzerVersion,
+    run_id: crypto.randomUUID(),
     schema_version: SCHEMA_VERSION,
     command,
     host: os.hostname(),

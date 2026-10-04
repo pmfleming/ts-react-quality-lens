@@ -1,6 +1,6 @@
 import { discoverSourceFiles, discoverTestFiles, readSourceFile } from "./files.js";
 import { compilerInputQueryResults } from "./integrations/compiler-inputs.js";
-import { analysisIdentity, sourceSetHash } from "./provenance.js";
+import { analysisIdentity, sourceSetHash, taskInputHash } from "./provenance.js";
 import type { Config, ProjectAnalysis } from "./types.js";
 
 /** Re-read the input closure, not the memoized project, before accepting evidence. */
@@ -13,6 +13,8 @@ export function inputSnapshot(config: Config, project: ProjectAnalysis): () => s
       tsProject: project.tsProject,
     }),
     queries: compilerInputQueryResults(project.tsProject.input_queries ?? []),
+    imported: ["quality.runtime", "quality.sarif", "testing.coverage", "quality.type_health", "map.architecture"]
+      .map((task) => taskInputHash(config, task, "imported-input-closure")),
   });
   const initial = fingerprint();
   return () => {

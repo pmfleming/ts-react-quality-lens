@@ -207,12 +207,12 @@ export default [{
 }
 
 function normalizeEslintMessages(value: unknown, config: Config, rulePrefix?: string): EslintMessage[] {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) throw new Error("ESLint report must be an array");
   return value.flatMap((result): EslintMessage[] => {
-    if (!isRecord(result) || typeof result.filePath !== "string" || !Array.isArray(result.messages)) return [];
+    if (!isRecord(result) || typeof result.filePath !== "string" || !Array.isArray(result.messages)) throw new Error("Invalid ESLint file result");
     const filePath = result.filePath;
     return result.messages.flatMap((message): EslintMessage[] => {
-      if (!isRecord(message) || typeof message.message !== "string") return [];
+      if (!isRecord(message) || typeof message.message !== "string" || ![1, 2].includes(Number(message.severity))) throw new Error("Invalid ESLint diagnostic");
       const ruleId = typeof message.ruleId === "string" ? message.ruleId : null;
       const fatal = message.fatal === true;
       if (rulePrefix ? !ruleId?.startsWith(rulePrefix) && !fatal : !ruleId && !fatal) return [];

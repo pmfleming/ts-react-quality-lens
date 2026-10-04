@@ -35,7 +35,7 @@ test("unknown prerequisites and missing compiler configuration cannot certify li
   assert.equal(artifact.confidence.complete, false);
   assert.equal(artifact.confidence.partial, true);
   assert.ok(artifact.confidence.missing_input?.includes("typed_eslint_complete"));
-  assert.equal(artifact.capabilities[0]?.status, "partial");
+  assert.equal(artifact.capabilities[0]?.status, "unavailable");
 }));
 
 test("unavailable Hooks and disabled accessibility do not claim completed semantic checks", () => fixture((_root, config) => {
@@ -51,7 +51,10 @@ test("unavailable Hooks and disabled accessibility do not claim completed semant
 
 test("required SARIF completeness is independent of suppression, baseline and gate", () => fixture((root, config) => {
   const report = path.join(root, "required.sarif");
-  const cases = [null, "not json", JSON.stringify({ version: "2.1.0", runs: [{ invocations: [{ executionSuccessful: false }] }] })];
+  const cases = [null, "not json", JSON.stringify({ version: "2.1.0", runs: [] }),
+    JSON.stringify({ version: "2.1.0", runs: [{ results: [] }] }),
+    JSON.stringify({ version: "2.1.0", runs: [{ invocations: [{ executionSuccessful: true }], results: [null] }] }),
+    JSON.stringify({ version: "2.1.0", runs: [{ invocations: [{ executionSuccessful: false }] }] })];
   for (const content of cases) {
     if (content !== null) fs.writeFileSync(report, content);
     const artifact = measureSarif(config, "trust-test");
