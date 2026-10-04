@@ -1,3 +1,4 @@
+import { separateTelemetry } from "./artifact-telemetry.js";
 import { capabilityEvidence, validCapabilityEvidence, type CapabilityEvidence, type CapabilityStatus } from "./capability-evidence.js";
 import { isRecord } from "./collections.js";
 import { isWireEvidence, type WireEvidence } from "./wire-evidence.js";
@@ -40,6 +41,7 @@ function producerCapability(artifact: Artifact): CapabilityEvidence {
 /** Additive native projection. Legacy test/import envelopes without run identity remain legacy. */
 export function attachArtifactEvidence(config: Config, artifact: Artifact): Artifact {
   if (typeof artifact.provenance.run_id !== "string") return artifact;
+  artifact = separateTelemetry(artifact);
   const primary = producerCapability(artifact);
   const tools = toolCapabilities(config, artifact);
   const result: Artifact = { ...artifact,

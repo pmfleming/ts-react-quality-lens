@@ -26,6 +26,7 @@ type AuditOptions = {
   baseline?: string | null;
   saveBaseline?: string | null;
   runTests?: boolean;
+  compareBase?: boolean;
 };
 
 type AuditScope = {
@@ -78,7 +79,8 @@ function runStagedAudit(config: Config, command: string, options: AuditOptions):
 }
 
 function auditScope(config: Config, options: AuditOptions): AuditScope {
-  const base = options.changedSince ?? options.base ?? config.audit.changedSince ?? config.audit.base ?? defaultBase(config);
+  const base = options.compareBase === false ? null
+    : options.changedSince ?? options.base ?? config.audit.changedSince ?? config.audit.base ?? defaultBase(config);
   const changes = base ? changeSetSince(config, base) : null;
   return {
     base,

@@ -174,7 +174,7 @@ export function createConfidence(config: Config, extra: Record<string, JsonValue
     ...(typeof base.workspaces_detected === "number" && base.workspaces_detected > 1 ? ["workspace_projects_complete"] : []),
   ];
   const observedInputs = stringArray(base.observed_inputs) ?? Object.entries(base)
-    .filter(([, value]) => value === true)
+    .filter(([key, value]) => value === true && !key.startsWith("analysis_cache_"))
     .map(([key]) => key);
   const missingInput = stringArray(base.missing_input) ?? requiredInputs.filter((key) => base[key] !== true);
   const staleInput = stringArray(base.stale_input) ?? [];
