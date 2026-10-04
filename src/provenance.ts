@@ -86,10 +86,13 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   };
   const configHash = configClosureHash(config);
   const rulesets = {
-    builtin: "tsrqlens-analysis-v3",
+    builtin: "tsrqlens-analysis-v4",
+    evidence_projection: "native-producer-v1",
+    blocking_inventory: "managed-family-v1",
+    engine_reconciliation: "scope-preserving-v2",
     execution_coverage: "source-linked-v1",
     leverage: "observed-reuse-v2",
-    verification_policy: "required-verification-v2",
+    verification_policy: "required-verification-v3",
     finding_identity: "semantic-occurrence-v1",
     sarif: "namespaced-fingerprint-occurrence-v2",
     test_mapping: "compiler-imports-v1",
