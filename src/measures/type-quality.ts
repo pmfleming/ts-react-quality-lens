@@ -66,6 +66,7 @@ export function measureLint(config: Config, command: string, context: AnalysisCo
       typed_eslint_ran: lint.ran,
       typed_eslint_complete: lint.complete,
       typed_eslint_reason: lint.reason,
+      required_inputs: ["source_roots_exist", "package_json_found", "typed_eslint_complete"],
     }), sourceSetHash(project)),
     summary: {
       records: records.length,

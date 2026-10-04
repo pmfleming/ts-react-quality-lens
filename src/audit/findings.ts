@@ -174,6 +174,15 @@ const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = 
 
 export function requiredEvidenceReasons(config: Config): string[] {
   const reasons = config.policy.requiredChecks.flatMap((check) => EVIDENCE_CHECKS[check](config) ?? []);
+  if (config.sarifInputs.some((input) => input.required)) {
+    const statuses = Object.values(readArtifact(config, "sarif_findings.json")?.tool_status ?? {});
+    for (const input of config.sarifInputs.filter((input) => input.required)) {
+      if (!statuses.some((status) => status.path === input.path && status.required === true &&
+          status.available === true && status.ran === true && status.complete === true)) {
+        reasons.push(`Required SARIF input ${input.name} did not complete.`);
+      }
+    }
+  }
   if (readArtifact(config, "runtime_health.json")?.summary.status === "incomplete") {
     reasons.push("Configured runtime evidence did not complete.");
   }

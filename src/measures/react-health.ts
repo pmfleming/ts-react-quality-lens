@@ -26,6 +26,8 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       jsx_a11y_available: a11yLint.available,
       jsx_a11y_ran: a11yLint.ran,
       jsx_a11y_complete: a11yLint.complete,
+      required_inputs: ["source_roots_exist", "package_json_found", "eslint_react_hooks_complete",
+        ...(config.accessibility.enabled ? ["jsx_a11y_complete"] : [])],
     }), sourceSetHash(project)),
     summary: {
       components: project.modules.reduce((count, module) => count + module.components.length, 0),
