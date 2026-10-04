@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { isRecord, parseJson } from "../src/collections.js";
-import { resolveNpmCli } from "../src/integrations/npm-cli.js";
+import { npmPackResult, resolveNpmCli } from "../src/integrations/npm-cli.js";
 
 function node(args: string[], cwd = process.cwd()): string {
   return childProcess.execFileSync(process.execPath, args, { cwd, encoding: "utf8", timeout: 180_000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
@@ -14,7 +14,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "ts-lens-package-"));
 try {
   const npm = resolveNpmCli();
   const parsed = parseJson(node([npm, "pack", "--json", "--pack-destination", root]));
-  const pack = Array.isArray(parsed) && isRecord(parsed[0]) ? parsed[0] : {};
+  const pack = npmPackResult(parsed);
   const files = new Set((Array.isArray(pack.files) ? pack.files : []).flatMap((file) => isRecord(file) && typeof file.path === "string" ? [file.path] : []));
   for (const required of ["dist/bin/ts-react-quality-lens.js", "ts-react-quality-lens.schema.json", "ts-react-quality-lens.config.schema.json", "rule-contracts.json", "rule-contracts.schema.json", "README.md"]) {
     assert.ok(files.has(required), `package missing ${required}`);

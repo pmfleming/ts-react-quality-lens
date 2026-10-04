@@ -5,7 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { isRecord, parseJson } from "../collections.js";
-import { resolveNpmCli } from "./npm-cli.js";
+import { npmPackResult, resolveNpmCli } from "./npm-cli.js";
 import type { AttwProblem, Config, PackageHealthResult, PackageToolStatus, PublintMessage } from "../types.js";
 import {
   runLocalTool,
@@ -99,9 +99,7 @@ function packProject(config: Config, tempDir: string): {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: PACKAGE_TIMEOUT_MS,
     });
-    const parsed = parseJson(stdout);
-    const result = Array.isArray(parsed) && isRecord(parsed[0]) ? parsed[0] : null;
-    if (!result || typeof result.filename !== "string") throw new Error("npm pack did not return a tarball filename");
+    const result = npmPackResult(parseJson(stdout));
     return {
       status: {
         available: true,
