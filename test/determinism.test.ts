@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { loadConfig } from "../src/config.js";
+import { separateTelemetry } from "../src/artifact-telemetry.js";
 import { deterministicEvidence } from "../src/deterministic-evidence.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { writeArtifact } from "../src/writer.js";
@@ -21,6 +22,11 @@ test("semantic evidence is stable across fresh, reused, persisted and disabled c
     const context = createAnalysisContext(config);
     const measure = (reuse = false) => runMeasure(config, "quality.escape_hatches", "determinism", reuse ? { context } : {})[0]!;
     const first = measure(true);
+    const clones = separateTelemetry({ ...first, task_id: "quality.clones", tool_status: { jscpd: {
+      ran: true, statistics: { detectionDate: "2026-10-04T00:00:00.000Z", duplicatedLines: 12 },
+    } } });
+    assert.deepEqual(clones.tool_status?.jscpd?.statistics, { duplicatedLines: 12 });
+    assert.equal((clones.telemetry as Record<string, unknown>)["tool/jscpd/detectionDate"], "2026-10-04T00:00:00.000Z");
     for (const next of [measure(true), measure(), measure()]) {
       assert.notEqual(first.provenance.run_id, next.provenance.run_id);
       assert.deepEqual(deterministicEvidence(first), deterministicEvidence(next));

@@ -17,6 +17,14 @@ export function separateTelemetry(artifact: Artifact): Artifact {
   const tool_status = artifact.tool_status ? Object.fromEntries(Object.entries(artifact.tool_status).map(([name, value]) => {
     const status = { ...value };
     if ("duration_ms" in status) { telemetry[`tool/${name}/duration_ms`] = status.duration_ms; delete status.duration_ms; }
+    if (artifact.task_id === "quality.clones" && name === "jscpd" && isRecord(status.statistics)) {
+      const statistics = { ...status.statistics };
+      if (typeof statistics.detectionDate === "string") {
+        telemetry["tool/jscpd/detectionDate"] = statistics.detectionDate;
+        delete statistics.detectionDate;
+      }
+      status.statistics = statistics;
+    }
     return [name, status];
   })) : undefined;
   return { ...artifact, confidence, summary, ...(tool_status ? { tool_status } : {}), telemetry };

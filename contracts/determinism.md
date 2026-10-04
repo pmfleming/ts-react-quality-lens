@@ -1,10 +1,12 @@
-# Deterministic evidence boundary v1
+# Deterministic evidence boundary v2
 
-Fixed before the MyStarQuest campaign:
+Version 1 was fixed before the initial MyStarQuest campaign. That campaign failed only on `clones.json.tool_status.jscpd.statistics.detectionDate` in both full-audit scopes. Version 2 explicitly retains that analyzer execution timestamp in telemetry; no finding, status, metric value or scope difference is ignored. Raw v1 failures remain in the campaign record, and v2 requires a full rerun.
+
+Boundary:
 
 - Normalize only `provenance.measured_at`, `provenance.run_id` and that artifact's wire run/finding/measurement run references. Validate native references/projections **before** normalization. Comparison references are not normalized without explicit resolution.
 - Object key ordering and top-level finding collections (`records`, `groups`, `findings`, `disagreements`, `unconfirmed`) and `evidence_contract` ordering are non-semantic. Canonicalize these sets, but preserve all contents and all other array ordering, including execution paths and samples.
-- A separate top-level `telemetry` channel retains analyzer cache state and exact `tool_status.*.duration_ms` values. The artifact writer moves only declared cache fields (`confidence.analysis_cache_enabled/status`, context-summary `cache_status/reused`) and tool-duration fields there. `observed_inputs` excludes cache state because it is not an evidence prerequisite.
+- A separate top-level `telemetry` channel retains analyzer cache state and exact `tool_status.*.duration_ms` values. The artifact writer moves only declared cache fields (`confidence.analysis_cache_enabled/status`, context-summary `cache_status/reused`) and tool-duration fields there. Version 2 also moves exactly `quality.clones`'s `tool_status.jscpd.statistics.detectionDate`; clone counts and all other statistics remain evidence. `observed_inputs` excludes cache state because it is not an evidence prerequisite.
 - Do not remove imported runtime `duration_ms`, test output, confidence/completeness, source/config/tool identities, finding identities, provenance compatibility, limitations, engine scope or policy decisions. An unstable field outside the declared boundary is an investigated failure, not permission to widen a recursive ignore filter.
 
 `src/deterministic-evidence.ts` implements this boundary. `test/determinism.test.ts` covers fresh/reused/persisted/no-cache contexts, set ordering, dangling references, and detection of identity/disposition/runtime-measurement changes.
