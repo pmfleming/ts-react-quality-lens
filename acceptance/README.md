@@ -8,7 +8,9 @@ Each passed row must cite commands, actual results, source revision, bounded sco
 
 ## Current closure result
 
-Steps 1–5 are implementation iterations, not completed acceptance. Four criteria have scoped evidence; **21/25 remain unresolved**. `step-5.md` records clean native workflows, investigated failures and platform gaps. Operational recovery/limits are in `../contracts/operational-scope.md`.
+Steps 1–5 are implementation iterations, not completed acceptance. Three criteria currently pass; **22/25 remain unresolved** after reopening E5 for the required-SARIF counterexample. `step-5.md` records clean native workflows, investigated failures and platform gaps. Operational recovery/limits are in `../contracts/operational-scope.md`.
+
+Trust/Evidence follow-up: [`trust-evidence-plan.md`](trust-evidence-plan.md) reviews current progress and sequences the remaining work. Its probes reproduce false-complete typed-lint evidence and suppression of a missing required SARIF input; the latter challenges E5 beyond its recorded compiler/test scope. E5 is reopened pending repair and broader required-producer validation.
 
 Additional checks:
 
