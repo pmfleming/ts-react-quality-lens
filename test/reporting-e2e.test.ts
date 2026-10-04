@@ -38,6 +38,7 @@ test("real CLI formats preserve policy, finding identity, evidence and required 
     const run = sarif.runs[0];
     assert.equal(run.properties.verdict, audit.summary.verdict);
     assert.equal(run.invocations[0].executionSuccessful, audit.summary.complete);
+    assert.deepEqual(run.properties.audit_summary, audit.summary);
     assert.deepEqual(run.properties.reconciliation, audit.reconciliation);
     assert.ok(run.properties.evidence_contract.some((entry: { kind: string }) => entry.kind === "run"));
     const findings = run.results.filter((entry: { partialFingerprints?: object }) => entry.partialFingerprints);
@@ -45,6 +46,7 @@ test("real CLI formats preserve policy, finding identity, evidence and required 
     for (const finding of audit.findings) {
       const result = findings.find((entry: { partialFingerprints: Record<string, string> }) => entry.partialFingerprints["tsrqlens/finding-id"] === finding.id);
       assert.ok(result, finding.id);
+      assert.deepEqual(result.properties.native_finding, finding, "all native evidence survives export without adapter classification");
       assert.equal(result.ruleId, finding.rule_id);
       assert.equal(result.properties.disposition, finding.disposition);
       assert.equal(result.properties.evidence_kind, finding.evidence_kind);

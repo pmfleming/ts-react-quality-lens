@@ -18,7 +18,7 @@ export function auditSarif(audit: AuditArtifact) {
       impact: finding.severity ?? finding.risk, semantic_decision: finding.semantic_decision,
       tool_validation: finding.tool_validation, validation_scope: finding.validation_scope,
       corroborating_producers: finding.corroborating_producers, upstream_finding_id: finding.upstream_finding_id,
-      blocking_contract: finding.blocking_contract },
+      blocking_contract: finding.blocking_contract, native_finding: finding },
   }));
   const failures = (audit.summary.verification_failures ?? []).map((message) => ({
     ruleId: "tsrqlens/required-verification", level: "error", message: { text: message },
@@ -29,7 +29,7 @@ export function auditSarif(audit: AuditArtifact) {
     invocations: [{ executionSuccessful: audit.summary.complete,
       toolExecutionNotifications: audit.summary.incomplete_reasons.map((text) => ({ level: "error", message: { text } })) }],
     properties: { verdict: audit.summary.verdict, analysis_identity: audit.analysis_identity, reconciliation: audit.reconciliation ?? [],
-      capabilities: audit.capabilities, evidence_contract: audit.evidence_contract },
+      capabilities: audit.capabilities, evidence_contract: audit.evidence_contract, audit_summary: audit.summary },
     results: [...results, ...failures],
   }] };
 }
