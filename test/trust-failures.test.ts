@@ -7,6 +7,8 @@ import { createConfidence, loadConfig } from "../src/config.js";
 import { runAudit } from "../src/audit.js";
 import { auditVerdict, collectFindings, requiredEvidenceReasons } from "../src/audit/findings.js";
 import { measureLint } from "../src/measures/type-quality.js";
+import { createAnalysisContext } from "../src/analysis-context.js";
+import { measureReactHealth } from "../src/measures/react-health.js";
 import { measureSarif } from "../src/measures/sarif.js";
 import { auditSarif } from "../src/sarif-export.js";
 import type { Config } from "../src/types.js";
@@ -34,6 +36,17 @@ test("unknown prerequisites and missing compiler configuration cannot certify li
   assert.equal(artifact.confidence.partial, true);
   assert.ok(artifact.confidence.missing_input?.includes("typed_eslint_complete"));
   assert.equal(artifact.capabilities[0]?.status, "partial");
+}));
+
+test("unavailable Hooks and disabled accessibility do not claim completed semantic checks", () => fixture((_root, config) => {
+  const context = createAnalysisContext(config);
+  context.reactHooksLint = () => ({ available: false, ran: false, complete: false, reason: "missing executable",
+    version: null, ruleset: config.react.ruleset, messages: [] });
+  config.accessibility.enabled = false;
+  const artifact = measureReactHealth(config, "trust-test", context);
+  assert.equal(artifact.confidence.complete, false);
+  assert.ok(artifact.confidence.missing_input?.includes("eslint_react_hooks_complete"));
+  assert.equal(artifact.tool_status.jsx_a11y.complete, false);
 }));
 
 test("required SARIF completeness is independent of suppression, baseline and gate", () => fixture((root, config) => {

@@ -28,7 +28,15 @@
           "false_positive_traps",
           "out_of_scope"
         ],
+        "allOf": [{
+          "if": { "properties": { "default_disposition": { "const": "block" } } },
+          "then": { "required": ["prerequisites", "applicability", "versions", "unavailable_tests"] }
+        }],
         "properties": {
+          "prerequisites": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "applicability": { "type": "string", "minLength": 1 },
+          "versions": { "type": "string", "minLength": 1 },
+          "unavailable_tests": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
           "id": { "type": "string", "minLength": 3 },
           "owner": { "enum": ["lens", "upstream"] },
           "behavior": { "type": "string", "minLength": 10 },

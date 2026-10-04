@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "prerequisites": ["Readable tsconfig covering the file", "Managed ESLint/parser/plugin available", "Successful type-aware parsing"],
+  "scope": "TypeScript source files included by the selected project or project-service configuration",
+  "versions": "Actual TypeScript/parser/plugin versions recorded in analysis identity; tsrqlens-typescript-recommended-v1",
+  "applicability": "Rule enabled in TYPED_RULES and file successfully parsed with type information",
+  "limitations": ["Upstream diagnostics, not proof of runtime failure", "Excluded/uncovered files are not evaluated negatives", "Optional typed-lint findings are policy-downgraded to review"],
+  "default_disposition": "block",
+  "negative": "export function safe(value: number): number { return value + 1; }\n",
+  "unavailable": "Remove tsconfig; assert unavailable type-aware capability and no evaluated-clean verdict",
+  "tests": ["test/blocking-inventory.test.ts", "test/typed-lint-projects.test.ts", "test/trust-failures.test.ts"],
+  "cases": [
+    {"id":"@typescript-eslint/no-unsafe-assignment","rationale":"Assignment from any bypasses type checking at the receiving boundary.","positive":"export const value = JSON.parse('{}');\n"},
+    {"id":"@typescript-eslint/no-unsafe-argument","rationale":"An any argument bypasses a declared parameter contract.","positive":"function accept(value: number) { return value; }\nexport const result = accept(JSON.parse('{}'));\n"},
+    {"id":"@typescript-eslint/no-unsafe-call","rationale":"Calling any does not establish a callable target.","positive":"export function call(value: any) { value(); }\n"},
+    {"id":"@typescript-eslint/no-unsafe-member-access","rationale":"Member access on any bypasses object shape checks.","positive":"export function read(value: any) { return value.name; }\n"},
+    {"id":"@typescript-eslint/no-unsafe-return","rationale":"Returning any bypasses the result contract.","positive":"export function read(value: any) { return value; }\n"},
+    {"id":"@typescript-eslint/no-floating-promises","rationale":"An unhandled promise may discard rejection or sequencing requirements.","positive":"Promise.reject(new Error('failure'));\nexport {};\n"},
+    {"id":"@typescript-eslint/no-misused-promises","rationale":"A promise used as a condition is truthy independent of its result.","positive":"export function check() { if (Promise.resolve(false)) return 1; return 0; }\n"},
+    {"id":"@typescript-eslint/ban-ts-comment","rationale":"Unjustified type-check suppression hides diagnostics.","positive":"// @ts-ignore\nexport const value: number = 'wrong';\n"}
+  ]
+}

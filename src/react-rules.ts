@@ -1,3 +1,4 @@
+import { BLOCKING_REACT_RULES } from "./rule-policy.js";
 import type { FindingDisposition } from "./types.js";
 
 export type ReactFindingCategory = "correctness" | "optimization" | "configuration" | "unknown" | "tool-failure";
@@ -5,7 +6,7 @@ export type ReactFindingCategory = "correctness" | "optimization" | "configurati
 export function reactRulePolicy(ruleId: string): { category: ReactFindingCategory; disposition: FindingDisposition } {
   const rule = ruleId.replace(/^react-hooks\//, "");
   if (ruleId === "eslint/parser") return { category: "tool-failure", disposition: "info" };
-  if (["rules-of-hooks", "set-state-in-render"].includes(rule)) return { category: "correctness", disposition: "block" };
+  if (BLOCKING_REACT_RULES.includes(ruleId)) return { category: "correctness", disposition: "block" };
   if (["exhaustive-deps", "immutability", "globals", "refs", "purity", "static-components", "error-boundaries", "component-hook-factories"].includes(rule)) {
     return { category: "correctness", disposition: "warn" };
   }

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { TYPED_RULES } from "../rule-policy.js";
 import os from "node:os";
 import path from "node:path";
 import { isRecord, parseJson } from "../collections.js";
@@ -154,21 +155,7 @@ export default [{
     }
   },
   plugins: { "@typescript-eslint": plugin },
-  rules: {
-    "@typescript-eslint/no-unsafe-assignment": "error",
-    "@typescript-eslint/no-unsafe-argument": "error",
-    "@typescript-eslint/no-unsafe-call": "error",
-    "@typescript-eslint/no-unsafe-member-access": "error",
-    "@typescript-eslint/no-unsafe-return": "error",
-    "@typescript-eslint/no-floating-promises": "error",
-    "@typescript-eslint/no-misused-promises": "error",
-    "@typescript-eslint/no-unnecessary-type-assertion": "warn",
-    "@typescript-eslint/no-unsafe-type-assertion": "warn",
-    "@typescript-eslint/ban-ts-comment": ["error", {
-      "ts-check": false, "ts-expect-error": "allow-with-description",
-      "ts-ignore": true, "ts-nocheck": true, "minimumDescriptionLength": 3
-    }]
-  }
+  rules: ${JSON.stringify(TYPED_RULES)}
 }];
 `;
 }

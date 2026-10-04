@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { BLOCKING_TYPED_RULES, TYPED_RULES } from "../rule-policy.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { changedFilesSince, defaultBase } from "../audit/change-set.js";
 import { stableHash } from "../clone-utils.js";
@@ -121,11 +122,9 @@ function compilerDiagnosticFinding(diagnostic: DiagnosticRecord): ScoredRecord {
 
 function typedLintRecord(message: EslintMessage): ScoredRecord {
   const parserFailure = message.rule_id === "eslint/parser";
-  const advisory = [
-    "@typescript-eslint/no-unnecessary-type-assertion",
-    "@typescript-eslint/no-unsafe-type-assertion",
-  ].includes(message.rule_id);
-  const disposition = parserFailure ? "info" : advisory || message.severity === "warning" ? "warn" : "block";
+  const registered = message.rule_id in TYPED_RULES;
+  const disposition = parserFailure ? "info" : !registered ? "review"
+    : BLOCKING_TYPED_RULES.includes(message.rule_id) && message.severity === "error" ? "block" : "warn";
   return eslintFindingRecord(message, {
     id: `typed-lint:${message.rule_id}:${message.file}:${message.line ?? 0}:${message.column ?? 0}`,
     kind: message.rule_id.replace(/^@typescript-eslint\//, "typed_").replace(/-/g, "_"),

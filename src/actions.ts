@@ -1,4 +1,5 @@
 import { isRecord } from "./collections.js";
+import { blockingContract } from "./rule-policy.js";
 import { normalizeFindingIdentities } from "./finding-identity.js";
 import { discoverWorkspaces, workspaceForFile } from "./workspaces.js";
 import type {
@@ -55,8 +56,12 @@ export function enrichFinding(config: Config, value: unknown): unknown {
 function findingAssessment(record: ScoredRecord, kind: string) {
   const ruleId = record.rule_id ?? defaultRuleId(record, kind);
   const evidence = record.evidence_kind ?? defaultEvidenceKind(record, kind);
-  const disposition = record.disposition ?? defaultDisposition(kind);
+  const requestedDisposition = record.disposition ?? defaultDisposition(kind);
+  const contract = requestedDisposition === "block" ? blockingContract({ ...record, kind, rule_id: ruleId }) : null;
+  const disposition = requestedDisposition === "block" && !contract ? "review" : requestedDisposition;
   return {
+    ...(contract ? { blocking_contract: contract } : {}),
+    ...(requestedDisposition === "block" && !contract ? { classification_limitation: "Unregistered blocking rule; review required." } : {}),
     rule_id: ruleId, evidence_kind: evidence, disposition,
     finding_confidence: record.finding_confidence ?? defaultFindingConfidence(evidence),
     message: record.message ?? defaultMessage(record, kind),

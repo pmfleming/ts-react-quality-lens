@@ -9,3 +9,11 @@ Plan: [trust-evidence-plan.md](trust-evidence-plan.md). Stage completion is not 
 - Added `test/trust-failures.test.ts`: real missing-tsconfig and suppressed-required-SARIF probes, malformed/failed-invocation cases, baseline and both gate modes, successful and optional controls, SARIF projection.
 - Validation: `npm run ci` on Linux Node 24.16/npm 11.13: **69 tests passed**, all native checks and installed-package smoke passed. Log: `/tmp/ts-trust-w1-ci.log` (diagnostic only; committed regressions are the durable reproduction).
 - E5 is reopened rather than re-certified: the observed counterexample is repaired, but exhaustive required-producer/profile cases remain pending. T3/E3 remain open pending the broader capability/payload matrix.
+
+## W2 — blocking inventory and executable typed-rule corpus
+
+- Centralized enabled typed rules and blocking React rules in `src/rule-policy.ts`; producers consume that authority. Unknown blocking classifications become explicitly limited review findings rather than silently acquiring blocking semantics.
+- Added prerequisite/applicability/version requirements for blocking React contracts; added all eight typed blockers with executable positive/negative/unavailable cases and an eight-family compiler/test/package/imported inventory.
+- Rule checker now requires exact managed-blocker/family inventory equality, metadata and existing regression paths. Native findings carry their blocking contract identity.
+- Validation: `npm run ci`: **71 tests passed**, all checks and installed-package smoke passed (`/tmp/ts-trust-w2-ci.log`).
+- E2 stays open: the bounded upstream family inventory is not yet an exhaustive per-family positive/negative/unavailable/applicability matrix. Existing paths are coverage references, not a claim each case exists. Fine-grained per-rule evaluated/skipped counts remain pending.

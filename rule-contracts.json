@@ -4,6 +4,10 @@
   "rules": [
     {
       "id": "react-hooks/rules-of-hooks",
+      "prerequisites": ["Successful Hooks lint parsing and execution", "Rule enabled in selected ruleset"],
+      "applicability": "Parsed JS/TS/JSX/TSX files in selected source roots; component/Hook control flow",
+      "versions": "Recorded React support and eslint-plugin-react-hooks version",
+      "unavailable_tests": ["test/trust-failures.test.ts"],
       "owner": "upstream",
       "behavior": "Reports Hooks called outside a React component or custom Hook, or along a conditional execution path.",
       "runtime_rationale": "React relies on stable Hook call order to associate state with the same component invocation.",
@@ -33,6 +37,10 @@
     },
     {
       "id": "react-hooks/set-state-in-render",
+      "prerequisites": ["Successful Hooks lint parsing and execution", "Rule enabled in selected ruleset"],
+      "applicability": "Parsed components under recommended-v2; not selected by classic-v1",
+      "versions": "Recorded React support and eslint-plugin-react-hooks version",
+      "unavailable_tests": ["test/trust-failures.test.ts"],
       "owner": "upstream",
       "behavior": "Reports unconditional state updates executed while a React component is rendering.",
       "runtime_rationale": "An unconditional render-time state update can trigger a render loop before React can commit the result.",

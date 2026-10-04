@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { BLOCKING_TYPED_RULES, BLOCKING_REACT_RULES, BLOCKING_FAMILIES } from "../src/rule-policy.js";
 import { isRecord, parseJson } from "../src/collections.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -50,7 +51,25 @@ for (const item of cases) {
   assert.ok(source.includes(search), `${id} mutation search text is absent from source`);
 }
 
-console.log(JSON.stringify({ rule_contracts: rules.length, corpus_cases: cases.length, status: "passed" }, null, 2));
+const typed = readJson(path.join(root, "contracts", "typed-rule-cases.json"));
+const families = readJson(path.join(root, "contracts", "blocking-families.json"));
+assert.ok(isRecord(typed) && Array.isArray(typed.cases));
+assert.ok(isRecord(families) && Array.isArray(families.families));
+const typedCases = typed.cases.filter(isRecord);
+assert.deepEqual(typedCases.map((item) => item.id).sort(), [...BLOCKING_TYPED_RULES].sort(), "every enabled typed blocker needs executable cases");
+assert.deepEqual(rules.filter((rule) => rule.default_disposition === "block").map((rule) => rule.id).sort(), [...BLOCKING_REACT_RULES].sort());
+assert.deepEqual(families.families.filter(isRecord).map((item) => item.id).sort(), [...BLOCKING_FAMILIES].sort());
+for (const item of typedCases) {
+  assert.ok(requiredString(item, "positive").endsWith("\n"));
+  assert.ok(requiredString(item, "rationale").length > 10);
+}
+for (const item of [typed, ...families.families.filter(isRecord)]) {
+  for (const key of ["prerequisites", "limitations", "tests"]) assert.ok(Array.isArray(item[key]) && item[key].length > 0);
+  for (const name of item.tests as string[]) assert.ok(fs.existsSync(path.join(root, name)), `missing regression ${name}`);
+  for (const key of ["scope", "versions"]) assert.ok(requiredString(item, key).length > 0);
+}
+console.log(JSON.stringify({ rule_contracts: rules.length, corpus_cases: cases.length,
+  typed_blockers: typedCases.length, blocking_families: BLOCKING_FAMILIES.length, status: "passed" }, null, 2));
 
 function assertUnique(values: Record<string, unknown>[], key: string, label: string): void {
   const seen = new Set<string>();
