@@ -9,6 +9,7 @@ import auditMarkdown from "./audit/render.js";
 import {
   auditVerdict,
   collectFindings,
+  collectReconciliation,
   requiredEvidenceReasons,
   requiredVerificationFailures,
   runAuditMeasurements,
@@ -170,6 +171,7 @@ function auditArtifact(
       stale_suppressions: countFindings(sets.findings, (finding) => finding.kind === "stale_suppression"),
     },
     findings: sets.findings,
+    reconciliation: collectReconciliation(config),
   };
 }
 

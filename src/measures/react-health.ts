@@ -62,6 +62,9 @@ export function measureReactHealth(config: Config, command: string, context: Ana
         ruleset: "jsx-a11y-recommended-v1",
       },
     },
+    engine_relationships: [{ capability: "jsx-accessibility", producers: ["eslint-plugin-jsx-a11y", "jsx-a11y-heuristic"],
+      mode: "alternative", external_evaluated: a11yLint.complete,
+      scope: "Heuristic fallback is used only when managed accessibility is incomplete; not an independent standards check" }],
     records,
   };
   return writeArtifact(config, "react_health.json", artifact);

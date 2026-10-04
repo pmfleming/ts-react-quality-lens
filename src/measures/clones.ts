@@ -63,6 +63,9 @@ export function measureClones(config: Config, command: string, context: Analysis
         statistics: jscpd.statistics ?? {},
       },
     },
+    engine_relationships: [{ capability: "clones", producers: ["jscpd", "internal-text", "internal-ast"],
+      mode: "alternative-and-parallel-candidates", external_evaluated: jscpd.ran,
+      scope: "jscpd replaces internal text fallback; AST candidates are syntax observations, not independent behavioral corroboration" }],
     groups,
     records,
   };

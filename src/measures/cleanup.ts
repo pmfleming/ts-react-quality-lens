@@ -100,6 +100,8 @@ export function measureCleanup(config: Config, command: string, context: Analysi
         exclusions_complete: knip.exclusions_complete,
       },
     },
+    engine_relationships: [{ capability: "cleanup", producers: ["ts-react-quality-lens-cleanup", "knip"],
+      mode: "reconciled", scope: "KNIP_COMPARABLE_KINDS subject matching; exclusions and incomplete scopes retained per candidate" }],
     disagreements: reconciliation.disagreements,
     unconfirmed: reconciliation.unconfirmed,
     records,
@@ -221,6 +223,7 @@ function confirmedCleanupRecord(record: ScoredRecord, match: ScoredRecord): Scor
     finding_confidence: "high",
     source: "knip",
     upstream_finding_id: match.id,
+    corroborating_producers: ["ts-react-quality-lens-cleanup", "knip"],
     tool_validation: "confirmed",
     validation_scope: validationScope(record),
   };

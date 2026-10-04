@@ -21,7 +21,7 @@ export function auditSarif(audit: AuditArtifact) {
     tool: { driver: { name: "ts-react-quality-lens" } },
     invocations: [{ executionSuccessful: audit.summary.complete,
       toolExecutionNotifications: audit.summary.incomplete_reasons.map((text) => ({ level: "error", message: { text } })) }],
-    properties: { verdict: audit.summary.verdict, analysis_identity: audit.analysis_identity },
+    properties: { verdict: audit.summary.verdict, analysis_identity: audit.analysis_identity, reconciliation: audit.reconciliation ?? [] },
     results: [...results, ...failures],
   }] };
 }

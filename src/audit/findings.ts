@@ -59,6 +59,18 @@ export function collectFindings(config: Config, scope: FindingScope): AuditFindi
   });
 }
 
+export function collectReconciliation(config: Config) {
+  return AUDIT_TASK_IDS.flatMap((taskId) => {
+    const task = TASKS.find((candidate) => candidate.id === taskId);
+    const artifact = task ? readArtifact(config, task.artifact) : null;
+    return artifact ? [{ task_id: taskId,
+      relationships: artifact.engine_relationships ?? [],
+      observations: [...findingRecords(artifact.records).filter((record) => record.tool_validation !== undefined),
+        ...findingRecords(artifact.disagreements), ...findingRecords(artifact.unconfirmed)],
+    }].filter((item) => item.observations.length > 0 || Array.isArray(item.relationships) && item.relationships.length > 0) : [];
+  });
+}
+
 function taskFindings(config: Config, taskId: string): Array<{ taskId: string; finding: ScoredRecord }> {
   const task = TASKS.find((candidate) => candidate.id === taskId);
   const artifact = task ? readArtifact(config, task.artifact) : null;

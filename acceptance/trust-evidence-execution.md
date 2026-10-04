@@ -26,3 +26,10 @@ Plan: [trust-evidence-plan.md](trust-evidence-plan.md). Stage completion is not 
 - `test/native-evidence.test.ts` exercises missing/changed run references, duplicate entries, altered findings/completeness, malformed native fields and imported-report mutation. SARIF identity fixtures now explicitly declare successful invocation rather than relying on absent evidence.
 - Validation: `npm run ci`: **72 tests passed**, full checks/package smoke passed (`/tmp/ts-trust-w3-ci.log`).
 - T3/E3 remain open: capability counts are invocation-scoped, not exhaustive per-rule coverage; legacy envelopes and some upstream payloads still lack strong validation/provenance. Common comparison records, pinned multi-read generations and complete producer-fault coverage are not certified. E1's structural pass is retained without expanding its acceptance scope.
+
+## W4 — reconciliation survives audit/export
+
+- Cleanup corroboration retains both producer names. Audit now collects confirmed/disagreed/excluded/not-comparable/unavailable observations separately from actionable findings; non-findings cannot inflate blocker counts. SARIF preserves the reconciliation channel.
+- Clone, dependency-cycle and accessibility artifacts declare actual engine relationships: fallback alternatives or parallel syntax candidates, not falsely independent corroboration. Cleanup retains its per-candidate comparison/exclusion scope.
+- Validation: build plus CLI/reconciliation/reporting suites: **18 tests passed**, including existing native Knip exclusion/disagreement regressions (`/tmp/ts-trust-w4-tests.log`).
+- E6 remains open for broader scope/mutation validation; the new projection regression alone is not semantic certification of every engine overlap.
