@@ -1,6 +1,12 @@
 # Cross-lens upgrade execution
 
-## Latest: acceptance closure steps 1–5
+## Latest: Trust/Evidence follow-up
+
+Implemented staged Trust/Evidence repairs and contracts; clean Linux Node 20.19.0 and 24.21.0 native CI passes **77 tests**, including installed-package/test-runner smoke. A pinned MyStarQuest campaign passes **24 repeatability observations** across app/functions and focused/full-audit profiles. Required verification cannot be suppressed through ordinary findings, including required imported reports.
+
+Acceptance is **not complete**: **5/25 passed, 20 unresolved**; Trust **2/4**, Evidence Contract **2/6**. See `acceptance/trust-evidence-execution.md` and `acceptance/criteria.json`. Remaining work includes exhaustive applicability/payload/reporter/engine-scope contracts. T4 is blocked by unexecuted Windows profiles, a transitive Node-engine mismatch, five fresh high dependency advisories through jscpd, and an upstream Nix source hash mismatch. No push or release is authorized.
+
+## Historical: acceptance closure steps 1–5
 
 Clean Linux Node 24.18 validation passed: 66 tests, full CI, an actually installed package/test runner, three resource-profile repetitions and zero dependency advisories. Publication rollback/recovery guards and clean runtime-only packaging are implemented.
 

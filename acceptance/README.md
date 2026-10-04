@@ -8,9 +8,9 @@ Each passed row must cite commands, actual results, source revision, bounded sco
 
 ## Current closure result
 
-Steps 1–5 are implementation iterations, not completed acceptance. Three criteria currently pass; **22/25 remain unresolved** after reopening E5 for the required-SARIF counterexample. `step-5.md` records clean native workflows, investigated failures and platform gaps. Operational recovery/limits are in `../contracts/operational-scope.md`.
+Five criteria currently pass; **20/25 remain unresolved**. Trust is **2/4**, Evidence Contract **2/6**. The Trust/Evidence execution repaired both reproduced defects, completed a 24-observation MyStarQuest repeatability campaign (T2), and re-certified E5 with all required verification channels. It did not close the remaining semantic/contract obligations.
 
-Trust/Evidence follow-up: [`trust-evidence-plan.md`](trust-evidence-plan.md) reviews current progress and sequences the remaining work. Its probes reproduce false-complete typed-lint evidence and suppression of a missing required SARIF input; the latter challenges E5 beyond its recorded compiler/test scope. E5 is reopened pending repair and broader required-producer validation.
+See [`trust-evidence-execution.md`](trust-evidence-execution.md) for staged commits, 77-test clean Linux Node 20/24 validation, measured results and remaining engineering/platform blockers. [`trust-evidence-plan.md`](trust-evidence-plan.md) preserves the original review; `step-5.md` is historical validation. Fresh dependency audit has five high advisories; Windows and Nix acceptance remain blocked. Operational recovery/limits are in `../contracts/operational-scope.md`.
 
 Additional checks:
 

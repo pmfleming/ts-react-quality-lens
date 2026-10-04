@@ -1,5 +1,7 @@
 # Trust and Evidence Contract: review and completion plan
 
+Historical review/plan. Current staged implementation results and remaining obligations are in [trust-evidence-execution.md](trust-evidence-execution.md); this original assessment is not the current ledger status.
+
 ## Scope and decision
 
 Reviewed lens revision `e0e4e76399c6c880261f600be3ea1e9540eb1e17`, recent implementation/closure commits, native producers/reporters/tests, and the acceptance ledger. This document is a review and proposed implementation plan, not an acceptance certificate. No implementation or ledger statuses were changed during this review.
