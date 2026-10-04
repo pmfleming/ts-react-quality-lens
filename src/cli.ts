@@ -94,7 +94,8 @@ function printAudit(config: Config, format: ParsedArgs["format"], artifact: Retu
   if (format === "sarif") console.log(JSON.stringify(auditSarif(artifact), null, 2));
   else if (format === "json") console.log(JSON.stringify(artifact, null, 2));
   else if (format === "markdown") console.log(auditMarkdown(artifact));
-  else console.log(JSON.stringify({ project_name: config.projectName, output_dir: config.outputDir, audit: artifact.summary }, null, 2));
+  else console.log(JSON.stringify({ project_name: config.projectName, output_dir: config.outputDir,
+    full_evidence: "audit.json in output_dir; use --format json, sarif or markdown for findings and evidence", audit: artifact.summary }, null, 2));
 }
 
 function runContextCommand(config: Config): void {

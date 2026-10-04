@@ -63,6 +63,7 @@ function findingAssessment(record: ScoredRecord, kind: string) {
     ...(contract ? { blocking_contract: contract } : {}),
     ...(requestedDisposition === "block" && !contract ? { classification_limitation: "Unregistered blocking rule; review required." } : {}),
     rule_id: ruleId, evidence_kind: evidence, disposition,
+    producer_disposition: record.producer_disposition ?? disposition,
     finding_confidence: record.finding_confidence ?? defaultFindingConfidence(evidence),
     message: record.message ?? defaultMessage(record, kind),
     reason_code: record.reason_code ?? ruleId,

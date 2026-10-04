@@ -33,3 +33,11 @@ Plan: [trust-evidence-plan.md](trust-evidence-plan.md). Stage completion is not 
 - Clone, dependency-cycle and accessibility artifacts declare actual engine relationships: fallback alternatives or parallel syntax candidates, not falsely independent corroboration. Cleanup retains its per-candidate comparison/exclusion scope.
 - Validation: build plus CLI/reconciliation/reporting suites: **18 tests passed**, including existing native Knip exclusion/disagreement regressions (`/tmp/ts-trust-w4-tests.log`).
 - E6 remains open for broader scope/mutation validation; the new projection regression alone is not semantic certification of every engine overlap.
+
+## W5 — reporter identity and evidence preservation
+
+- Native findings distinguish producer disposition from effective audit disposition. SARIF retains related locations, semantic decision, impact, contract/reconciliation identifiers and run/capability evidence; policy classification stays upstream.
+- Markdown includes every finding (including review/info, inherited and suppressed) with exact identity/evidence and reconciliation, rather than silently truncating to 25 active findings. Compact CLI summary explicitly identifies the full evidence output.
+- Added real CLI JSON/SARIF/Markdown/summary equivalence with compiler and typed findings, failed test execution and suppressed required SARIF failure; all formats retain failing/incomplete policy and exact finding identities.
+- Validation: `npm run ci`: **74 tests passed**, full checks/package smoke passed (`/tmp/ts-trust-w5-ci.log`).
+- E4/E5 remain open pending the entire producer/profile fault matrix (notably all package/imported scenarios); passing the integrated core fixture is not a substitute for that matrix.

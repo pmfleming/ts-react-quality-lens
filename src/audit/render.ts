@@ -4,9 +4,9 @@ import type { AuditArtifact, AuditFinding } from "../types.js";
 export default function auditMarkdown(artifact: AuditArtifact): string {
   const lines = [...summaryLines(artifact), ""];
   const active = activeFindings(artifact);
-  if (!active.length) return `${[...lines, "No active findings."].join("\n")}\n`;
-  lines.push("## Active Findings", "", ...active.slice(0, 25).map(findingLine));
-  if (active.length > 25) lines.push(`- ...and ${active.length - 25} more`);
+  if (!active.length) lines.push("No active findings.", "");
+  lines.push("## Findings (all dispositions, inherited and suppressed)", "", ...artifact.findings.map(findingLine));
+  if (artifact.reconciliation) lines.push("", "## Engine reconciliation", "", "```json", JSON.stringify(artifact.reconciliation, null, 2), "```");
   return `${lines.join("\n")}\n`;
 }
 
@@ -43,5 +43,9 @@ function activeFindings(artifact: AuditArtifact): AuditFinding[] {
 
 function findingLine(finding: AuditFinding): string {
   const location = [finding.file, finding.line].filter((value) => value !== undefined && value !== null).join(":");
-  return `- ${finding.disposition ?? "review"} ${finding.kind}: ${location || finding.id}`;
+  const related = (finding.related_locations ?? []).map((item) => `${item.file}:${item.start_line}`).join(", ");
+  return `- ${finding.disposition ?? "review"} ${finding.rule_id ?? finding.kind}: ${location || "project"} ` +
+    `[id=${finding.id}; evidence=${finding.evidence_kind}; confidence=${finding.finding_confidence}; decision=${finding.semantic_decision}; ` +
+    `introduced=${finding.introduced}; suppressed=${isSuppressed(finding)}] ${finding.message ?? ""}` +
+    (finding.suppression_reason ? ` Suppression: ${finding.suppression_reason}` : "") + (related ? ` Related: ${related}` : "");
 }
