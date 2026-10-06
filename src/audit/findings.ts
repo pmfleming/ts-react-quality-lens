@@ -59,6 +59,15 @@ export function collectFindings(config: Config, scope: FindingScope): AuditFindi
   });
 }
 
+export function collectApplicability(config: Config) {
+  return AUDIT_TASK_IDS.flatMap((taskId) => {
+    const task = TASKS.find((candidate) => candidate.id === taskId);
+    const artifact = task ? readArtifact(config, task.artifact) : null;
+    return artifact && Array.isArray(artifact.rule_applicability) && artifact.rule_applicability.length
+      ? [{ task_id: taskId, rules: artifact.rule_applicability }] : [];
+  });
+}
+
 export function collectReconciliation(config: Config) {
   return AUDIT_TASK_IDS.flatMap((taskId) => {
     const task = TASKS.find((candidate) => candidate.id === taskId);

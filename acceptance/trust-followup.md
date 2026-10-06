@@ -25,3 +25,13 @@ Scope limitation: file dispatch is not proof that every expression's semantics r
 - Validation: `npm run ci` passed **83 tests** and all native smoke checks; shared TS/QML profile passed **380 assertions**; four QML wire/capability/freshness/report tests passed at the pinned sibling revision.
 
 E3 remains open for exhaustive producer/fault combinations and imported source/environment authenticity (especially legacy external SARIF). A self-consistent native payload is not a signature or proof of producer honesty. Existing retained MyStarQuest hashes must not be presented as validation of the changed v3 boundary.
+
+## Stage 3 — reporter/policy alignment
+
+- Audit now retains producer rule-applicability records. SARIF preserves applicability, comparison, source identity and generation references alongside exact native findings and summary.
+- Full Markdown now includes a machine-readable native evidence section, rather than dropping package/imported details that were not represented in the human finding line.
+- Added real CLI profiles executing managed React/typed lint, compiler, tests, declaration emit/npm pack/publint/ATTW, SARIF, linked axe and linked LCOV. JSON/SARIF/Markdown/summary agree on findings, applicability, policy and exits under both gates, baseline and config suppressions.
+- The same CLI matrix mutates configured SARIF/runtime/coverage payloads to invalid objects and verifies that all four formats retain nonzero operational failures after ordinary input diagnostics are suppressed.
+- Validation: `npm run ci` passed **84 tests** and all smoke checks. Five sibling QML reporter/policy tests passed, including actual CLI formats and changed-code baseline suppression. Shared v1 fixtures remain unchanged.
+
+E4 remains open for exhaustive producer/profile combinations (e.g. all supported optional report formats and real Git-base compatibility cases). The executed matrix is concrete coverage, not a universal alignment claim.

@@ -7,6 +7,10 @@ export default function auditMarkdown(artifact: AuditArtifact): string {
   if (!active.length) lines.push("No active findings.", "");
   lines.push("## Findings (all dispositions, inherited and suppressed)", "", ...artifact.findings.map(findingLine));
   if (artifact.reconciliation) lines.push("", "## Engine reconciliation", "", "```json", JSON.stringify(artifact.reconciliation, null, 2), "```");
+  lines.push("", "## Complete native evidence", "", "Finding details, applicability and comparison are not reclassified by this reporter.",
+    "", "```json", JSON.stringify({ findings: artifact.findings, applicability: artifact.applicability,
+      comparison: artifact.comparison, capabilities: artifact.capabilities, evidence_contract: artifact.evidence_contract,
+      artifact_inputs: artifact.artifact_inputs }, null, 2), "```");
   return `${lines.join("\n")}\n`;
 }
 

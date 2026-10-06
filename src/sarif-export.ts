@@ -29,7 +29,9 @@ export function auditSarif(audit: AuditArtifact) {
     invocations: [{ executionSuccessful: audit.summary.complete,
       toolExecutionNotifications: audit.summary.incomplete_reasons.map((text) => ({ level: "error", message: { text } })) }],
     properties: { verdict: audit.summary.verdict, analysis_identity: audit.analysis_identity, reconciliation: audit.reconciliation ?? [],
-      capabilities: audit.capabilities, evidence_contract: audit.evidence_contract, audit_summary: audit.summary },
+      capabilities: audit.capabilities, evidence_contract: audit.evidence_contract, audit_summary: audit.summary,
+      applicability: audit.applicability, comparison: audit.comparison, artifact_inputs: audit.artifact_inputs,
+      source_set_hash: audit.provenance.source_set_hash },
     results: [...results, ...failures],
   }] };
 }

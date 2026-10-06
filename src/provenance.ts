@@ -98,7 +98,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     verification_policy: "required-verification-v4",
     determinism: "semantic-boundary-v3",
     finding_identity: "semantic-occurrence-v1",
-    sarif: "namespaced-fingerprint-occurrence-v2",
+    sarif: "lossless-audit-projection-v3",
     test_mapping: "compiler-imports-v1",
     import_resolution: "path-aliases-v2",
     file_discovery: "project-relative-test-paths-v2",

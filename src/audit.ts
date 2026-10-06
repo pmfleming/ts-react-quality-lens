@@ -9,6 +9,7 @@ import auditMarkdown from "./audit/render.js";
 import {
   auditVerdict,
   collectFindings,
+  collectApplicability,
   collectReconciliation,
   requiredEvidenceReasons,
   requiredVerificationFailures,
@@ -181,6 +182,7 @@ function auditArtifact(
     },
     findings: sets.findings,
     reconciliation: collectReconciliation(config),
+    applicability: collectApplicability(config),
   };
 }
 
