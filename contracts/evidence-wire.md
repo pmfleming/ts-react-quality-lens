@@ -16,4 +16,8 @@ Native writers now attach run, finding and numeric-summary measurement projectio
 
 Summary units not explicitly standardized are `producer-defined`, with formula/interpretation limitations; these must not be treated as interchangeable measurements. Producer version entries are the declared integration inventory, not proof those tools executed; capabilities carry execution state.
 
-Still open: exhaustive rule-family applicability/contracts, complete reporter equivalence, typed validation of every native payload, explicit comparison projection, and cross-artifact generation/reference integrity. Local projection validation is not a cryptographic authenticity or whole-run freshness guarantee.
+Native audits now project comparison outcomes with explicit linked baseline runs; no requested/available baseline remains unknown. Saved audit generation references bind each consumed producer's bytes, run ID and semantic digest. Required verification rejects legacy envelopes even though diagnostic consumers can still read them. Critical compiler/lint/React/test/package/imported/coverage payloads are checked independently of wire shape.
+
+`rule_applicability` is a separate native extension: managed rule/file dispatch counts and bounded upstream-family invocation counts, with evaluated/skipped/abstained scope and limitations. It does not redefine shared capability counts or claim per-expression semantic resolution. Current TS/QML fixture and real-output validation is recorded in `../acceptance/trust-followup.md`.
+
+Still open: exhaustive rule-family semantics/contracts, every reporter/profile combination and native fault payload, imported source/environment authenticity, and immutable multi-read generation pinning. Local projection/digest validation is not cryptographic authenticity or a universal whole-run freshness guarantee.

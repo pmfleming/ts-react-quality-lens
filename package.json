@@ -95,7 +95,7 @@
     "eslint": "^9.39.5",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "jscpd": "^4.2.5",
+    "jscpd": "5.4.0",
     "knip": "^6.32.2",
     "publint": "^0.3.24",
     "semver": "^7.8.5",

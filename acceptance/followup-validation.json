@@ -1,0 +1,40 @@
+{
+  "source": {
+    "base_revision": "07b91581fd68e67e452f9028a456d307a01a162a",
+    "runtime_source_sha256": "319d8fc9fa03a72aaa0be281acf6db26a70442f15a4e0ac55f22d939b17ce36d",
+    "scope": "Working snapshot committed with this record; digest covers src/bin/scripts TypeScript and package/lock files, as implemented in sibling_project.py",
+    "lockfile_sha256": "7643d58cc17597c7aac3afe3ff87aa8e694759f69c6ce446d44ad4e9bd5ab364"
+  },
+  "linux_environment": {
+    "isolation": "bubblewrap, Ubuntu userspace on Linux x86_64; clean independent npm installations in /tmp/ts-followup-node20 and /tmp/ts-followup-node24",
+    "sysroot_archive_sha256": "6bc2cde3930ad088b3bb46fa45279e96d25bc3810f209850ecbe4722711874f9",
+    "note": "Initial sandbox DNS failure was repaired by binding host resolv.conf. Successful runs below restarted npm ci. No dependency engine or audit waiver. Native jscpd binaries were unmodified in both clean profiles."
+  },
+  "profiles": [
+    {"node":"20.19.0","npm":"10.8.2","command":"npm ci --engine-strict && npm run ci && npm audit --audit-level=moderate","tests":88,"result":"passed including installed consumer/test/native clone engine","audit_advisories":0,"log_sha256":"e32c79919ad3bcec15cc3cbded3a206c932606b54733c220aada9f23e0ba98ba"},
+    {"node":"24.21.0","npm":"12.1.0","command":"npm ci --engine-strict && npm run ci && npm audit --audit-level=moderate","tests":88,"result":"passed including installed consumer/test/native clone engine","audit_advisories":0,"log_sha256":"c260521ce31a0aa8f7979ee7c347934bb33e12db068f8adc6ac95ed86f55e19d"}
+  ],
+  "qml": {
+    "revision":"fdd92bcc096c3acfc3ef5bab564776b34b84657e",
+    "command":"npm test",
+    "node":"24.21.0",
+    "npm":"12.1.0",
+    "native_tests":286,
+    "native_result":"passed; not an external Qt integration campaign",
+    "native_log_sha256":"b86e5cae23fd4c346715102410a8a3b0cd8585948b6b94956abbb91a099825ff",
+    "shared_fixture_assertions":380,
+    "real_TS_artifacts_validated_by_QML":17,
+    "real_wire_records_validated_by_QML":2476,
+    "real_capabilities_validated_by_QML":31,
+    "repeatability":"qml-project-results.json: 12 samples, one semantic hash per focused/audit profile",
+    "consumer_tracked_files_changed":false
+  },
+  "nix": {
+    "command":"nix build --no-link --offline",
+    "result":"not completed: prerequisite/toolchain builds exceeded 180s and 300s execution limits before lens validation",
+    "log_sha256":"dfbd33d8e95f800fd31f143e9f2e8ddf09feeb2bfbfb0e4789b42256176c25b6",
+    "changes":"Recomputed npmDepsHash from the actual lockfile; added autoPatchelfHook/libgcc for jscpd ELF binaries. No source hash check disabled or blindly replaced.",
+    "acceptance":"blocked; previous TinyCC integrity failure has not been certified resolved"
+  },
+  "windows": {"result":"not executed; matrix includes both Node versions with engine-strict install and native installed-package smoke","acceptance":"blocked"}
+}

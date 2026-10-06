@@ -26,7 +26,7 @@ try {
   }
   assert.ok(typeof pack.filename === "string" && path.basename(pack.filename) === pack.filename);
   fs.writeFileSync(path.join(root, "package.json"), '{"name":"installed-lens-smoke","private":true,"type":"module"}');
-  node([npm, "install", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", path.join(root, pack.filename)], root);
+  node([npm, "install", "--engine-strict", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", path.join(root, pack.filename)], root);
   const bin = path.join(root, "node_modules/ts-react-quality-lens/dist/bin/ts-react-quality-lens.js");
   const help = node([bin, "--help"], root);
   for (const command of ["catalog", "init", "measure", "audit", "context", "mcp", "lsp"]) assert.ok(help.includes(command));
@@ -38,8 +38,12 @@ try {
   node([bin, "catalog", "--config", config], root);
   node([bin, "measure", "quality.hotspots", "--config", config], root);
   node([bin, "measure", "correctness.all", "--config", config], root);
+  node([bin, "measure", "quality.clones", "--config", config], root);
+  const clones = parseJson(fs.readFileSync(path.join(root, "out/clones.json"), "utf8"));
+  assert.ok(isRecord(clones) && isRecord(clones.tool_status) && isRecord(clones.tool_status.jscpd) && clones.tool_status.jscpd.ran === true,
+    `installed native clone engine did not execute: ${JSON.stringify(clones)}`);
   const artifact = parseJson(fs.readFileSync(path.join(root, "out/correctness_review.json"), "utf8"));
   assert.ok(isRecord(artifact) && isRecord(artifact.execution) && artifact.execution.status === "passed");
   assert.equal(fs.readFileSync(path.join(root, "executed.txt"), "utf8"), "yes");
-  console.log(JSON.stringify({ package_smoke: "passed", files: files.size, installed_consumer: true, project_test_runner: "passed" }, null, 2));
+  console.log(JSON.stringify({ package_smoke: "passed", files: files.size, installed_consumer: true, project_test_runner: "passed", native_clone_engine: "passed" }, null, 2));
 } finally { fs.rmSync(root, { recursive: true, force: true }); }

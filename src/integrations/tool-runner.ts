@@ -29,7 +29,9 @@ export function runToolAdapter<T extends Record<string, unknown>>(
     return toolResult(true, true, null, startedAt, run(executable));
   } catch (error) {
     const execError = normalizeExecError(error);
-    const recovered = recover?.(execError);
+    let recovered: T | null | undefined;
+    try { recovered = recover?.(execError); }
+    catch (decodeError) { return toolResult(true, false, `Invalid tool report: ${String(decodeError)}`, startedAt, empty); }
     return recovered
       ? toolResult(true, true, null, startedAt, recovered)
       : toolResult(true, false, toolError(execError), startedAt, empty);

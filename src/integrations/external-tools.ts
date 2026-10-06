@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { discoverSourceFiles } from "../files.js";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -118,15 +119,22 @@ export function runJscpd(config: Config): JscpdResult {
       "jscpd executable was not found",
       { duplicates: [], statistics: {} },
       (executable) => {
-        runLocalTool(executable, jscpdArgs(config, outputDir), toolRunOptions(config));
-        const reportPath = path.join(outputDir, "jscpd-report.json");
-        const report = fs.existsSync(reportPath) ? parseJson(fs.readFileSync(reportPath, "utf8")) : {};
-        return isRecord(report)
-          ? {
-              duplicates: Array.isArray(report.duplicates) ? report.duplicates.filter(isJscpdDuplicate) : [],
-              statistics: isRecord(report.statistics) ? report.statistics : {},
-            }
-          : { duplicates: [], statistics: {} };
+        const selected = discoverSourceFiles(config);
+        if (!selected.length) throw new Error("jscpd has no selected source files");
+        // Isolate from project .jscpd.json: v5 can otherwise enable model downloads/network providers.
+        const managedConfig = path.join(outputDir, "managed.json");
+        fs.writeFileSync(managedConfig, JSON.stringify({ path: selected, absolute: true, reporters: ["json"],
+          output: outputDir, minLines: 5, minTokens: 45, threshold: 100, format: ["typescript", "javascript", "tsx", "jsx"] }));
+        runLocalTool(executable, ["--config", managedConfig], toolRunOptions(config));
+        const report = parseJson(fs.readFileSync(path.join(outputDir, "jscpd-report.json"), "utf8"));
+        if (!isRecord(report) || !Array.isArray(report.duplicates) || !report.duplicates.every(isJscpdDuplicate) || !isRecord(report.statistics)) {
+          throw new Error("Invalid jscpd report payload");
+        }
+        const scope = new Set(selected.map((file) => path.resolve(file)));
+        if (report.duplicates.some((duplicate) => !scope.has(path.resolve(duplicate.firstFile!.name!)) || !scope.has(path.resolve(duplicate.secondFile!.name!)))) {
+          throw new Error("jscpd report contains files outside selected source scope");
+        }
+        return { duplicates: report.duplicates.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))), statistics: report.statistics };
       },
     );
   } finally {
@@ -143,24 +151,8 @@ function isKnipIssueEntry(value: unknown): value is KnipIssueEntry {
 }
 
 function isJscpdDuplicate(value: unknown): value is JscpdDuplicate {
-  return isRecord(value);
-}
-
-function jscpdArgs(config: Config, outputDir: string): string[] {
-  return [
-    "--reporters",
-    "json",
-    "--output",
-    outputDir,
-    "--min-lines",
-    "5",
-    "--min-tokens",
-    "45",
-    "--format",
-    "typescript,javascript,tsx,jsx",
-    "--exitCode",
-    "0",
-    ...existingRelativeRoots(config),
-  ];
+  if (!isRecord(value) || typeof value.lines !== "number" || !Number.isSafeInteger(value.lines) || value.lines < 1) return false;
+  return [value.firstFile, value.secondFile].every((file) => isRecord(file) && typeof file.name === "string" && path.isAbsolute(file.name) &&
+    Number.isSafeInteger(file.start) && Number(file.start) > 0 && Number.isSafeInteger(file.end) && Number(file.end) >= Number(file.start));
 }
 

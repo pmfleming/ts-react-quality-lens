@@ -1,6 +1,12 @@
 # Cross-lens upgrade execution
 
-## Latest: Trust/Evidence follow-up
+## Latest: staged Trust/Evidence alignment
+
+Five follow-up implementation stages are recorded in `acceptance/trust-followup.md`. Clean engine-strict Linux Node 20.19.0 and 24.21.0 profiles pass **88 native tests**, installed-consumer/test/native-clone smoke and a **zero-advisory** audit. QML lens validation: **286 native tests**, **380 shared conformance assertions**, and **12 repeatability observations** under the current v3 semantic boundary. Its tracked source stayed unchanged.
+
+**Acceptance remains 5/25 passed, 20 unresolved.** File dispatch is not universal semantic resolution; exhaustive upstream contracts/payload authenticity/profile/exclusion coverage remains open. Windows has not executed; Nix prerequisite builds exceeded validation time limits. No platform, security or Node-floor waiver was made. Details and exact snapshot identities: `acceptance/followup-validation.json` and `acceptance/qml-project-results.json`. Commits were authorized; no push or release occurred.
+
+## Previous Trust/Evidence follow-up (2093909)
 
 Implemented staged Trust/Evidence repairs and contracts; clean Linux Node 20.19.0 and 24.21.0 native CI passes **77 tests**, including installed-package/test-runner smoke. A pinned MyStarQuest campaign passes **24 repeatability observations** across app/functions and focused/full-audit profiles. Required verification cannot be suppressed through ordinary findings, including required imported reports.
 

@@ -24,7 +24,10 @@
             version = "0.3.0";
             src = ./.;
             nodejs = pkgs.nodejs;
-            npmDepsHash = "sha256-C2IEmd7BCDFBDpz2ftubDJR/i2To1sc/xh8adfODyVs=";
+            npmDepsHash = "sha256-5mJ6eOg62LBIzPv8+nZ6WanfEqZts54i0c6TMhkublQ=";
+            # jscpd v5 ships platform ELF binaries, not a JavaScript implementation.
+            nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+            buildInputs = [ pkgs.stdenv.cc.cc.lib ];
 
             npmBuildScript = "build";
             # Keep analyzer tool dependencies available at runtime. The CLI loads

@@ -10,7 +10,9 @@ Each passed row must cite commands, actual results, source revision, bounded sco
 
 Five criteria currently pass; **20/25 remain unresolved**. Trust is **2/4**, Evidence Contract **2/6**. The Trust/Evidence execution repaired both reproduced defects, completed a 24-observation MyStarQuest repeatability campaign (T2), and re-certified E5 with all required verification channels. It did not close the remaining semantic/contract obligations.
 
-See [`trust-evidence-execution.md`](trust-evidence-execution.md) for staged commits, 77-test clean Linux Node 20/24 validation, measured results and remaining engineering/platform blockers. [`trust-evidence-plan.md`](trust-evidence-plan.md) preserves the original review; `step-5.md` is historical validation. Fresh dependency audit has five high advisories; Windows and Nix acceptance remain blocked. Operational recovery/limits are in `../contracts/operational-scope.md`.
+Latest work: [`trust-followup.md`](trust-followup.md), [`followup-validation.json`](followup-validation.json) and [`qml-project-results.json`](qml-project-results.json): 88-test engine-strict clean Linux Node 20/24 profiles, zero advisories, 286 QML native tests and 12 current-boundary repeatability samples. Windows/Nix acceptance and exhaustive semantic/profile obligations remain open.
+
+[`trust-evidence-execution.md`](trust-evidence-execution.md) records the previous 2093909 campaign, including its historical advisories; [`trust-evidence-plan.md`](trust-evidence-plan.md) preserves the original review. `step-5.md` is historical validation. Current audit: [`dependency-audit-followup.json`](dependency-audit-followup.json). Operational recovery/limits are in `../contracts/operational-scope.md`.
 
 Additional checks:
 

@@ -1,5 +1,7 @@
 # Trust/Evidence execution record
 
+Historical execution through 2093909. Latest staged alignment, runtime/security results and remaining gaps: [trust-followup.md](trust-followup.md).
+
 Plan: [trust-evidence-plan.md](trust-evidence-plan.md). Stage completion is not criterion acceptance. No push or release performed.
 
 ## W1 — reproduced failure repairs
