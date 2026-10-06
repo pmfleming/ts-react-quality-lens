@@ -1,5 +1,7 @@
 # Self-lens refactor review
 
+Subsequent batch: [coverage orchestration and artifact evidence](coverage-evidence-refactor.md), measured against `6122259`.
+
 ## Method
 
 Compared the working tree with `b71c97d` using the **same frozen analyzer and dependencies**, cache disabled, and the unchanged self-analysis source roots (`src`, `bin`, `scripts`). No scoring weights, thresholds, rules, or exclusions were relaxed. Measurements used Node 24.16.0.

@@ -4,9 +4,9 @@ import { separateTelemetry } from "./artifact-telemetry.js";
 import { capabilityEvidence, validCapabilityEvidence, type CapabilityEvidence, type CapabilityStatus } from "./capability-evidence.js";
 import { isRecord, isUnknownArray } from "./collections.js";
 import { findingRecords, FINDING_COLLECTIONS, isScoredRecord } from "./findings.js";
-import { arrayOf } from "./validation.js";
+import { arrayOf, boolean, nullable, optional, shape } from "./validation.js";
 import { isWireEvidence, type WireEvidence } from "./wire-evidence.js";
-import type { Artifact, Config } from "./types.js";
+import type { Artifact, Config, ScoredRecord } from "./types.js";
 const scope = "producer invocation; per-rule/file coverage is not implied";
 
 function capability(name: string, status: CapabilityStatus, reason?: string): CapabilityEvidence {
@@ -21,17 +21,22 @@ function toolCapability(name: string, value: Record<string, unknown>, disabled: 
   return capability(name, status, typeof value.reason === "string" ? value.reason : undefined);
 }
 
+function producerStatus(artifact: Artifact): CapabilityStatus {
+  const { task_id: task, summary, confidence } = artifact;
+  const fallback = confidence.complete === true ? "completed" : "partial";
+  switch (task) {
+    case "quality.type_health": return confidence.typescript_program_loaded === true ? fallback : "unavailable";
+    case "quality.lint": return artifact.tool_status?.typed_eslint?.ran === true ? fallback : "unavailable";
+    case "correctness.all": return ["passed", "failed"].includes(artifact.execution?.status ?? "") ? "completed" : "unavailable";
+    case "quality.runtime": case "quality.sarif": case "testing.coverage": case "quality.package_health":
+      return summary.status === "not_configured" || summary.status === "disabled" ? "disabled" : summary.status === "complete" ? "completed" : "partial";
+    case "audit": return summary.complete === true ? fallback : "partial";
+    default: return fallback;
+  }
+}
 function producerCapability(artifact: Artifact): CapabilityEvidence {
   const { task_id: task, summary, confidence } = artifact;
-  let status: CapabilityStatus = confidence.complete === true ? "completed" : "partial";
-  if (task === "quality.type_health" && confidence.typescript_program_loaded !== true) status = "unavailable";
-  if (task === "quality.lint" && artifact.tool_status?.typed_eslint?.ran !== true) status = "unavailable";
-  if (task === "correctness.all") status = ["passed", "failed"].includes(artifact.execution?.status ?? "") ? "completed" : "unavailable";
-  if (["quality.runtime", "quality.sarif", "testing.coverage", "quality.package_health"].includes(task)) {
-    status = summary.status === "not_configured" || summary.status === "disabled" ? "disabled"
-      : summary.status === "complete" ? "completed" : "partial";
-  }
-  if (task === "audit" && summary.complete !== true) status = "partial";
+  const status = producerStatus(artifact);
   const reasons = [
     ...(confidence.missing_input ?? []), ...(confidence.stale_input ?? []),
     ...(confidence.unsupported_pattern ?? []).map((item) => item.message ?? item.kind),
@@ -63,13 +68,29 @@ function toolCapabilities(config: Config, artifact: Artifact): CapabilityEvidenc
       (name === "knip" && !config.cleanup.knip) || (artifact.task_id === "quality.package_health" && !config.packageHealth.enabled)));
 }
 
+type WireRun = Extract<WireEvidence, { kind: "run" }>;
+const comparisonInput = shape({ baseline: nullable((value: unknown): value is WireRun => isWireEvidence(value) && value.kind === "run") });
+
 function projectWireEvidence(artifact: Artifact): WireEvidence[] {
+  const run = runEvidence(artifact);
+  return [run, ...comparisonEvidence(artifact, run),
+    ...FINDING_COLLECTIONS.flatMap((key) => findingRecords(artifact[key])).map((record) => findingEvidence(record, run.id)),
+    ...summaryEvidence(artifact, run.id)];
+}
+function runEvidence(artifact: Artifact): WireRun {
   const identity = artifact.analysis_identity;
   if (!identity || typeof artifact.provenance.run_id !== "string" || typeof artifact.provenance.input_set_hash !== "string") {
     throw new Error("Native run evidence needs analysis and input identity");
   }
-  const runId = artifact.provenance.run_id;
-  const findings: WireEvidence[] = FINDING_COLLECTIONS.flatMap((key) => findingRecords(artifact[key])).map((record) => ({
+  return { schema_version: 1, kind: "run", id: artifact.provenance.run_id,
+    analyzer: { name: "ts-react-quality-lens", version: String(artifact.provenance.analyzer_version) },
+    ruleset: identity.id, config_fingerprint: identity.config_closure_hash, input_fingerprint: artifact.provenance.input_set_hash,
+    language_profile: `typescript/${identity.compiler_api_version ?? "unknown"};framework/${artifact.project.framework}`,
+    producers: Object.entries(identity.integration_versions).flatMap(([name, version]) => version ? [{ name, version }] : []),
+  };
+}
+function findingEvidence(record: ScoredRecord, runId: string): WireEvidence {
+  return {
     schema_version: 1, kind: "finding", id: record.id, rule_id: record.rule_id ?? "ts-react-quality-lens/unknown",
     subject: record.id, run_id: runId,
     locations: record.file ? [{ file: record.file, line: Math.max(1, record.line ?? 1) }] : [],
@@ -78,55 +99,59 @@ function projectWireEvidence(artifact: Artifact): WireEvidence[] {
       : ["warning", "medium"].includes(record.severity ?? record.risk ?? "") ? "warning" : "note",
     disposition: record.disposition ?? "review", message: record.message ?? record.id,
     suppression: record.suppressed ? { reason: record.suppression_reason ?? "Configured suppression" } : null,
-  }));
-  const measurements: WireEvidence[] = Object.entries(artifact.summary).flatMap(([name, value]) =>
+  };
+}
+function summaryEvidence(artifact: Artifact, runId: string): WireEvidence[] {
+  return Object.entries(artifact.summary).flatMap(([name, value]) =>
     typeof value === "number" ? [{ schema_version: 1, kind: "measurement", name: `${artifact.task_id}/summary/${name}`,
       value, unit: name.endsWith("percent") ? "percent" : "producer-defined", scope: String(artifact.confidence.confidence_scope ?? "project"),
-      model: `${identity.rulesets.builtin ?? "native-v1"}/${artifact.task_id}/${name}`, run_id: runId, uncertainty: null,
+      model: `${artifact.analysis_identity?.rulesets.builtin ?? "native-v1"}/${artifact.task_id}/${name}`, run_id: runId, uncertainty: null,
       limitations: ["Native summary observation; consult producer formula. Not calibrated accuracy or cross-language comparability."] }] : []);
-  const comparisons: WireEvidence[] = [];
-  if (artifact.comparison !== undefined) {
-    const comparison = artifact.comparison;
-    if (!isRecord(comparison) || !(comparison.baseline === null || isWireEvidence(comparison.baseline) && comparison.baseline.kind === "run")) {
-      throw new Error("Invalid native comparison baseline");
-    }
-    const expectedStatus = artifact.summary.base_snapshot_compatible === true ? "compatible" : artifact.summary.base_snapshot_compatible === false ? "incompatible" : "unknown";
-    if (comparison.status !== expectedStatus || comparison.status === "compatible" &&
-        (!isRecord(comparison.baseline) || comparison.baseline.ruleset !== identity.id || comparison.baseline.config_fingerprint !== identity.config_closure_hash)) {
-      throw new Error("Comparison disagrees with native compatibility evidence");
-    }
-    if (comparison.baseline !== null) comparisons.push(comparison.baseline);
-    const entry = { schema_version: 1, kind: "comparison", status: comparison.status, current_run: runId,
-      baseline_run: comparison.baseline === null ? null : comparison.baseline.id, reasons: comparison.reasons };
-    if (!isWireEvidence(entry)) throw new Error("Invalid native comparison outcome");
-    comparisons.push(entry);
+}
+function comparisonEvidence(artifact: Artifact, run: WireRun): WireEvidence[] {
+  const comparison = artifact.comparison;
+  if (comparison === undefined) return [];
+  if (!comparisonInput(comparison)) throw new Error("Invalid native comparison baseline");
+  const baseline = comparison.baseline;
+  const expectedStatus = artifact.summary.base_snapshot_compatible === true ? "compatible" : artifact.summary.base_snapshot_compatible === false ? "incompatible" : "unknown";
+  if (comparison.status !== expectedStatus || comparison.status === "compatible" &&
+      (!baseline || baseline.ruleset !== run.ruleset || baseline.config_fingerprint !== run.config_fingerprint)) {
+    throw new Error("Comparison disagrees with native compatibility evidence");
   }
-  return [{ schema_version: 1, kind: "run", id: runId,
-    analyzer: { name: "ts-react-quality-lens", version: String(artifact.provenance.analyzer_version) },
-    ruleset: identity.id, config_fingerprint: identity.config_closure_hash, input_fingerprint: artifact.provenance.input_set_hash,
-    language_profile: `typescript/${identity.compiler_api_version ?? "unknown"};framework/${artifact.project.framework}`,
-    producers: Object.entries(identity.integration_versions).flatMap(([name, version]) => version ? [{ name, version }] : []),
-  }, ...comparisons, ...findings, ...measurements];
+  const entry = { schema_version: 1, kind: "comparison", status: comparison.status, current_run: run.id,
+    baseline_run: baseline === null ? null : baseline.id, reasons: comparison.reasons };
+  if (!isWireEvidence(entry)) throw new Error("Invalid native comparison outcome");
+  return baseline === null ? [entry] : [baseline, entry];
+}
+
+const toolStatus = shape({ available: optional(boolean), ran: optional(boolean), complete: optional(boolean) });
+const toolStatuses = (value: unknown): value is Record<string, unknown> => isRecord(value) && Object.values(value).every(toolStatus);
+const nativeShape = shape({ capabilities: arrayOf(validCapabilityEvidence), evidence_contract: arrayOf(isWireEvidence),
+  tool_status: optional(toolStatuses), execution: optional(isRecord) });
+const findingsCollection = optional(arrayOf(isScoredRecord));
+function validNativeStructure(artifact: Artifact): boolean {
+  if (!nativeShape(artifact)) return false;
+  const primary = artifact.capabilities[0];
+  if (!primary || primary.capability !== artifact.task_id || artifact.confidence.complete !== (primary.status === "completed")) return false;
+  if (artifact.execution !== undefined && !["passed", "failed", "not_run", "unknown"].includes(String(artifact.execution.status))) return false;
+  return FINDING_COLLECTIONS.every((key) => findingsCollection(artifact[key]));
+}
+function wireIdentity(entry: WireEvidence): string {
+  switch (entry.kind) {
+    case "run": case "finding": return `${entry.kind}:${entry.id}`;
+    case "measurement": return `measurement:${entry.name}`;
+    case "comparison": return `comparison:${entry.current_run}`;
+  }
 }
 
 /** Validate references and the native/common projection together, not just JSON shapes. */
 export function validNativeEvidence(artifact: Artifact, config?: Config): boolean {
   if (artifact.provenance.run_id === undefined) return true;
-  if (!validProducerPayload(artifact) || !validRuleApplicability(artifact.rule_applicability, artifact.task_id)) return false;
-  if (!Array.isArray(artifact.capabilities) || !artifact.capabilities.length || !artifact.capabilities.every(validCapabilityEvidence)) return false;
-  if (artifact.capabilities[0]?.capability !== artifact.task_id ||
-      artifact.confidence.complete !== (artifact.capabilities[0]?.status === "completed")) return false;
-  if (!Array.isArray(artifact.evidence_contract) || !artifact.evidence_contract.every(isWireEvidence)) return false;
-  if (artifact.tool_status !== undefined && (!isRecord(artifact.tool_status) || !Object.values(artifact.tool_status).every((status) =>
-    isRecord(status) && ["available", "ran", "complete"].every((key) => status[key] === undefined || typeof status[key] === "boolean")))) return false;
-  if (artifact.execution !== undefined && (!isRecord(artifact.execution) || !["passed", "failed", "not_run", "unknown"].includes(String(artifact.execution.status)))) return false;
-  if (FINDING_COLLECTIONS.some((key) => artifact[key] !== undefined && !arrayOf(isScoredRecord)(artifact[key]))) return false;
   try {
+    if (!validNativeStructure(artifact) || !validProducerPayload(artifact) || !validRuleApplicability(artifact.rule_applicability, artifact.task_id)) return false;
     if (config && JSON.stringify(artifact.capabilities) !== JSON.stringify([producerCapability(artifact), ...toolCapabilities(config, artifact)])) return false;
     const expected = projectWireEvidence(artifact);
-    const identities = expected.map((entry) => entry.kind === "run" || entry.kind === "finding" ? `${entry.kind}:${entry.id}`
-      : entry.kind === "measurement" ? `measurement:${entry.name}` : `comparison:${entry.current_run}`);
-    if (new Set(identities).size !== identities.length) return false;
+    if (new Set(expected.map(wireIdentity)).size !== expected.length) return false;
     return JSON.stringify(expected) === JSON.stringify(artifact.evidence_contract);
   } catch { return false; }
 }
