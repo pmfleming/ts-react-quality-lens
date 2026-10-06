@@ -1,3 +1,4 @@
+import { validProducerPayload } from "./producer-payload.js";
 import { familyApplicability, validRuleApplicability } from "./rule-applicability.js";
 import { separateTelemetry } from "./artifact-telemetry.js";
 import { capabilityEvidence, validCapabilityEvidence, type CapabilityEvidence, type CapabilityStatus } from "./capability-evidence.js";
@@ -58,7 +59,7 @@ export function attachArtifactEvidence(config: Config, artifact: Artifact): Arti
 
 function toolCapabilities(config: Config, artifact: Artifact): CapabilityEvidence[] {
   return Object.entries(artifact.tool_status ?? {}).filter(([, value]) => isRecord(value)).map(([name, value]) =>
-    toolCapability(`${artifact.task_id}/${name}`, value, (name === "jsx_a11y" && !config.accessibility.enabled) ||
+    toolCapability(`${artifact.task_id}/${name}`, name === "compiler_api" ? { ...value, ran: value.loaded, complete: value.loaded } : value, (name === "jsx_a11y" && !config.accessibility.enabled) ||
       (name === "knip" && !config.cleanup.knip) || (artifact.task_id === "quality.package_health" && !config.packageHealth.enabled)));
 }
 
@@ -90,18 +91,35 @@ function projectWireEvidence(artifact: Artifact): WireEvidence[] {
       value, unit: name.endsWith("percent") ? "percent" : "producer-defined", scope: String(artifact.confidence.confidence_scope ?? "project"),
       model: `${identity.rulesets.builtin ?? "native-v1"}/${artifact.task_id}/${name}`, run_id: runId, uncertainty: null,
       limitations: ["Native summary observation; consult producer formula. Not calibrated accuracy or cross-language comparability."] }] : []);
+  const comparisons: WireEvidence[] = [];
+  if (artifact.comparison !== undefined) {
+    const comparison = artifact.comparison;
+    if (!isRecord(comparison) || !(comparison.baseline === null || isWireEvidence(comparison.baseline) && comparison.baseline.kind === "run")) {
+      throw new Error("Invalid native comparison baseline");
+    }
+    const expectedStatus = artifact.summary.base_snapshot_compatible === true ? "compatible" : artifact.summary.base_snapshot_compatible === false ? "incompatible" : "unknown";
+    if (comparison.status !== expectedStatus || comparison.status === "compatible" &&
+        (!isRecord(comparison.baseline) || comparison.baseline.ruleset !== identity.id || comparison.baseline.config_fingerprint !== identity.config_closure_hash)) {
+      throw new Error("Comparison disagrees with native compatibility evidence");
+    }
+    if (comparison.baseline !== null) comparisons.push(comparison.baseline as WireEvidence);
+    const entry = { schema_version: 1, kind: "comparison", status: comparison.status, current_run: runId,
+      baseline_run: comparison.baseline === null ? null : (comparison.baseline as Extract<WireEvidence, { kind: "run" }>).id, reasons: comparison.reasons };
+    if (!isWireEvidence(entry)) throw new Error("Invalid native comparison outcome");
+    comparisons.push(entry);
+  }
   return [{ schema_version: 1, kind: "run", id: runId,
     analyzer: { name: "ts-react-quality-lens", version: String(artifact.provenance.analyzer_version) },
     ruleset: identity.id, config_fingerprint: identity.config_closure_hash, input_fingerprint: artifact.provenance.input_set_hash,
     language_profile: `typescript/${identity.compiler_api_version ?? "unknown"};framework/${artifact.project.framework}`,
     producers: Object.entries(identity.integration_versions).flatMap(([name, version]) => version ? [{ name, version }] : []),
-  }, ...findings, ...measurements];
+  }, ...comparisons, ...findings, ...measurements];
 }
 
 /** Validate references and the native/common projection together, not just JSON shapes. */
 export function validNativeEvidence(artifact: Artifact, config?: Config): boolean {
   if (artifact.provenance.run_id === undefined) return true;
-  if (!validRuleApplicability(artifact.rule_applicability, artifact.task_id)) return false;
+  if (!validProducerPayload(artifact) || !validRuleApplicability(artifact.rule_applicability, artifact.task_id)) return false;
   if (!Array.isArray(artifact.capabilities) || !artifact.capabilities.length || !artifact.capabilities.every(validCapabilityEvidence)) return false;
   if (artifact.capabilities[0]?.capability !== artifact.task_id ||
       artifact.confidence.complete !== (artifact.capabilities[0]?.status === "completed")) return false;

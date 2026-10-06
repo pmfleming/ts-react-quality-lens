@@ -14,3 +14,14 @@ The previous 2093909 repeatability campaign is historical for changed semantics.
 Validation: `npm run ci` passed **80 tests**, schema/inventory/format checks, performance and installed-package smoke on Linux Node 24.16.0/npm 11.13.0. Cross-lens profile passed.
 
 Scope limitation: file dispatch is not proof that every expression's semantics resolved. Exhaustive upstream diagnostic-family producer cases and per-expression abstention remain T3/E2 obligations. No criterion is promoted on the strength of dispatch counts alone.
+
+## Stage 2 — payloads, legacy verification and generation references
+
+- Critical native compiler/lint/React/test/package/SARIF/runtime/coverage/audit payloads are validated before publication and on read, independently of common-wire shape checks. Malformed package diagnostic arrays throw instead of becoming successful empty reports.
+- Legacy envelopes remain readable diagnostic data but cannot satisfy required verification. Positive native compiler/lint controls and existing native imported/test regressions remain passing.
+- Fixed compiler capability projection: a successfully loaded compiler is completed, not failed-execution because its native status uses `loaded` rather than `ran`.
+- Saved audits bind consumed producer bytes, run IDs and semantic digests. Readers reject missing/mutated/mixed generation members; existing rollback and interrupted-publication tests still pass. This does not claim protection for arbitrary noncooperative filesystem consumers.
+- Native baseline comparison now emits linked current/baseline wire runs and a comparison outcome. No baseline is explicitly unknown, not compatible. The v3 deterministic boundary resolves these references and retains semantic member digests while normalizing only declared raw run/telemetry differences.
+- Validation: `npm run ci` passed **83 tests** and all native smoke checks; shared TS/QML profile passed **380 assertions**; four QML wire/capability/freshness/report tests passed at the pinned sibling revision.
+
+E3 remains open for exhaustive producer/fault combinations and imported source/environment authenticity (especially legacy external SARIF). A self-consistent native payload is not a signature or proof of producer honesty. Existing retained MyStarQuest hashes must not be presented as validation of the changed v3 boundary.

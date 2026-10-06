@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { artifactReferences } from "./artifact-references.js";
 import path from "node:path";
 import { withPublicationLock, writeArtifact } from "./writer.js";
 import type { AuditArtifact, Config } from "./types.js";
@@ -10,8 +11,9 @@ export function stagedAudit(config: Config, run: (staged: Config) => AuditArtifa
     const marker = path.join(config.outputDir, ".publication-incomplete");
     try {
       const staged = { ...config, outputDir: directory };
-      const result = writeArtifact(staged, "audit.json", run(staged));
-      const names = result.confidence.inputs_unchanged === false ? [] : fs.readdirSync(directory).filter((name) => name.endsWith(".json") && name !== "audit.json").sort();
+      const measured = run(staged);
+      const names = measured.confidence.inputs_unchanged === false ? [] : fs.readdirSync(directory).filter((name) => name.endsWith(".json") && name !== "audit.json").sort();
+      const result = writeArtifact(staged, "audit.json", { ...measured, artifact_inputs: artifactReferences(directory, names) });
       publish(directory, config.outputDir, [...names, "audit.json"], marker);
       return result;
     } finally {

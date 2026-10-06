@@ -29,7 +29,7 @@ test("every required native verification channel survives removal of all ordinar
         assert.equal(auditVerdict([], requiredEvidenceReasons(config), requiredVerificationFailures(config)), "incomplete", `${check}: ${JSON.stringify(unavailable)}`);
       }
       writeArtifact(config, item.file, { ...base, ...item.success });
-      assert.equal(auditVerdict([], requiredEvidenceReasons(config), requiredVerificationFailures(config)), "pass", check);
+      assert.equal(auditVerdict([], requiredEvidenceReasons(config), requiredVerificationFailures(config)), "incomplete", `${check}: legacy success is not verified current evidence`);
     }
     config.policy.requiredChecks = ["compiler", "tests"];
     writeArtifact(config, "type_health.json", { ...base, confidence: { typescript_program_loaded: true }, records: [
@@ -50,7 +50,7 @@ test("every required native verification channel survives removal of all ordinar
       }
       const success = kind === "sarif" ? { tool_status: { scanner: { path: config.sarifInputs[0]!.path, required: true, available: true, ran: true, complete: true } } } : { summary: { status: "complete" } };
       writeArtifact(config, file, { ...base, ...success });
-      assert.equal(auditVerdict([], requiredEvidenceReasons(config)), "pass", kind);
+      assert.equal(auditVerdict([], requiredEvidenceReasons(config)), "incomplete", `${kind}: legacy success is not verified current evidence`);
     }
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

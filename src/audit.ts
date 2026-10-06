@@ -73,6 +73,13 @@ function runStagedAudit(config: Config, command: string, options: AuditOptions):
   const inputChange = changedInputs();
   if (inputChange) sets.incompleteReasons.push(inputChange);
   const artifact = auditArtifact(config, command, context, scope, sets, baseSnapshot !== null, baseSnapshotCompatible);
+  artifact.comparison = {
+    status: baseSnapshotCompatible === true ? "compatible" : baseSnapshotCompatible === false ? "incompatible" : "unknown",
+    baseline: baseSnapshot?.run ?? null,
+    reasons: baseSnapshotCompatible === true ? [] : [baseSnapshotCompatible === false
+      ? "Baseline compiler/config/ruleset/integration identity differs."
+      : scope.base ? "Baseline snapshot evidence is unavailable." : "No baseline comparison requested."],
+  };
   artifact.confidence.inputs_unchanged = !inputChange;
   if (inputChange) { artifact.confidence.complete = false; artifact.confidence.partial = true; }
   return artifact;

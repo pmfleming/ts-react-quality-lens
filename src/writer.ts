@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { validateArtifactReferences } from "./artifact-references.js";
 import { attachArtifactEvidence, validNativeEvidence } from "./artifact-evidence.js";
 import { validWireExtension } from "./wire-evidence.js";
 import path from "node:path";
@@ -62,7 +63,10 @@ export function readArtifact(config: Config, artifactName: string): Artifact | n
     try {
       const value = parseJson(fs.readFileSync(target, "utf8"));
       assertReadable(config);
-      return isArtifact(value, config) ? value : null;
+      if (!isArtifact(value, config)) return null;
+      if (value.task_id === "audit") validateArtifactReferences(config.outputDir, value.artifact_inputs);
+      assertReadable(config);
+      return value;
     } catch (error) {
       if (attempt === 2) throw error;
     }

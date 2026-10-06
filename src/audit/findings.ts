@@ -166,20 +166,26 @@ export function requiredVerificationFailures(config: Config): string[] {
   return failures;
 }
 
+function verificationArtifact(config: Config, name: string) {
+  const artifact = readArtifact(config, name);
+  // Legacy envelopes remain readable diagnostics, never proof of current verification.
+  return typeof artifact?.provenance.run_id === "string" ? artifact : null;
+}
+
 const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = {
-  compiler: (config) => readArtifact(config, "type_health.json")?.confidence.typescript_program_loaded === true
+  compiler: (config) => verificationArtifact(config, "type_health.json")?.confidence.typescript_program_loaded === true
     ? null
     : "TypeScript compiler program did not load.",
   "typed-lint": (config) => {
-    const status = readArtifact(config, "lint_health.json")?.tool_status?.typed_eslint;
+    const status = verificationArtifact(config, "lint_health.json")?.tool_status?.typed_eslint;
     return status?.ran === true && status.complete === true ? null : "Required type-aware ESLint analysis did not complete.";
   },
   tests: testEvidenceReason,
   "react-hooks": (config) => {
-    const status = readArtifact(config, "react_health.json")?.tool_status?.eslint_react_hooks;
+    const status = verificationArtifact(config, "react_health.json")?.tool_status?.eslint_react_hooks;
     return status?.ran === true && status.complete === true ? null : "Required React Hooks analysis did not complete.";
   },
-  package: (config) => readArtifact(config, "package_health.json")?.summary.complete === true
+  package: (config) => verificationArtifact(config, "package_health.json")?.summary.complete === true
     ? null
     : "Required package health analysis did not complete.",
 };
@@ -187,7 +193,7 @@ const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = 
 export function requiredEvidenceReasons(config: Config): string[] {
   const reasons = config.policy.requiredChecks.flatMap((check) => EVIDENCE_CHECKS[check](config) ?? []);
   if (config.sarifInputs.some((input) => input.required)) {
-    const statuses = Object.values(readArtifact(config, "sarif_findings.json")?.tool_status ?? {});
+    const statuses = Object.values(verificationArtifact(config, "sarif_findings.json")?.tool_status ?? {});
     for (const input of config.sarifInputs.filter((input) => input.required)) {
       if (!statuses.some((status) => status.path === input.path && status.required === true &&
           status.available === true && status.ran === true && status.complete === true)) {
@@ -196,10 +202,10 @@ export function requiredEvidenceReasons(config: Config): string[] {
     }
   }
   if (Object.values(config.runtimeInputs).some((input) => input !== null) &&
-      readArtifact(config, "runtime_health.json")?.summary.status !== "complete") {
+      verificationArtifact(config, "runtime_health.json")?.summary.status !== "complete") {
     reasons.push("Configured runtime evidence did not complete.");
   }
-  if (config.coverageReport && readArtifact(config, "execution_coverage.json")?.summary.status !== "complete") {
+  if (config.coverageReport && verificationArtifact(config, "execution_coverage.json")?.summary.status !== "complete") {
     reasons.push("Configured execution coverage is incomplete or stale.");
   }
   return reasons;
@@ -207,7 +213,7 @@ export function requiredEvidenceReasons(config: Config): string[] {
 
 function testEvidenceReason(config: Config): string | null {
   if (!config.testCommand) return "Tests are required but no test command is configured.";
-  const execution = readArtifact(config, "correctness_review.json")?.execution;
+  const execution = verificationArtifact(config, "correctness_review.json")?.execution;
   return execution && ["passed", "failed"].includes(execution.status ?? "") ? null : "Required test execution did not complete.";
 }
 

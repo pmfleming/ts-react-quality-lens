@@ -5,13 +5,16 @@ import path from "node:path";
 import { isRecord, parseJson } from "../collections.js";
 import { loadConfig } from "../config.js";
 import { createAnalysisContext } from "../analysis-context.js";
-import { analysisIdentity } from "../provenance.js";
+import { analysisIdentity, artifactBase, sourceSetHash } from "../provenance.js";
+import { writeArtifact } from "../writer.js";
+import type { WireEvidence } from "../wire-evidence.js";
 import { collectFindings, runAuditMeasurements } from "./findings.js";
-import type { AnalysisIdentity, AuditFinding, Config } from "../types.js";
+import type { AnalysisIdentity, Artifact, AuditFinding, Config } from "../types.js";
 
 type BaseSnapshot = {
   findingIds: Set<string>;
   analysisIdentity: AnalysisIdentity;
+  run: Extract<WireEvidence, { kind: "run" }>;
 };
 
 export function readBaselineIds(file: string | null | undefined): Set<string> {
@@ -79,16 +82,23 @@ function measureBaseSnapshot(
   if (path.resolve(baseConfig.projectRoot) !== path.resolve(baseProjectRoot)) return null;
   baseConfig.outputDir = path.join(tempRoot, "target", "audit-base-analysis");
   baseConfig.cache.enabled = false;
-  runAuditMeasurements(baseConfig, command, createAnalysisContext(baseConfig), false);
+  const context = createAnalysisContext(baseConfig);
+  runAuditMeasurements(baseConfig, command, context, false);
   const findings = collectFindings(baseConfig, {
     changedFiles: [],
     changedLines: new Map(),
     baselineIds,
     includeAll: true,
   });
+  const snapshot: Artifact = writeArtifact(baseConfig, "base_snapshot.json", {
+    ...artifactBase(baseConfig, "audit.baseline", command, { complete: true }, sourceSetHash(context.project())),
+    summary: { findings: findings.length },
+  });
+  const run = (snapshot.evidence_contract as WireEvidence[]).find((entry): entry is Extract<WireEvidence, { kind: "run" }> => entry.kind === "run")!;
   return {
     findingIds: new Set(findings.map((finding) => finding.id)),
     analysisIdentity: analysisIdentity(baseConfig),
+    run,
   };
 }
 

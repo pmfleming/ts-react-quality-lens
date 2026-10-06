@@ -129,7 +129,7 @@ test("audits run package health and collect current package failures", () => fix
     } });
     runAuditMeasurements(config, "test", createAnalysisContext(config), false);
     assert.equal(ran, true);
-    assert.deepEqual(requiredEvidenceReasons(config), []);
+    assert.ok(requiredEvidenceReasons(config).some((reason) => reason.includes("package health")), "legacy completion cannot establish current verification");
     assert.ok(collectFindings(config, {
       changedFiles: [], changedLines: new Map(), baselineIds: new Set(), includeAll: true,
     }).some((finding) => finding.id === "package:broken" && finding.disposition === "block"));

@@ -1,4 +1,5 @@
 import childProcess from "node:child_process";
+import { validAttwProblems, validPublintMessages } from "../producer-payload.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -202,8 +203,8 @@ function runAttw(config: Config, tarball: string): PackageHealthResult["attw"] {
 }
 
 function normalizePublintMessages(value: unknown): PublintMessage[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((message): PublintMessage[] => {
+  if (!validPublintMessages(value)) throw new Error("Invalid publint messages payload");
+  return (value as unknown[]).flatMap((message): PublintMessage[] => {
     if (!isRecord(message) || typeof message.code !== "string") return [];
     const type = message.type === "error" || message.type === "warning" ? message.type : "suggestion";
     return [{
@@ -219,9 +220,11 @@ function normalizeAttwProblems(
   value: unknown,
   profile: Config["packageHealth"]["attwProfile"],
 ): AttwProblem[] {
-  if (!isRecord(value) || !isRecord(value.problems)) return [];
+  if (!isRecord(value) || !isRecord(value.problems) || !Object.values(value.problems).every(validAttwProblems)) {
+    throw new Error("Invalid ATTW problems payload");
+  }
   return Object.values(value.problems).flatMap((items): AttwProblem[] => {
-    if (!Array.isArray(items)) return [];
+    if (!Array.isArray(items)) throw new Error("Invalid ATTW problem list");
     return items.flatMap((item): AttwProblem[] => {
       if (!isRecord(item) || typeof item.kind !== "string") return [];
       const resolutionKind = typeof item.resolutionKind === "string" ? item.resolutionKind : undefined;
