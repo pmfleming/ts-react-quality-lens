@@ -65,7 +65,10 @@ export function measureClones(config: Config, command: string, context: Analysis
     },
     engine_relationships: [{ capability: "clones", producers: ["jscpd", "internal-text", "internal-ast"],
       mode: "alternative-and-parallel-candidates", external_evaluated: jscpd.ran,
-      scope: "jscpd replaces internal text fallback; AST candidates are syntax observations, not independent behavioral corroboration" }],
+      scope: "jscpd replaces internal text fallback; AST candidates are syntax observations, not independent behavioral corroboration",
+      selected_files: project.sourceFiles.map((file) => file.relativePath), exclusions: config.exclude,
+      comparison: "not_comparable", reason: "Token/text/AST predicates differ; overlapping regions alone do not establish equivalent claims." }],
+    engine_observations: [...jscpdGroups, ...rawHeuristicGroups, ...astGroups],
     groups,
     records,
   };
@@ -403,6 +406,8 @@ function dedupeCloneRegions(groups: CloneGroup[]): CloneGroup[] {
 function sameCloneRegion(left: CloneGroup, right: CloneGroup): boolean {
   return left.instances.every((instance) =>
     right.instances.some((other) => instance.file === other.file && rangesOverlap(instance, other)),
+  ) && right.instances.every((instance) =>
+    left.instances.some((other) => instance.file === other.file && rangesOverlap(instance, other)),
   );
 }
 

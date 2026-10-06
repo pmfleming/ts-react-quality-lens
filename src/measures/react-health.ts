@@ -66,7 +66,9 @@ export function measureReactHealth(config: Config, command: string, context: Ana
     },
     engine_relationships: [{ capability: "jsx-accessibility", producers: ["eslint-plugin-jsx-a11y", "jsx-a11y-heuristic"],
       mode: "alternative", external_evaluated: a11yLint.complete,
-      scope: "Heuristic fallback is used only when managed accessibility is incomplete; not an independent standards check" }],
+      scope: "Heuristic fallback is used only when managed accessibility is incomplete; not an independent standards check",
+      selected_files: project.sourceFiles.map((file) => file.relativePath), exclusions: config.exclude,
+      comparison: "not_comparable", reason: "Regex candidates and managed accessibility rules do not establish equivalent semantic predicates." }],
     rule_applicability: fileRuleApplicability(BLOCKING_REACT_RULES, project.sourceFiles.map((file) => file.relativePath),
       hooksLint.evaluated_files ?? [], (file) => /\.[jt]sx?$/.test(file)).map((entry) =>
         config.react.ruleset === "classic-v1" && entry.contract_id === "react-hooks/set-state-in-render"

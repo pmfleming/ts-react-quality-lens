@@ -179,7 +179,8 @@ test("measure all writes MVP artifacts", () => {
     record.id === "cleanup:unused-export:src/format:formatPercent" &&
     record.semantic_decision === "confirmed",
   ));
-  assert.ok(cleanup.disagreements?.some((record) => record.semantic_decision === "disagreed"));
+  assert.equal(cleanup.disagreements?.length, 0, "a clean Knip run supplies no per-subject negative claim");
+  assert.ok(cleanup.unconfirmed?.some((record) => record.semantic_decision === "not-comparable"));
   assert.ok(cleanup.records?.some((record) => Array.isArray(record.actions) && record.actions.length > 0));
 
   assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "analysis-v2.json")));
@@ -739,9 +740,9 @@ test("cleanup honors configured public API exports", () => {
   assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
   assert.ok(!cleanup.disagreements?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
   assert.ok(!cleanup.disagreements?.some((record) => record.id === "cleanup:unused-export:src/lib:testHelper"));
-  assert.ok(cleanup.disagreements?.some((record) =>
+  assert.ok(cleanup.unconfirmed?.some((record) =>
     record.id === "cleanup:unused-export:src/lib:unusedHelper" &&
-    record.semantic_decision === "disagreed",
+    record.semantic_decision === "not-comparable" && String(record.reconciliation_reason).includes("silence is not disagreement"),
   ));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });

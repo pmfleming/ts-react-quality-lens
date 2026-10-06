@@ -75,7 +75,7 @@ export function collectReconciliation(config: Config) {
     return artifact ? [{ task_id: taskId,
       relationships: artifact.engine_relationships ?? [],
       observations: [...findingRecords(artifact.records).filter((record) => record.tool_validation !== undefined),
-        ...findingRecords(artifact.disagreements), ...findingRecords(artifact.unconfirmed)],
+        ...findingRecords(artifact.disagreements), ...findingRecords(artifact.unconfirmed), ...findingRecords(artifact.engine_observations)],
     }].filter((item) => item.observations.length > 0 || Array.isArray(item.relationships) && item.relationships.length > 0) : [];
   });
 }

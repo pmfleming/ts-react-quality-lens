@@ -52,6 +52,9 @@ export function measureSarif(config: Config, command: string, context: AnalysisC
       toolStatusKey(config.sarifInputs[index]?.name ?? `sarif-${index + 1}`, index),
       input.status,
     ])),
+    engine_relationships: config.sarifInputs.length ? [{ capability: "imported-scanner-findings", mode: "independent-observations",
+      producers: config.sarifInputs.map((input) => input.name), scope: "Each scanner/input/rule/occurrence retains its own identity",
+      comparison: "not_comparable", reason: "Matching locations or messages do not prove equivalent rules, scope or source provenance." }] : [],
     records,
   };
   return writeArtifact(config, "sarif_findings.json", artifact);

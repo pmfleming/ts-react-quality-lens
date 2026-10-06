@@ -35,3 +35,14 @@ E3 remains open for exhaustive producer/fault combinations and imported source/e
 - Validation: `npm run ci` passed **84 tests** and all smoke checks. Five sibling QML reporter/policy tests passed, including actual CLI formats and changed-code baseline suppression. Shared v1 fixtures remain unchanged.
 
 E4 remains open for exhaustive producer/profile combinations (e.g. all supported optional report formats and real Git-base compatibility cases). The executed matrix is concrete coverage, not a universal alignment claim.
+
+## Stage 4 — explicit engine scope, no invented negatives
+
+- Reproduced and removed the inference that a completed Knip run with no matching issue disagrees with an internal candidate. Knip has no explicit per-subject negative output: silence is now not-comparable, matching QML's native reconciliation contract.
+- Matching requires exact file/symbol (or package/name) identity and completed/versioned evidence. Missing subject fields, excluded dependencies and incomplete scope cannot corroborate. Confirmed bounded matches retain both original observations and a safe-removal limitation.
+- Clone region deduplication no longer erases raw engine observations; subset regions do not silently collapse larger subjects. Audit/SARIF/Markdown retain these observations without adding ordinary blockers.
+- Accessibility, dependency cycles, clones and imported SARIF expose their alternative/parallel/independent scopes and non-comparability reasons. Managed lint filters observations and evaluated counts to the lens-selected source/exclusion scope.
+- Added `contracts/engine-scope.md` with the supported overlap inventory and mutation tests.
+- Validation: native CI **86 tests**, all smoke checks; six final reconciliation/SARIF/real-CLI tests passed after the imported-scope addition; shared TS/QML **380 assertions**; nine QML reconciliation/reporter tests passed.
+
+E6 remains open for exhaustive per-rule exclusion mappings and independently reviewed predicate equivalence. No adapter claims that agreement alone proves behavior preservation.

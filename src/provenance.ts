@@ -92,7 +92,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     payload_validation: "critical-producers-v1",
     artifact_generation: "audit-digests-v1",
     blocking_inventory: "managed-family-v1",
-    engine_reconciliation: "scope-preserving-v2",
+    engine_reconciliation: "explicit-subject-no-silent-negative-v3",
     execution_coverage: "source-linked-v1",
     leverage: "observed-reuse-v2",
     verification_policy: "required-verification-v4",

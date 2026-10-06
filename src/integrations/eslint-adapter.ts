@@ -125,9 +125,10 @@ function runEslint(config: Config, configPath: string, rulePrefix: string | unde
   ];
   const parse = (stdout: string) => {
     const report = parseJson(stdout);
-    const messages = normalizeEslintMessages(report, config, rulePrefix);
+    const selected = new Set(discoverSourceFiles(config).map((file) => relativePath(config.projectRoot, file)));
+    const messages = normalizeEslintMessages(report, config, rulePrefix).filter((message) => selected.has(message.file));
     const evaluated_files = (report as Array<{ filePath: string; messages: Array<{ fatal?: boolean; ruleId?: string }> }>).filter((file) =>
-      !file.messages.some((message) => message.fatal || !message.ruleId)).map((file) => relativePath(config.projectRoot, file.filePath)).sort();
+      !file.messages.some((message) => message.fatal || !message.ruleId)).map((file) => relativePath(config.projectRoot, file.filePath)).filter((file) => selected.has(file)).sort();
     return { messages, evaluated_files };
   };
   return runToolAdapter(

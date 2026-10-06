@@ -87,7 +87,9 @@ export function measureDependencyHealth(config: Config, command: string, context
     },
     engine_relationships: [{ capability: "dependency-cycles", producers: ["dependency-cruiser", "internal-import-graph"],
       mode: "alternative", external_evaluated: depcruise.ran,
-      scope: "External cycle results replace internal fallback; non-evaluated fallback is not disagreement" }],
+      scope: "External cycle results replace internal fallback; non-evaluated fallback is not disagreement",
+      selected_files: project.sourceFiles.map((file) => file.relativePath), exclusions: config.exclude,
+      comparison: "not_comparable", reason: "Only the selected cycle engine is evaluated; graph construction/resolution scopes may differ." }],
     records,
     graph: {
       nodes: project.modules.map((module) => ({

@@ -101,7 +101,10 @@ export function measureCleanup(config: Config, command: string, context: Analysi
       },
     },
     engine_relationships: [{ capability: "cleanup", producers: ["ts-react-quality-lens-cleanup", "knip"],
-      mode: "reconciled", scope: "KNIP_COMPARABLE_KINDS subject matching; exclusions and incomplete scopes retained per candidate" }],
+      mode: "reconciled", scope: "Exact file/name subjects; Knip silence supplies no evaluated negative",
+      selected_files: project.sourceFiles.map((file) => file.relativePath), exclusions: config.exclude,
+      excluded_dependencies: knip.excluded_dependencies, exclusions_complete: knip.exclusions_complete,
+      producer_version: knip.version, external_complete: knip.complete }],
     disagreements: reconciliation.disagreements,
     unconfirmed: reconciliation.unconfirmed,
     records,
@@ -186,12 +189,12 @@ const KNIP_COMPARABLE_KINDS = new Set([
   "duplicate_export",
 ]);
 
-function reconcileCleanupRecords(builtIn: ScoredRecord[], knipRecords: ScoredRecord[], knip: KnipResult): CleanupReconciliation {
+export function reconcileCleanupRecords(builtIn: ScoredRecord[], knipRecords: ScoredRecord[], knip: KnipResult): CleanupReconciliation {
   const matchedKnipIds = new Set<string>();
   const result: CleanupReconciliation = { records: [], disagreements: [], unconfirmed: [] };
   for (const record of builtIn) {
     const match = knipRecords.find((candidate) => cleanupRecordsMatch(record, candidate));
-    if (match) {
+    if (match && knip.complete && knip.version && !dependencyExcludedByKnip(record, knip.excluded_dependencies) && record.validation_scope_complete !== false) {
       matchedKnipIds.add(match.id);
       result.records.push(confirmedCleanupRecord(record, match));
       continue;
@@ -205,6 +208,9 @@ function reconcileCleanupRecords(builtIn: ScoredRecord[], knipRecords: ScoredRec
       source: "ts-react-quality-lens-cleanup",
       tool_validation: validation,
       validation_scope: validationScope(record),
+      reconciliation_reason: validation === "not_comparable" ? "No explicit same-scope evaluated negative was supplied by Knip; silence is not disagreement."
+        : validation === "excluded_by_tool" ? "Dependency is explicitly excluded by Knip." : "Knip completion/version/scope prerequisites are unavailable.",
+      ...(match ? { candidate_observation: match } : {}),
     };
     if (validation === "unavailable") result.records.push(candidate);
     else if (validation === "disagreed") result.disagreements.push(candidate);
@@ -223,6 +229,8 @@ function confirmedCleanupRecord(record: ScoredRecord, match: ScoredRecord): Scor
     finding_confidence: "high",
     source: "knip",
     upstream_finding_id: match.id,
+    supporting_observations: [record, match],
+    reconciliation_limitation: "Agreement on the exact bounded unused-subject claim; not independent proof of safe removal or runtime reachability.",
     corroborating_producers: ["ts-react-quality-lens-cleanup", "knip"],
     tool_validation: "confirmed",
     validation_scope: validationScope(record),
@@ -230,10 +238,10 @@ function confirmedCleanupRecord(record: ScoredRecord, match: ScoredRecord): Scor
 }
 
 function cleanupValidation(record: ScoredRecord, knip: KnipResult): "disagreed" | "not_comparable" | "excluded_by_tool" | "unavailable" {
-  if (!knip.complete) return "unavailable";
+  if (!knip.complete || !knip.version) return "unavailable";
   if (dependencyExcludedByKnip(record, knip.excluded_dependencies)) return "excluded_by_tool";
   if (record.validation_scope_complete === false || isDependencyRecord(record) && !knip.exclusions_complete) return "not_comparable";
-  return typeof record.kind === "string" && KNIP_COMPARABLE_KINDS.has(record.kind) ? "disagreed" : "not_comparable";
+  return "not_comparable";
 }
 
 function isDependencyRecord(record: ScoredRecord): boolean {
@@ -254,9 +262,10 @@ function validationScope(record: ScoredRecord): string {
 
 function cleanupRecordsMatch(left: ScoredRecord, right: ScoredRecord): boolean {
   if (!cleanupKindsMatch(left.kind, right.kind)) return false;
-  if (left.file && right.file && left.file !== right.file) return false;
-  if (left.name && right.name && left.name !== right.name) return false;
-  return Boolean(left.file || left.name);
+  if (isDependencyRecord(left)) return typeof left.name === "string" && left.name === right.name &&
+    typeof left.file === "string" && left.file === right.file;
+  if (typeof left.file !== "string" || left.file !== right.file) return false;
+  return left.kind === "unused_file" || typeof left.name === "string" && left.name === right.name;
 }
 
 function cleanupKindsMatch(left: unknown, right: unknown): boolean {
@@ -408,6 +417,7 @@ function dependencyRecord(
   return {
     id: `cleanup:${kind.replaceAll("_", "-")}:${dependency}`,
     kind,
+    file: "package.json",
     name: dependency,
     score,
     risk,
