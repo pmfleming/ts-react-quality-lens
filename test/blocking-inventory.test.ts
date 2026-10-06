@@ -31,12 +31,20 @@ test("every enabled typed blocker has executed positive, negative and unavailabl
       assert.equal(positive.disposition, "block");
       assert.equal(positive.blocking_contract, item.id);
       assert.ok(!artifact.records.some((record) => record.rule_id === item.id && record.file === `src/negative-${index}.ts`), `negative ${item.id}`);
+      const coverage = artifact.rule_applicability.find((entry) => entry.contract_id === item.id)!;
+      assert.equal(coverage.evaluated, corpus.cases.length * 2, "negative requires actual rule dispatch, not silence");
+      assert.equal(coverage.abstained, 0);
     }
     fs.unlinkSync(path.join(root, "tsconfig.json"));
     const unavailable = measureLint(config, "blocking-corpus");
     assert.equal(unavailable.confidence.complete, false);
     assert.equal(unavailable.tool_status.typed_eslint.complete, false);
     assert.equal(unavailable.records.length, 0, "no findings without execution is not an evaluated negative");
+    assert.ok(unavailable.rule_applicability.every((entry) => entry.evaluated === 0 && entry.abstained === corpus.cases.length * 2));
+    for (const name of fs.readdirSync(path.join(root, "src"))) fs.unlinkSync(path.join(root, "src", name));
+    fs.writeFileSync(path.join(root, "src/plain.js"), "export const value = 1;\n");
+    const inapplicable = measureLint(config, "not-applicable");
+    assert.ok(inapplicable.rule_applicability.every((entry) => entry.status === "not_applicable" && entry.skipped === 1));
     const unknown = enrichFinding(config, { id: "unknown", rule_id: "future/rule", disposition: "block" });
     assert.equal(blockingContract(unknown), null);
     assert.equal(unknown.disposition, "review", "unregistered blockers cannot silently acquire blocking semantics");

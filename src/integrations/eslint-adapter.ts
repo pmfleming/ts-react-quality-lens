@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import { TYPED_RULES } from "../rule-policy.js";
+import { discoverSourceFiles } from "../files.js";
 import os from "node:os";
 import path from "node:path";
 import { isRecord, parseJson } from "../collections.js";
-import { packageJsonUrl } from "../package-root.js";
 import { discoverWorkspaces } from "../workspaces.js";
 import type { Config, EslintAccessibilityResult, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult, ReactRuleset } from "../types.js";
 import {
@@ -37,6 +37,7 @@ export function runTypedLint(config: Config): EslintTypeAwareResult {
       ran: false,
       reason: hasConfig ? "typed lint has no existing source roots" : "typed lint requires a readable tsconfig",
       messages: [],
+      evaluated_files: [],
       version,
       complete: false,
       duration_ms: 0,
@@ -49,7 +50,7 @@ export function runTypedLint(config: Config): EslintTypeAwareResult {
     ...selection,
     version,
     reason: result.reason ?? (parserFailures.length ? `Typed lint could not obtain type information or parse ${parserFailures.length} file(s). See eslint/parser findings.` : null),
-    complete: result.ran && parserFailures.length === 0,
+    complete: result.ran && parserFailures.length === 0 && selectedFilesEvaluated(config, result.evaluated_files, /\.(?:ts|tsx|mts|cts)$/),
   };
 }
 
@@ -81,19 +82,18 @@ export function runJsxA11yLint(config: Config): EslintAccessibilityResult {
 }
 
 export function runReactHooksLint(config: Config): EslintReactHooksResult {
-  const projectPackageUrl = packageJsonUrl(config.projectRoot);
   const result = runTemporaryEslint(
     config,
     "react-hooks",
-    reactHooksConfig(projectPackageUrl, managedPackageJsonUrl(), config.react.ruleset),
+    reactHooksConfig(managedPackageJsonUrl(), config.react.ruleset),
     "react-hooks/",
-    false,
+    true,
   );
   return {
     ...result,
     version: toolPackageVersion("eslint-plugin-react-hooks"),
     ruleset: config.react.ruleset,
-    complete: result.ran && !result.messages.some((message) => message.rule_id === "eslint/parser"),
+    complete: result.ran && !result.messages.some((message) => message.rule_id === "eslint/parser") && selectedFilesEvaluated(config, result.evaluated_files, /\.[jt]sx?$/),
   };
 }
 
@@ -123,16 +123,28 @@ function runEslint(config: Config, configPath: string, rulePrefix: string | unde
     "--no-error-on-unmatched-pattern",
     ...existingRelativeRoots(config),
   ];
-  const parse = (stdout: string) => ({ messages: normalizeEslintMessages(parseJson(stdout), config, rulePrefix) });
+  const parse = (stdout: string) => {
+    const report = parseJson(stdout);
+    const messages = normalizeEslintMessages(report, config, rulePrefix);
+    const evaluated_files = (report as Array<{ filePath: string; messages: Array<{ fatal?: boolean; ruleId?: string }> }>).filter((file) =>
+      !file.messages.some((message) => message.fatal || !message.ruleId)).map((file) => relativePath(config.projectRoot, file.filePath)).sort();
+    return { messages, evaluated_files };
+  };
   return runToolAdapter(
     config,
     "eslint",
     preferManaged ? "managed eslint executable was not found" : "eslint executable was not found",
-    { messages: [] },
+    { messages: [], evaluated_files: [] as string[] },
     (executable) => parse(runLocalTool(executable, args, toolRunOptions(config))),
     (error) => recoverToolJson(error, "[", parse),
     preferManaged,
   );
+}
+
+function selectedFilesEvaluated(config: Config, evaluated: string[], language: RegExp): boolean {
+  const seen = new Set(evaluated);
+  const selected = discoverSourceFiles(config).filter((file) => language.test(file));
+  return selected.every((file) => seen.has(relativePath(config.projectRoot, file)));
 }
 
 function typedLintConfig(config: Config, mode: EslintTypeAwareResult["project_mode"]): string {
@@ -181,17 +193,15 @@ export default [{
 `;
 }
 
-function reactHooksConfig(projectPackageUrl: string, toolPackageUrl: string, ruleset: ReactRuleset): string {
+function reactHooksConfig(toolPackageUrl: string, ruleset: ReactRuleset): string {
   const classicRules = {
     "react-hooks/rules-of-hooks": "error",
     "react-hooks/exhaustive-deps": "warn",
   };
   return `import { createRequire } from "node:module";
-const projectRequire = createRequire(${JSON.stringify(projectPackageUrl)});
 const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
-function requireTool(name) { try { return projectRequire(name); } catch { return toolRequire(name); } }
-const reactHooks = requireTool("eslint-plugin-react-hooks");
-const tsParser = requireTool("@typescript-eslint/parser");
+const reactHooks = toolRequire("eslint-plugin-react-hooks");
+const tsParser = toolRequire("@typescript-eslint/parser");
 const classicRules = ${JSON.stringify(classicRules)};
 const recommendedRules = reactHooks.configs?.flat?.["recommended-latest"]?.rules
   ?? reactHooks.configs?.["recommended-latest"]?.rules

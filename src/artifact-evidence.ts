@@ -1,3 +1,4 @@
+import { familyApplicability, validRuleApplicability } from "./rule-applicability.js";
 import { separateTelemetry } from "./artifact-telemetry.js";
 import { capabilityEvidence, validCapabilityEvidence, type CapabilityEvidence, type CapabilityStatus } from "./capability-evidence.js";
 import { isRecord } from "./collections.js";
@@ -48,6 +49,7 @@ export function attachArtifactEvidence(config: Config, artifact: Artifact): Arti
     confidence: { ...artifact.confidence, complete: primary.status === "completed",
       partial: !["completed", "disabled", "not_applicable"].includes(primary.status), capability_status: primary.status },
     capabilities: [primary, ...tools],
+    rule_applicability: artifact.rule_applicability ?? familyApplicability(config, artifact),
   };
   result.evidence_contract = projectWireEvidence(result);
   if (!validNativeEvidence(result, config)) throw new Error(`Invalid native evidence projection for ${artifact.task_id}`);
@@ -99,6 +101,7 @@ function projectWireEvidence(artifact: Artifact): WireEvidence[] {
 /** Validate references and the native/common projection together, not just JSON shapes. */
 export function validNativeEvidence(artifact: Artifact, config?: Config): boolean {
   if (artifact.provenance.run_id === undefined) return true;
+  if (!validRuleApplicability(artifact.rule_applicability, artifact.task_id)) return false;
   if (!Array.isArray(artifact.capabilities) || !artifact.capabilities.length || !artifact.capabilities.every(validCapabilityEvidence)) return false;
   if (artifact.capabilities[0]?.capability !== artifact.task_id ||
       artifact.confidence.complete !== (artifact.capabilities[0]?.status === "completed")) return false;

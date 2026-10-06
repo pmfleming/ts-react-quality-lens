@@ -86,7 +86,8 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   };
   const configHash = configClosureHash(config);
   const rulesets = {
-    builtin: "tsrqlens-analysis-v4",
+    builtin: "tsrqlens-analysis-v5",
+    rule_applicability: "bounded-dispatch-v1",
     evidence_projection: "native-producer-v1",
     blocking_inventory: "managed-family-v1",
     engine_reconciliation: "scope-preserving-v2",

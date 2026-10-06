@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { BLOCKING_TYPED_RULES, BLOCKING_REACT_RULES, BLOCKING_FAMILIES } from "../src/rule-policy.js";
+import { BLOCKING_TYPED_RULES, BLOCKING_REACT_RULES, BLOCKING_FAMILIES, validateBlockingInventory } from "../src/rule-policy.js";
 import { isRecord, parseJson } from "../src/collections.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -59,6 +59,8 @@ const typedCases = typed.cases.filter(isRecord);
 assert.deepEqual(typedCases.map((item) => item.id).sort(), [...BLOCKING_TYPED_RULES].sort(), "every enabled typed blocker needs executable cases");
 assert.deepEqual(rules.filter((rule) => rule.default_disposition === "block").map((rule) => rule.id).sort(), [...BLOCKING_REACT_RULES].sort());
 assert.deepEqual(families.families.filter(isRecord).map((item) => item.id).sort(), [...BLOCKING_FAMILIES].sort());
+validateBlockingInventory([...typedCases, ...rules.filter((rule) => rule.default_disposition === "block"), ...families.families.filter(isRecord)]
+  .map((item) => requiredString(item, "id")));
 for (const item of typedCases) {
   assert.ok(requiredString(item, "positive").endsWith("\n"));
   assert.ok(requiredString(item, "rationale").length > 10);

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { fileRuleApplicability } from "../rule-applicability.js";
 import { BLOCKING_TYPED_RULES, TYPED_RULES } from "../rule-policy.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { changedFilesSince, defaultBase } from "../audit/change-set.js";
@@ -86,8 +87,11 @@ export function measureLint(config: Config, command: string, context: AnalysisCo
         configured_project: lint.configured_project,
         duration_ms: lint.duration_ms ?? null,
         ruleset: "tsrqlens-typescript-recommended-v1",
+        evaluated_files: lint.evaluated_files ?? [],
       },
     },
+    rule_applicability: fileRuleApplicability(BLOCKING_TYPED_RULES, project.sourceFiles.map((file) => file.relativePath),
+      lint.evaluated_files ?? [], (file) => /\.(?:ts|tsx|mts|cts)$/.test(file)),
     records,
   };
   return writeArtifact(config, "lint_health.json", artifact);

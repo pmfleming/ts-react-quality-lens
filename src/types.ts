@@ -635,7 +635,7 @@ export type JscpdDuplicate = {
   hash?: string;
 };
 
-type ToolResult = { available: boolean; ran: boolean; reason: string | null; duration_ms?: number };
+type ToolResult = { available: boolean; ran: boolean; reason: string | null; duration_ms?: number; evaluated_files?: string[] };
 
 export type JscpdResult = ToolResult & { duplicates: JscpdDuplicate[]; statistics: Record<string, unknown> };
 

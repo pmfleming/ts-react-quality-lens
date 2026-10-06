@@ -23,6 +23,14 @@ export const BLOCKING_TYPED_RULES = Object.entries(TYPED_RULES)
 export const BLOCKING_REACT_RULES = ["react-hooks/rules-of-hooks", "react-hooks/set-state-in-render"];
 export const BLOCKING_FAMILIES = ["compiler", "test-execution", "package-execution", "publint", "attw", "sarif-execution", "sarif-result", "axe"];
 
+/** CI and mutation tests use the same closed inventory, independent of observed findings. */
+export function validateBlockingInventory(registered: string[], enabled: string[] = [...BLOCKING_TYPED_RULES, ...BLOCKING_REACT_RULES, ...BLOCKING_FAMILIES]): void {
+  if (new Set(registered).size !== registered.length) throw new Error("Duplicate blocking contract");
+  const missing = enabled.filter((id) => !registered.includes(id));
+  const orphaned = registered.filter((id) => !enabled.includes(id));
+  if (missing.length || orphaned.length) throw new Error(`Blocking inventory mismatch: missing=${missing.join(",")}; orphaned=${orphaned.join(",")}`);
+}
+
 /** Dynamic upstream IDs remain exact on findings; family contracts bound their interpretation. */
 export function blockingContract(record: ScoredRecord): string | null {
   const id = record.rule_id ?? "";

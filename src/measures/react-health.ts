@@ -1,3 +1,5 @@
+import { fileRuleApplicability } from "../rule-applicability.js";
+import { BLOCKING_REACT_RULES } from "../rule-policy.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { eslintFindingRecord } from "../integrations/eslint-findings.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
@@ -65,6 +67,10 @@ export function measureReactHealth(config: Config, command: string, context: Ana
     engine_relationships: [{ capability: "jsx-accessibility", producers: ["eslint-plugin-jsx-a11y", "jsx-a11y-heuristic"],
       mode: "alternative", external_evaluated: a11yLint.complete,
       scope: "Heuristic fallback is used only when managed accessibility is incomplete; not an independent standards check" }],
+    rule_applicability: fileRuleApplicability(BLOCKING_REACT_RULES, project.sourceFiles.map((file) => file.relativePath),
+      hooksLint.evaluated_files ?? [], (file) => /\.[jt]sx?$/.test(file)).map((entry) =>
+        config.react.ruleset === "classic-v1" && entry.contract_id === "react-hooks/set-state-in-render"
+          ? { ...entry, evaluated: 0, abstained: 0, skipped: project.sourceFiles.length, status: "not_applicable" as const, reasons: ["Rule is disabled in the classic profile."] } : entry),
     records,
   };
   return writeArtifact(config, "react_health.json", artifact);
