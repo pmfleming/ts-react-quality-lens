@@ -1,4 +1,4 @@
-import { isRecord } from "./collections.js";
+import { arrayOf, count, oneOf, shape, string } from "./validation.js";
 import { BLOCKING_REACT_RULES, BLOCKING_TYPED_RULES } from "./rule-policy.js";
 import type { Artifact, Config } from "./types.js";
 
@@ -50,20 +50,15 @@ export function familyApplicability(config: Config, artifact: Artifact): RuleApp
   }
 }
 
+const reasons = arrayOf((value: unknown): value is string => string(value) && value.length > 0);
+const applicability = arrayOf(shape({ contract_id: string, unit: oneOf("file", "producer-invocation"), evaluated: count, skipped: count,
+  abstained: count, reasons, limitations: reasons, status: oneOf("partial", "unavailable", "evaluated", "not_applicable") }));
 export function validRuleApplicability(value: unknown, task: string): boolean {
-  if (!Array.isArray(value)) return false;
-  const ids = new Set<string>();
-  for (const item of value) {
-    if (!isRecord(item) || typeof item.contract_id !== "string" || ids.has(item.contract_id) ||
-        !["file", "producer-invocation"].includes(String(item.unit)) ||
-        !["evaluated", "skipped", "abstained"].every((key) => Number.isSafeInteger(item[key]) && Number(item[key]) >= 0) ||
-        !Array.isArray(item.reasons) || !item.reasons.every((reason) => typeof reason === "string" && reason.length > 0) ||
-        !Array.isArray(item.limitations) || !item.limitations.length || !item.limitations.every((reason) => typeof reason === "string" && reason.length > 0)) return false;
-    ids.add(item.contract_id);
-    const expected = Number(item.abstained) > 0 ? Number(item.evaluated) > 0 ? "partial" : "unavailable"
-      : Number(item.evaluated) > 0 ? "evaluated" : "not_applicable";
-    if (item.status !== expected || expected !== "evaluated" && !item.reasons.length) return false;
-  }
+  if (!applicability(value)) return false;
+  const ids = new Set(value.map((item) => item.contract_id));
   const required = task === "quality.lint" ? BLOCKING_TYPED_RULES : task === "quality.react_health" ? BLOCKING_REACT_RULES : [];
-  return required.every((id) => ids.has(id));
+  return ids.size === value.length && required.every((id) => ids.has(id)) && value.every((item) => {
+    const expected = item.abstained > 0 ? item.evaluated > 0 ? "partial" : "unavailable" : item.evaluated > 0 ? "evaluated" : "not_applicable";
+    return item.limitations.length > 0 && item.status === expected && (expected === "evaluated" || item.reasons.length > 0);
+  });
 }

@@ -1,4 +1,4 @@
-import { isRecord } from "./collections.js";
+import { arrayOf, count, nonempty, oneOf, shape } from "./validation.js";
 
 /** Cross-lens capability contract v1. Quality verdict is deliberately separate. */
 export type CapabilityStatus = "completed" | "partial" | "unavailable" | "disabled" | "not_applicable" | "failed_execution";
@@ -18,14 +18,10 @@ export function capabilityEvidence(capability: string, scope: string, evaluated:
   return result;
 }
 
+const capability = shape({ schema_version: count, capability: nonempty, scope: nonempty, evaluated: count, skipped: count, reasons: arrayOf(nonempty),
+  status: oneOf("completed", "partial", "unavailable", "disabled", "not_applicable", "failed_execution") });
 export function validCapabilityEvidence(value: unknown): value is CapabilityEvidence {
-  if (!isRecord(value)) return false;
-  const item = value;
-  const statuses: string[] = ["completed", "partial", "unavailable", "disabled", "not_applicable", "failed_execution"];
-  return item.schema_version === 1 && typeof item.capability === "string" && item.capability.trim().length > 0 &&
-    typeof item.scope === "string" && item.scope.trim().length > 0 && typeof item.status === "string" && statuses.includes(item.status) &&
-    Number.isSafeInteger(item.evaluated) && Number(item.evaluated) >= 0 && Number.isSafeInteger(item.skipped) && Number(item.skipped) >= 0 &&
-    Array.isArray(item.reasons) && item.reasons.every((reason) => typeof reason === "string" && reason.trim().length > 0) &&
-    (item.status === "completed" ? item.skipped === 0 && item.reasons.length === 0 : item.reasons.length > 0) &&
-    (!["disabled", "not_applicable", "unavailable", "failed_execution"].includes(item.status) || item.evaluated === 0);
+  return capability(value) && value.schema_version === 1 && (value.status === "completed"
+    ? value.skipped === 0 && value.reasons.length === 0
+    : value.reasons.length > 0 && (value.status === "partial" || value.evaluated === 0));
 }

@@ -51,7 +51,7 @@ test("native critical payload corruption cannot be repaired by regenerating its 
 test("malformed package diagnostic lists are not empty successful reports", () => {
   assert.ok(validPublintMessages([]));
   assert.ok(validAttwProblems([]));
-  for (const value of [null, {}, [null], [{ code: "X", type: "error", path: 1, args: {} }]]) assert.equal(validPublintMessages(value), false);
+  for (const value of [null, {}, [null], [{ code: "X", type: "error", path: 1, args: {} }], [{ code: "X", type: ["error"], path: [], args: {} }]]) assert.equal(validPublintMessages(value), false);
   for (const value of [null, {}, [null], [{ kind: "" }], [{ kind: "X", resolutionKind: 2 }]]) assert.equal(validAttwProblems(value), false);
 });
 

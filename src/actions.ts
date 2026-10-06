@@ -1,4 +1,5 @@
 import { isRecord } from "./collections.js";
+import { isScoredRecord } from "./findings.js";
 import { blockingContract } from "./rule-policy.js";
 import { normalizeFindingIdentities } from "./finding-identity.js";
 import { discoverWorkspaces, workspaceForFile } from "./workspaces.js";
@@ -80,10 +81,6 @@ function cachedWorkspaces(config: Config): ReturnType<typeof discoverWorkspaces>
   const records = discoverWorkspaces(config).records;
   workspaceCache.set(config, records);
   return records;
-}
-
-function isScoredRecord(value: unknown): value is ScoredRecord {
-  return isRecord(value) && typeof value.id === "string";
 }
 
 export function isSuppressed(record: Pick<ScoredRecord, "suppressed">): boolean {

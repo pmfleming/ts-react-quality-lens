@@ -106,7 +106,7 @@ function packageVersionAbove(entry: string, name: string): string | null {
   return null;
 }
 
-function toolResult<T extends Record<string, unknown>>(
+export function toolResult<T extends Record<string, unknown>>(
   available: boolean,
   ran: boolean,
   reason: string | null,
@@ -145,6 +145,8 @@ function quoteWindowsArg(value: string): string {
   return /[ \t"&|<>^]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-function toolError(error: ExecError): string {
-  return (String(error.stderr ?? "").trim() || String(error.stdout ?? "").trim() || error.message).slice(0, 4000);
+export function toolError(error: unknown): string {
+  const details = isRecord(error) ? error : {};
+  return (String(details.stderr ?? "").trim() || String(details.stdout ?? "").trim() ||
+    (error instanceof Error ? error.message : String(error))).slice(0, 4000);
 }

@@ -1,4 +1,5 @@
 import { isRecord } from "./collections.js";
+import { arrayOf, finite, nonempty, nullable, oneOf, optional, positiveInteger, shape } from "./validation.js";
 
 type Producer = { name: string; version: string };
 type Base = { schema_version: 1 };
@@ -13,35 +14,27 @@ export type WireEvidence = Base & (
   | { kind: "comparison"; status: "compatible" | "incompatible" | "unknown"; current_run: string; baseline_run: string | null; reasons: string[] }
 );
 
-const text = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
-const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(text);
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const producer = (value: unknown): value is Producer => isRecord(value) && text(value.name) && text(value.version);
-const member = (value: unknown, choices: string[]) => typeof value === "string" && choices.includes(value);
+const producer = shape({ name: nonempty, version: nonempty });
+const measurement = shape({ name: nonempty, value: nullable(finite), unit: nonempty, scope: nonempty, model: nonempty, run_id: nonempty,
+  limitations: arrayOf(nonempty), uncertainty: nullable(shape({ lower: finite, upper: finite })) });
+const comparison = shape({ current_run: nonempty, baseline_run: nullable(nonempty), reasons: arrayOf(nonempty),
+  status: oneOf("compatible", "incompatible", "unknown") });
+const variants = new Map<string, (value: unknown) => boolean>([
+  ["run", shape({ id: nonempty, ruleset: nonempty, config_fingerprint: nonempty, input_fingerprint: nonempty,
+    language_profile: nonempty, analyzer: producer, producers: arrayOf(producer) })],
+  ["finding", shape({ id: nonempty, rule_id: (value): value is string => nonempty(value) && /[./:]/.test(value),
+    subject: nonempty, run_id: nonempty, message: nonempty,
+    evidence_kind: oneOf("diagnostic", "test", "metric", "heuristic", "semantic", "tool-rule"),
+    confidence: oneOf("high", "medium", "low"), severity: oneOf("error", "warning", "note"), disposition: oneOf("block", "warn", "review", "info"),
+    locations: arrayOf(shape({ file: nonempty, line: positiveInteger })), suppression: nullable(shape({ reason: nonempty })) })],
+  ["measurement", (value) => measurement(value) && (value.value !== null || value.limitations.length > 0) &&
+    (value.uncertainty === null || value.value !== null && value.uncertainty.lower <= value.uncertainty.upper)],
+  ["comparison", (value) => comparison(value) && (value.status === "compatible"
+    ? value.baseline_run !== null && value.reasons.length === 0 : value.reasons.length > 0)],
+]);
 
 /** Validate optional cross-lens evidence once at an untrusted JSON boundary. */
 export function isWireEvidence(value: unknown): value is WireEvidence {
-  if (!isRecord(value) || value.schema_version !== 1) return false;
-  switch (value.kind) {
-    case "run": return [value.id, value.ruleset, value.config_fingerprint, value.input_fingerprint, value.language_profile].every(text)
-      && producer(value.analyzer) && Array.isArray(value.producers) && value.producers.every(producer);
-    case "finding": return [value.id, value.rule_id, value.subject, value.run_id, value.message].every(text)
-      && typeof value.rule_id === "string" && /[./:]/.test(value.rule_id)
-      && member(value.evidence_kind, ["diagnostic", "test", "metric", "heuristic", "semantic", "tool-rule"])
-      && member(value.confidence, ["high", "medium", "low"]) && member(value.severity, ["error", "warning", "note"])
-      && member(value.disposition, ["block", "warn", "review", "info"])
-      && Array.isArray(value.locations) && value.locations.every((location) => isRecord(location) && text(location.file) && Number.isSafeInteger(location.line) && Number(location.line) > 0)
-      && (value.suppression === null || (isRecord(value.suppression) && text(value.suppression.reason)));
-    case "measurement": return [value.name, value.unit, value.scope, value.model, value.run_id].every(text) && strings(value.limitations)
-      && (finite(value.value) || (value.value === null && value.limitations.length > 0))
-      && (value.uncertainty === null || (finite(value.value) && isRecord(value.uncertainty) && finite(value.uncertainty.lower) && finite(value.uncertainty.upper) && value.uncertainty.lower <= value.uncertainty.upper));
-    case "comparison": return text(value.current_run) && (value.baseline_run === null || text(value.baseline_run)) && strings(value.reasons)
-      && member(value.status, ["compatible", "incompatible", "unknown"])
-      && (value.status === "compatible" ? text(value.baseline_run) && value.reasons.length === 0 : value.reasons.length > 0);
-    default: return false;
-  }
+  return isRecord(value) && value.schema_version === 1 && typeof value.kind === "string" && (variants.get(value.kind)?.(value) ?? false);
 }
-
-export function validWireExtension(value: unknown): boolean {
-  return value === undefined || (Array.isArray(value) && value.every(isWireEvidence));
-}
+export const validWireExtension = optional(arrayOf(isWireEvidence));

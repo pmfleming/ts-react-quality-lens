@@ -2,11 +2,11 @@ import { validProducerPayload } from "./producer-payload.js";
 import { familyApplicability, validRuleApplicability } from "./rule-applicability.js";
 import { separateTelemetry } from "./artifact-telemetry.js";
 import { capabilityEvidence, validCapabilityEvidence, type CapabilityEvidence, type CapabilityStatus } from "./capability-evidence.js";
-import { isRecord } from "./collections.js";
+import { isRecord, isUnknownArray } from "./collections.js";
+import { findingRecords, FINDING_COLLECTIONS, isScoredRecord } from "./findings.js";
+import { arrayOf } from "./validation.js";
 import { isWireEvidence, type WireEvidence } from "./wire-evidence.js";
-import type { Artifact, Config, ScoredRecord } from "./types.js";
-
-const findingCollections = ["records", "groups", "findings", "disagreements", "unconfirmed"] as const;
+import type { Artifact, Config } from "./types.js";
 const scope = "producer invocation; per-rule/file coverage is not implied";
 
 function capability(name: string, status: CapabilityStatus, reason?: string): CapabilityEvidence {
@@ -35,7 +35,7 @@ function producerCapability(artifact: Artifact): CapabilityEvidence {
   const reasons = [
     ...(confidence.missing_input ?? []), ...(confidence.stale_input ?? []),
     ...(confidence.unsupported_pattern ?? []).map((item) => item.message ?? item.kind),
-    ...(task === "audit" && Array.isArray(summary.incomplete_reasons) ? summary.incomplete_reasons : []),
+    ...(task === "audit" && isUnknownArray(summary.incomplete_reasons) ? summary.incomplete_reasons : []),
   ].filter((item): item is string => typeof item === "string");
   return capability(task, status, reasons.join("; ") || (status === "disabled" ? "Not configured or disabled in the selected profile." : undefined));
 }
@@ -63,20 +63,13 @@ function toolCapabilities(config: Config, artifact: Artifact): CapabilityEvidenc
       (name === "knip" && !config.cleanup.knip) || (artifact.task_id === "quality.package_health" && !config.packageHealth.enabled)));
 }
 
-function nativeFindings(artifact: Artifact): ScoredRecord[] {
-  return findingCollections.flatMap((key) => {
-    const values = artifact[key];
-    return Array.isArray(values) ? values.filter((value): value is ScoredRecord => isRecord(value) && typeof value.id === "string") : [];
-  });
-}
-
 function projectWireEvidence(artifact: Artifact): WireEvidence[] {
   const identity = artifact.analysis_identity;
   if (!identity || typeof artifact.provenance.run_id !== "string" || typeof artifact.provenance.input_set_hash !== "string") {
     throw new Error("Native run evidence needs analysis and input identity");
   }
   const runId = artifact.provenance.run_id;
-  const findings: WireEvidence[] = nativeFindings(artifact).map((record) => ({
+  const findings: WireEvidence[] = FINDING_COLLECTIONS.flatMap((key) => findingRecords(artifact[key])).map((record) => ({
     schema_version: 1, kind: "finding", id: record.id, rule_id: record.rule_id ?? "ts-react-quality-lens/unknown",
     subject: record.id, run_id: runId,
     locations: record.file ? [{ file: record.file, line: Math.max(1, record.line ?? 1) }] : [],
@@ -102,9 +95,9 @@ function projectWireEvidence(artifact: Artifact): WireEvidence[] {
         (!isRecord(comparison.baseline) || comparison.baseline.ruleset !== identity.id || comparison.baseline.config_fingerprint !== identity.config_closure_hash)) {
       throw new Error("Comparison disagrees with native compatibility evidence");
     }
-    if (comparison.baseline !== null) comparisons.push(comparison.baseline as WireEvidence);
+    if (comparison.baseline !== null) comparisons.push(comparison.baseline);
     const entry = { schema_version: 1, kind: "comparison", status: comparison.status, current_run: runId,
-      baseline_run: comparison.baseline === null ? null : (comparison.baseline as Extract<WireEvidence, { kind: "run" }>).id, reasons: comparison.reasons };
+      baseline_run: comparison.baseline === null ? null : comparison.baseline.id, reasons: comparison.reasons };
     if (!isWireEvidence(entry)) throw new Error("Invalid native comparison outcome");
     comparisons.push(entry);
   }
@@ -127,9 +120,7 @@ export function validNativeEvidence(artifact: Artifact, config?: Config): boolea
   if (artifact.tool_status !== undefined && (!isRecord(artifact.tool_status) || !Object.values(artifact.tool_status).every((status) =>
     isRecord(status) && ["available", "ran", "complete"].every((key) => status[key] === undefined || typeof status[key] === "boolean")))) return false;
   if (artifact.execution !== undefined && (!isRecord(artifact.execution) || !["passed", "failed", "not_run", "unknown"].includes(String(artifact.execution.status)))) return false;
-  for (const key of findingCollections) {
-    if (artifact[key] !== undefined && (!Array.isArray(artifact[key]) || !(artifact[key] as unknown[]).every((item) => isRecord(item) && typeof item.id === "string"))) return false;
-  }
+  if (FINDING_COLLECTIONS.some((key) => artifact[key] !== undefined && !arrayOf(isScoredRecord)(artifact[key]))) return false;
   try {
     if (config && JSON.stringify(artifact.capabilities) !== JSON.stringify([producerCapability(artifact), ...toolCapabilities(config, artifact)])) return false;
     const expected = projectWireEvidence(artifact);

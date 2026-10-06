@@ -1,5 +1,8 @@
 import os from "node:os";
 import { packageRootFrom } from "./package-root.js";
+import { parseJson } from "./collections.js";
+import { fileInput } from "./files.js";
+import { nonempty, shape } from "./validation.js";
 import { capabilityEvidence } from "./capability-evidence.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -11,7 +14,9 @@ import { discoverWorkspaces } from "./workspaces.js";
 import { gitHistoryFingerprint } from "./history.js";
 import type { AnalysisIdentity, Confidence, Config, ProjectAnalysis } from "./types.js";
 
-const analyzerVersion: string = JSON.parse(fs.readFileSync(path.join(packageRootFrom(import.meta.url), "package.json"), "utf8")).version;
+const manifest = parseJson(fs.readFileSync(path.join(packageRootFrom(import.meta.url), "package.json"), "utf8"));
+if (!shape({ version: nonempty })(manifest)) throw new Error("Lens package has no version");
+const analyzerVersion = manifest.version;
 
 function provenance(command: string, sourceType = "static") {
   return {
@@ -99,6 +104,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     verification_policy: "required-verification-v4",
     determinism: "semantic-boundary-v3",
     finding_identity: "semantic-occurrence-v1",
+    escape_identity: "node-span-v2",
     sarif: "lossless-audit-projection-v3",
     test_mapping: "compiler-imports-v1",
     import_resolution: "path-aliases-v2",
@@ -167,10 +173,8 @@ export function sourceSetHash(
   const measured = new Set([...files.values()].map((file) => path.resolve(file.path)));
   const first = project.sourceFiles[0];
   const root = first ? first.path.slice(0, -first.relativePath.length) : ".";
-  const dependencies = (project.tsProject?.input_files ?? []).filter((file) => !measured.has(file)).map((file) => ({
-    relativePath: `compiler-input:${path.relative(root, file).replace(/\\/g, "/")}`,
-    text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing",
-  }));
+  const dependencies = (project.tsProject?.input_files ?? []).filter((file) => !measured.has(file))
+    .map((file) => fileInput(file, `compiler-input:${path.relative(root, file).replace(/\\/g, "/")}`));
   return contentHash([...files.values(), ...dependencies]);
 }
 
@@ -181,10 +185,8 @@ export function taskInputHash(config: Config, taskId: string, sourceHash: string
     : taskId === "testing.coverage" ? [config.coverageReport]
     : taskId === "quality.type_health" ? [config.typeCoverage.baseline]
     : taskId === "map.architecture" ? Object.values(config.performanceInputs) : [];
-  return contentHash(files.filter((file): file is string => file !== null).map((file) => ({
-    relativePath: path.relative(config.projectRoot, file),
-    text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing",
-  })), [sourceHash, identity.id, taskId, ...(taskId === "quality.locality_dynamic" ? [gitHistoryFingerprint(config)] : [])]);
+  const inputs = files.filter((file): file is string => file !== null).map((file) => fileInput(file, path.relative(config.projectRoot, file)));
+  return contentHash(inputs, [sourceHash, identity.id, taskId, ...(taskId === "quality.locality_dynamic" ? [gitHistoryFingerprint(config)] : [])]);
 }
 
 function collectCompilerConfigInputs(

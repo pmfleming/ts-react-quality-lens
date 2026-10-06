@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { validateArtifactReferences } from "./artifact-references.js";
+import { isArtifactEnvelope } from "./producer-payload.js";
 import { attachArtifactEvidence, validNativeEvidence } from "./artifact-evidence.js";
 import { validWireExtension } from "./wire-evidence.js";
 import path from "node:path";
@@ -76,14 +77,4 @@ export function readArtifact(config: Config, artifactName: string): Artifact | n
 
 function isArtifact(value: unknown, config: Config): value is Artifact {
   return isArtifactEnvelope(value) && validNativeEvidence(value, config);
-}
-
-function isArtifactEnvelope(value: unknown): value is Artifact {
-  return isRecord(value) && validWireExtension(value.evidence_contract) &&
-    typeof value.schema_version === "string" &&
-    typeof value.task_id === "string" &&
-    isRecord(value.project) &&
-    isRecord(value.provenance) &&
-    isRecord(value.confidence) &&
-    isRecord(value.summary);
 }

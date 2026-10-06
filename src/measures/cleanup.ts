@@ -435,93 +435,55 @@ function declarationSurfaceTypeReferences(modules: ModuleRecord[]): Map<string, 
 type ExportOrigins = Map<string, Set<string>>;
 
 function conflictingPublicExportRecords(modules: ModuleRecord[], entryFiles: Set<string>): ScoredRecord[] {
-  const byId = new Map(modules.map((moduleRecord) => [moduleRecord.id, moduleRecord]));
-  const memo = new Map<string, ExportOrigins>();
+  const exports = new PublicExports(modules);
   return modules
     .filter((moduleRecord) => entryFiles.has(moduleRecord.file))
-    .flatMap((moduleRecord) => [...publicExportOrigins(moduleRecord, byId, memo, new Set()).entries()].flatMap(([name, origins]) =>
+    .flatMap((moduleRecord) => [...exports.origins(moduleRecord).entries()].flatMap(([name, origins]) =>
       origins.size > 1 ? [conflictingExportRecord(moduleRecord, name, origins)] : [],
     ));
 }
 
-function publicExportOrigins(
-  moduleRecord: ModuleRecord,
-  modules: Map<string, ModuleRecord>,
-  memo: Map<string, ExportOrigins>,
-  visiting: Set<string>,
-): ExportOrigins {
-  const cached = memo.get(moduleRecord.id);
-  if (cached) return cached;
-  if (visiting.has(moduleRecord.id)) return new Map();
-  const nextVisiting = new Set(visiting).add(moduleRecord.id);
-  const origins: ExportOrigins = new Map();
-  const sourceFile = moduleSourceFile(moduleRecord);
-  addExplicitExportOrigins(moduleRecord, sourceFile, origins, modules, memo, nextVisiting);
-  addWildcardExportOrigins(moduleRecord, sourceFile, origins, modules, memo, nextVisiting);
-  memo.set(moduleRecord.id, origins);
-  return origins;
-}
-
-function addExplicitExportOrigins(
-  moduleRecord: ModuleRecord,
-  sourceFile: ts.SourceFile,
-  origins: ExportOrigins,
-  modules: Map<string, ModuleRecord>,
-  memo: Map<string, ExportOrigins>,
-  visiting: Set<string>,
-): void {
-  for (const exported of moduleRecord.exports) {
-    const declaration = exportDeclarationAtLine(sourceFile, exported.line);
-    if (!declaration?.moduleSpecifier || !ts.isStringLiteral(declaration.moduleSpecifier)) {
-      addExportOrigin(origins, exported.name, `${moduleRecord.id}:${exported.name}`);
-      continue;
+class PublicExports {
+  private readonly modules: Map<string, ModuleRecord>;
+  private readonly memo = new Map<string, ExportOrigins>();
+  constructor(modules: ModuleRecord[]) {
+    this.modules = new Map(modules.map((module) => [module.id, module]));
+  }
+  origins(module: ModuleRecord, visiting = new Set<string>()): ExportOrigins {
+    const cached = this.memo.get(module.id);
+    if (cached) return cached;
+    if (visiting.has(module.id)) return new Map();
+    const next = new Set(visiting).add(module.id), origins: ExportOrigins = new Map();
+    const source = moduleSourceFile(module);
+    for (const exported of module.exports) {
+      const declaration = exportDeclarationAtLine(source, exported.line);
+      const values = declaration?.moduleSpecifier && ts.isStringLiteral(declaration.moduleSpecifier)
+        ? this.resolve(module, exported, declaration, next) : [`${module.id}:${exported.name}`];
+      for (const value of values) addExportOrigin(origins, exported.name, value);
     }
+    this.addWildcards(module, source, origins, next);
+    this.memo.set(module.id, origins);
+    return origins;
+  }
+  private resolve(module: ModuleRecord, exported: ModuleRecord["exports"][number], declaration: ts.ExportDeclaration, visiting: Set<string>): Iterable<string> {
     const element = declaration.exportClause && ts.isNamedExports(declaration.exportClause)
-      ? declaration.exportClause.elements.find((candidate) => candidate.name.text === exported.name)
-      : undefined;
-    addResolvedExportOrigins(
-      origins,
-      exported.name,
-      relativeExportTarget(moduleRecord, exported.line, modules),
-      element?.propertyName?.text ?? element?.name.text ?? exported.name,
-      modules,
-      memo,
-      visiting,
-    );
+      ? declaration.exportClause.elements.find((candidate) => candidate.name.text === exported.name) : undefined;
+    const name = element?.propertyName?.text ?? element?.name.text ?? exported.name;
+    const target = relativeExportTarget(module, exported.line, this.modules);
+    const resolved = target ? this.origins(target, visiting).get(name) : undefined;
+    return resolved?.size ? resolved : [`${target?.id ?? "unresolved"}:${name}`];
   }
-}
-
-function addWildcardExportOrigins(
-  moduleRecord: ModuleRecord,
-  sourceFile: ts.SourceFile,
-  origins: ExportOrigins,
-  modules: Map<string, ModuleRecord>,
-  memo: Map<string, ExportOrigins>,
-  visiting: Set<string>,
-): void {
-  for (const declaration of sourceFile.statements.filter(ts.isExportDeclaration)) {
-    if (declaration.exportClause || !declaration.moduleSpecifier) continue;
-    const line = sourceFile.getLineAndCharacterOfPosition(declaration.getStart(sourceFile)).line + 1;
-    const target = relativeExportTarget(moduleRecord, line, modules);
-    if (!target) continue;
-    for (const [name, targetOrigins] of publicExportOrigins(target, modules, memo, visiting)) {
-      for (const origin of targetOrigins) addExportOrigin(origins, name, origin);
+  private addWildcards(module: ModuleRecord, source: ts.SourceFile, origins: ExportOrigins, visiting: Set<string>): void {
+    for (const declaration of source.statements.filter(ts.isExportDeclaration)) {
+      if (declaration.exportClause || !declaration.moduleSpecifier) continue;
+      const line = source.getLineAndCharacterOfPosition(declaration.getStart(source)).line + 1;
+      const target = relativeExportTarget(module, line, this.modules);
+      if (!target) continue;
+      for (const [name, values] of this.origins(target, visiting)) {
+        for (const value of values) addExportOrigin(origins, name, value);
+      }
     }
   }
-}
-
-function addResolvedExportOrigins(
-  origins: ExportOrigins,
-  exportedName: string,
-  target: ModuleRecord | null,
-  originalName: string,
-  modules: Map<string, ModuleRecord>,
-  memo: Map<string, ExportOrigins>,
-  visiting: Set<string>,
-): void {
-  const resolved = target ? publicExportOrigins(target, modules, memo, visiting).get(originalName) : undefined;
-  if (resolved?.size) for (const origin of resolved) addExportOrigin(origins, exportedName, origin);
-  else addExportOrigin(origins, exportedName, `${target?.id ?? "unresolved"}:${originalName}`);
 }
 
 function relativeExportTarget(

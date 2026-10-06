@@ -1,8 +1,13 @@
-import { isRecord } from "./collections.js";
+import { isRecord, isUnknownArray } from "./collections.js";
 import type { ScoredRecord } from "./types.js";
 
+export const FINDING_COLLECTIONS = ["records", "groups", "findings", "disagreements", "unconfirmed"] as const;
+export function isScoredRecord(value: unknown): value is ScoredRecord {
+  return isRecord(value) && typeof value.id === "string";
+}
+export function findingRecords(value: unknown): ScoredRecord[] {
+  return isUnknownArray(value) ? value.filter(isScoredRecord) : [];
+}
 export function artifactFindings(value: unknown): ScoredRecord[] {
-  if (!isRecord(value)) return [];
-  return [value.findings, value.records, value.groups, value.disagreements, value.unconfirmed].flatMap((group) =>
-    Array.isArray(group) ? group.filter((item): item is ScoredRecord => isRecord(item) && typeof item.id === "string") : []);
+  return isRecord(value) ? ["findings", "records", "groups", "disagreements", "unconfirmed"].flatMap((key) => findingRecords(value[key])) : [];
 }

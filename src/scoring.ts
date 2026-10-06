@@ -70,7 +70,7 @@ export function escapeRecords(module: ModuleRecord): ScoredRecord[] {
 
   function add(kind: string, severity: Severity, node: ts.Node, evidence = node.getText(astSourceFile)): void {
     records.push({
-      id: `escape:${module.id}:${kind}:${lineForNode(astSourceFile, node)}:${node.getStart(astSourceFile)}`,
+      id: `escape:${module.id}:${kind}:${lineForNode(astSourceFile, node)}:${node.getStart(astSourceFile)}:${node.end}`,
       module_id: module.id,
       file: module.file,
       kind,

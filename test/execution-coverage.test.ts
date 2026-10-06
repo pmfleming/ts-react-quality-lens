@@ -3,12 +3,38 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { loadConfig } from "../src/config.js";
 import { parseExecutionCoverage } from "../src/coverage.js";
 import { readSourceFile } from "../src/files.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { sourceSetHash } from "../src/provenance.js";
+
+test("coverage formats merge maxima, preserve zero-hit inner ranges and reject malformed boundaries", () => {
+  const root = path.resolve("coverage-fixture"), file = path.join(root, "a.js"), text = "a\r\nb\n";
+  const sources = [{ path: file, relativePath: "a.js", text, lines: text.split(/\r?\n/), extension: ".js", isTest: false }];
+  const parse = (format: string, data: unknown) => parseExecutionCoverage(format, data, root, sources);
+  assert.deepEqual(parse("lcov", `SF:${pathToFileURL(file).href}\nDA:2,0\nDA:1,3,checksum\nDA:1,1\nend_of_record`),
+    [{ file: "a.js", line_hits: [{ line: 1, hits: 3 }, { line: 2, hits: 0 }] }]);
+  const script = (ranges: unknown[]) => ({ result: [{ url: file, functions: [{ ranges }] }] });
+  const outer = { startOffset: 0, endOffset: text.length, count: 5 }, inner = { startOffset: 0, endOffset: 1, count: 0 };
+  assert.deepEqual(parse("v8", script([outer, inner, { ...inner, count: 9 }])),
+    [{ file: "a.js", line_hits: [{ line: 1, hits: 0 }, { line: 2, hits: 5 }] }]);
+  const statement = { start: { line: 1 }, end: { line: 2 } };
+  assert.deepEqual(parse("istanbul", { "a.js": { statementMap: { x: statement, y: statement }, s: { x: 0, y: 3 } } }),
+    [{ file: "a.js", line_hits: [{ line: 1, hits: 3 }, { line: 2, hits: 3 }] }]);
+  for (const data of [null, "", "DA:1,2", "SF:a.js\nSF:a.js", "SF:a.js\nDA:4,1\nend_of_record", "SF:a.js\nDA:1,-1\nend_of_record"]) {
+    assert.throws(() => parse("lcov", data));
+  }
+  for (const range of [{ ...outer, count: -1 }, { ...outer, count: 0.5 }, { ...outer, endOffset: text.length + 1 },
+    { ...inner, startOffset: 1 }, { ...inner, startOffset: -1 }, { ...outer, count: Number.MAX_SAFE_INTEGER + 1 }, null]) {
+    assert.throws(() => parse("v8", script([range])));
+  }
+  for (const data of [{}, { "a.js": {} }, { "a.js": { statementMap: { x: statement }, s: {} } }]) assert.throws(() => parse("istanbul", data));
+  assert.throws(() => parse("toString", {}));
+  assert.throws(() => parse("v8", { result: [{ url: "original.ts", functions: [] }] }));
+});
 
 test("LCOV, Istanbul and original-source V8 preserve executed and uncovered lines", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lens-coverage-"));

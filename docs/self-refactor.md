@@ -1,5 +1,7 @@
 # Refactoring the lens using its own findings
 
+For the subsequent review against `b71c97d`, see [the follow-up report](self-refactor-followup.md).
+
 Measured on Windows with Node 24 on 2026-09-29. Baseline: `79d934e`.
 Both runs use the root configuration and its `src`, `bin`, and `scripts` source roots.
 

@@ -1,62 +1,53 @@
-import { isRecord } from "./collections.js";
-import type { Artifact } from "./types.js";
+import { isRecord, isUnknownArray } from "./collections.js";
+import { arrayOf, boolean, integer, nonempty, nonnegative, nullable, oneOf, optional, positiveInteger, shape, string } from "./validation.js";
+import { validWireExtension } from "./wire-evidence.js";
+import type { Artifact, AttwProblem } from "./types.js";
 
-const text = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
-const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
-const status = (value: unknown): value is Record<string, unknown> => isRecord(value) &&
-  ["available", "ran", "complete"].every((key) => typeof value[key] === "boolean") &&
-  (value.reason === null || typeof value.reason === "string") &&
-  (value.complete !== true || value.available === true && value.ran === true);
+const strings = arrayOf(string);
+const toolStatus = shape({ available: boolean, ran: boolean, complete: boolean, reason: nullable(string) });
+const status = (value: unknown): value is Record<string, unknown> => toolStatus(value) && (!value.complete || value.available && value.ran);
+export const validPublintMessages = arrayOf(shape({ code: nonempty, type: oneOf("error", "warning", "suggestion"), path: strings, args: isRecord }));
+const attw = shape({ kind: nonempty, entrypoint: optional(nonempty), resolutionKind: optional(nonempty) });
+export const validAttwProblems = arrayOf((value: unknown): value is AttwProblem => attw(value));
+const completed = (value: unknown) => isRecord(value) && value.complete === true;
 
-export function validPublintMessages(value: unknown): boolean {
-  return Array.isArray(value) && value.every((item) => isRecord(item) && text(item.code) &&
-    ["error", "warning", "suggestion"].includes(String(item.type)) && strings(item.path) && isRecord(item.args));
+function validPackage(artifact: Artifact): boolean {
+  const statuses = ["declaration_emit", "npm_pack", "publint", "are_the_types_wrong"].map((name) => artifact.tool_status?.[name]);
+  return statuses.every(status) && packageEvidence(artifact.package_evidence) &&
+    oneOf("disabled", "complete", "incomplete")(artifact.summary.status) &&
+    artifact.summary.complete === (artifact.summary.status === "complete") && (!artifact.summary.complete || statuses.every(completed));
 }
-
-export function validAttwProblems(value: unknown): boolean {
-  return Array.isArray(value) && value.every((item) => isRecord(item) && text(item.kind) &&
-    (item.entrypoint === undefined || text(item.entrypoint)) && (item.resolutionKind === undefined || text(item.resolutionKind)));
+const packageEvidence = shape({ publint_messages: validPublintMessages, attw_problems: validAttwProblems });
+const execution = new Map<string, (value: unknown) => boolean>([
+  ["unknown", shape({ reason: nonempty })], ["not_run", shape({ command: nullable(nonempty) })], ["passed", shape({ command: nonempty })],
+  ["failed", shape({ command: nonempty, exit_code: nullable(integer), stdout: string, stderr: string })],
+]);
+function validImports(artifact: Artifact): boolean {
+  const statuses = Object.values(artifact.tool_status ?? {});
+  if (!statuses.every(status)) return false;
+  const configured = statuses.filter((item) => item.path !== null);
+  return importStatus(artifact.summary.status) &&
+    (artifact.summary.status !== "complete" || configured.length > 0 && configured.every(completed));
 }
+const importStatus = oneOf("not_configured", "complete", "incomplete");
+const coveredFiles = arrayOf(shape({ file: nonempty, line_hits: arrayOf(shape({ line: positiveInteger, hits: nonnegative })) }));
+const checks = new Map<string, (artifact: Artifact) => boolean>([
+  ["quality.type_health", ({ confidence, tool_status, diagnostics }) => boolean(confidence.typescript_program_loaded) &&
+    shape({ loaded: boolean })(tool_status?.compiler_api) && tool_status?.compiler_api?.loaded === confidence.typescript_program_loaded && isUnknownArray(diagnostics)],
+  ["quality.lint", ({ tool_status }) => status(tool_status?.typed_eslint) && strings(tool_status?.typed_eslint?.evaluated_files)],
+  ["quality.react_health", ({ tool_status }) => status(tool_status?.eslint_react_hooks) && status(tool_status?.jsx_a11y)],
+  ["correctness.all", (artifact) => execution.get(artifact.execution?.status ?? "")?.(artifact.execution) ?? false],
+  ["quality.package_health", validPackage], ["quality.sarif", validImports], ["quality.runtime", validImports],
+  ["testing.coverage", (artifact) => importStatus(artifact.summary.status) && coveredFiles(artifact.files) && isUnknownArray(artifact.functions)],
+  ["audit", (artifact) => isUnknownArray(artifact.findings) && boolean(artifact.summary.complete) &&
+    strings(artifact.summary.incomplete_reasons) && strings(artifact.summary.verification_failures) && oneOf("pass", "warn", "fail", "incomplete")(artifact.summary.verdict)],
+]);
 
-/** Critical native payloads are checked even when an enclosing wire projection is self-consistent. */
+/** Critical payload validation is independent of the common-wire projection. */
 export function validProducerPayload(artifact: Artifact): boolean {
-  const tools = artifact.tool_status ?? {};
-  switch (artifact.task_id) {
-    case "quality.type_health": return typeof artifact.confidence.typescript_program_loaded === "boolean" &&
-      isRecord(tools.compiler_api) && typeof tools.compiler_api.loaded === "boolean" &&
-      tools.compiler_api.loaded === artifact.confidence.typescript_program_loaded && Array.isArray(artifact.diagnostics);
-    case "quality.lint": return status(tools.typed_eslint) && strings(tools.typed_eslint.evaluated_files);
-    case "quality.react_health": return status(tools.eslint_react_hooks) && status(tools.jsx_a11y);
-    case "correctness.all": {
-      const execution = artifact.execution;
-      if (!execution) return false;
-      if (execution.status === "unknown") return text(execution.reason);
-      if (execution.status === "not_run") return execution.command === null || text(execution.command);
-      return text(execution.command) && (execution.status === "passed" || execution.status === "failed" &&
-        (execution.exit_code === null || Number.isSafeInteger(execution.exit_code)) && typeof execution.stdout === "string" && typeof execution.stderr === "string");
-    }
-    case "quality.package_health": {
-      const statuses = ["declaration_emit", "npm_pack", "publint", "are_the_types_wrong"].map((name) => tools[name]);
-      return statuses.every(status) && isRecord(artifact.package_evidence) &&
-        validPublintMessages(artifact.package_evidence.publint_messages) && validAttwProblems(artifact.package_evidence.attw_problems) &&
-        ["disabled", "complete", "incomplete"].includes(String(artifact.summary.status)) &&
-        artifact.summary.complete === (artifact.summary.status === "complete") &&
-        (artifact.summary.complete !== true || statuses.every((item) => item?.complete === true));
-    }
-    case "quality.sarif":
-    case "quality.runtime": {
-      const statuses = Object.values(tools);
-      return statuses.every(status) && ["not_configured", "complete", "incomplete"].includes(String(artifact.summary.status)) &&
-        (artifact.summary.status !== "complete" || statuses.some((item) => item.path !== null) &&
-          statuses.filter((item) => item.path !== null).every((item) => item.complete === true));
-    }
-    case "testing.coverage": return ["not_configured", "complete", "incomplete"].includes(String(artifact.summary.status)) &&
-      Array.isArray(artifact.files) && Array.isArray(artifact.functions) && artifact.files.every((file) => isRecord(file) &&
-        text(file.file) && Array.isArray(file.line_hits) && file.line_hits.every((hit) => isRecord(hit) &&
-          Number.isSafeInteger(hit.line) && Number(hit.line) > 0 && typeof hit.hits === "number" && Number.isFinite(hit.hits) && hit.hits >= 0));
-    case "audit": return Array.isArray(artifact.findings) && typeof artifact.summary.complete === "boolean" &&
-      strings(artifact.summary.incomplete_reasons) && strings(artifact.summary.verification_failures) &&
-      ["pass", "warn", "fail", "incomplete"].includes(String(artifact.summary.verdict));
-    default: return true;
-  }
+  return checks.get(artifact.task_id)?.(artifact) ?? true;
+}
+const envelope = shape({ schema_version: string, task_id: string, project: isRecord, provenance: isRecord, confidence: isRecord, summary: isRecord });
+export function isArtifactEnvelope(value: unknown): value is Artifact {
+  return envelope(value) && validWireExtension(value.evidence_contract);
 }

@@ -55,7 +55,8 @@
   "knip": {
     "entry": [
       "bin/*.ts",
-      "scripts/*.ts"
+      "scripts/*.ts",
+      "test/*.test.ts"
     ],
     "project": [
       "src/**/*.ts",

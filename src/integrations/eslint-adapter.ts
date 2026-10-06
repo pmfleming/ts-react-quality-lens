@@ -3,7 +3,8 @@ import { TYPED_RULES } from "../rule-policy.js";
 import { discoverSourceFiles } from "../files.js";
 import os from "node:os";
 import path from "node:path";
-import { isRecord, parseJson } from "../collections.js";
+import { parseJson } from "../collections.js";
+import { arrayOf, shape, string } from "../validation.js";
 import { discoverWorkspaces } from "../workspaces.js";
 import type { Config, EslintAccessibilityResult, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult, ReactRuleset } from "../types.js";
 import {
@@ -123,19 +124,12 @@ function runEslint(config: Config, configPath: string, rulePrefix: string | unde
     "--no-error-on-unmatched-pattern",
     ...existingRelativeRoots(config),
   ];
-  const parse = (stdout: string) => {
-    const report = parseJson(stdout);
-    const selected = new Set(discoverSourceFiles(config).map((file) => relativePath(config.projectRoot, file)));
-    const messages = normalizeEslintMessages(report, config, rulePrefix).filter((message) => selected.has(message.file));
-    const evaluated_files = (report as Array<{ filePath: string; messages: Array<{ fatal?: boolean; ruleId?: string }> }>).filter((file) =>
-      !file.messages.some((message) => message.fatal || !message.ruleId)).map((file) => relativePath(config.projectRoot, file.filePath)).filter((file) => selected.has(file)).sort();
-    return { messages, evaluated_files };
-  };
-  return runToolAdapter(
+  const parse = (stdout: string) => normalizeEslintReport(parseJson(stdout), config, rulePrefix);
+  return runToolAdapter<{ messages: EslintMessage[]; evaluated_files: string[] }>(
     config,
     "eslint",
     preferManaged ? "managed eslint executable was not found" : "eslint executable was not found",
-    { messages: [], evaluated_files: [] as string[] },
+    { messages: [], evaluated_files: [] },
     (executable) => parse(runLocalTool(executable, args, toolRunOptions(config))),
     (error) => recoverToolJson(error, "[", parse),
     preferManaged,
@@ -217,28 +211,29 @@ export default [{
 `;
 }
 
-function normalizeEslintMessages(value: unknown, config: Config, rulePrefix?: string): EslintMessage[] {
-  if (!Array.isArray(value)) throw new Error("ESLint report must be an array");
-  return value.flatMap((result): EslintMessage[] => {
-    if (!isRecord(result) || typeof result.filePath !== "string" || !Array.isArray(result.messages)) throw new Error("Invalid ESLint file result");
-    const filePath = result.filePath;
-    return result.messages.flatMap((message): EslintMessage[] => {
-      if (!isRecord(message) || typeof message.message !== "string" || ![1, 2].includes(Number(message.severity))) throw new Error("Invalid ESLint diagnostic");
-      const ruleId = typeof message.ruleId === "string" ? message.ruleId : null;
-      const fatal = message.fatal === true;
-      if (rulePrefix ? !ruleId?.startsWith(rulePrefix) && !fatal : !ruleId && !fatal) return [];
-      return [{
-        file: relativePath(config.projectRoot, filePath),
-        line: numberOrNull(message.line),
-        column: numberOrNull(message.column),
-        end_line: numberOrNull(message.endLine),
-        end_column: numberOrNull(message.endColumn),
-        rule_id: ruleId ?? "eslint/parser",
-        severity: message.severity === 2 ? "error" : "warning",
-        message: message.message,
-      }];
-    });
-  });
+const eslintReport = arrayOf(shape({ filePath: string, messages: arrayOf(shape({ message: string })) }));
+function normalizeEslintReport(value: unknown, config: Config, rulePrefix?: string) {
+  if (!eslintReport(value)) throw new Error("Invalid ESLint report");
+  const selected = new Set(discoverSourceFiles(config).map((file) => relativePath(config.projectRoot, file)));
+  const messages = value.flatMap((result) => result.messages.flatMap((message): EslintMessage[] => {
+    if (![1, 2].includes(Number(message.severity))) throw new Error("Invalid ESLint diagnostic");
+    const ruleId = typeof message.ruleId === "string" ? message.ruleId : null;
+    const fatal = message.fatal === true;
+    if (rulePrefix ? !ruleId?.startsWith(rulePrefix) && !fatal : !ruleId && !fatal) return [];
+    return [{
+      file: relativePath(config.projectRoot, result.filePath),
+      line: numberOrNull(message.line),
+      column: numberOrNull(message.column),
+      end_line: numberOrNull(message.endLine),
+      end_column: numberOrNull(message.endColumn),
+      rule_id: ruleId ?? "eslint/parser",
+      severity: message.severity === 2 ? "error" : "warning",
+      message: message.message,
+    }];
+  })).filter((message) => selected.has(message.file));
+  const evaluated_files = value.filter((file) => !file.messages.some((message) => message.fatal || !message.ruleId))
+    .map((file) => relativePath(config.projectRoot, file.filePath)).filter((file) => selected.has(file)).sort();
+  return { messages, evaluated_files };
 }
 
 function numberOrNull(value: unknown): number | null {

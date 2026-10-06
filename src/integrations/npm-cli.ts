@@ -1,17 +1,18 @@
 import fs from "node:fs";
-import { isRecord } from "../collections.js";
+import { isRecord, isUnknownArray } from "../collections.js";
+import { arrayOf, shape, string } from "../validation.js";
 import path from "node:path";
 
 /** npm <=11 returns an array; npm 12 returns a package-name keyed object. */
 export function npmPackResult(value: unknown): { filename: string; files: Array<{ path: string }>; size: number | null } {
-  const entries = Array.isArray(value) ? value : isRecord(value) ? Object.values(value) : [];
+  const entries = isUnknownArray(value) ? value : isRecord(value) ? Object.values(value) : [];
   const item = entries.length === 1 ? entries[0] : null;
   if (!isRecord(item) || typeof item.filename !== "string" || !item.filename.endsWith(".tgz") ||
       path.basename(item.filename) !== item.filename || /[\\\\:]/.test(item.filename) ||
-      !Array.isArray(item.files) || !item.files.every((file) => isRecord(file) && typeof file.path === "string")) {
+      !arrayOf(shape({ path: string }))(item.files)) {
     throw new Error("npm pack did not return one valid tarball report");
   }
-  return { filename: item.filename, files: item.files as Array<{ path: string }>, size: typeof item.size === "number" ? item.size : null };
+  return { filename: item.filename, files: item.files, size: typeof item.size === "number" ? item.size : null };
 }
 
 /** Resolve npm's JavaScript entrypoint without executing platform-specific shims. */

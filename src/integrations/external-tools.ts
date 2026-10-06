@@ -131,7 +131,7 @@ export function runJscpd(config: Config): JscpdResult {
           throw new Error("Invalid jscpd report payload");
         }
         const scope = new Set(selected.map((file) => path.resolve(file)));
-        if (report.duplicates.some((duplicate) => !scope.has(path.resolve(duplicate.firstFile!.name!)) || !scope.has(path.resolve(duplicate.secondFile!.name!)))) {
+        if (report.duplicates.some((duplicate) => !scope.has(path.resolve(duplicate.firstFile.name)) || !scope.has(path.resolve(duplicate.secondFile.name)))) {
           throw new Error("jscpd report contains files outside selected source scope");
         }
         return { duplicates: report.duplicates.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))), statistics: report.statistics };
@@ -150,7 +150,7 @@ function isKnipIssueEntry(value: unknown): value is KnipIssueEntry {
   return isRecord(value) && typeof value.file === "string";
 }
 
-function isJscpdDuplicate(value: unknown): value is JscpdDuplicate {
+function isJscpdDuplicate(value: unknown): value is JscpdDuplicate & { firstFile: { name: string }; secondFile: { name: string } } {
   if (!isRecord(value) || typeof value.lines !== "number" || !Number.isSafeInteger(value.lines) || value.lines < 1) return false;
   return [value.firstFile, value.secondFile].every((file) => isRecord(file) && typeof file.name === "string" && path.isAbsolute(file.name) &&
     Number.isSafeInteger(file.start) && Number(file.start) > 0 && Number.isSafeInteger(file.end) && Number(file.end) >= Number(file.start));

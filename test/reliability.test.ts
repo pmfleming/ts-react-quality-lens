@@ -11,7 +11,7 @@ import { collectFindings, requiredEvidenceReasons, runAuditMeasurements } from "
 import { loadConfig } from "../src/config.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { MEASURE_TASKS } from "../src/measures/registry.js";
-import { writeArtifact } from "../src/writer.js";
+import { writeArtifact, readArtifact } from "../src/writer.js";
 import { analysisIdentity, artifactBase, sourceSetHash } from "../src/provenance.js";
 import { artifactFreshness } from "../src/measures/architecture.js";
 import type { Artifact, Config } from "../src/types.js";
@@ -58,6 +58,16 @@ function stubMeasurements(run: () => void): void {
   try { run(); }
   finally { for (const [id, task] of tasks) MEASURE_TASKS.set(id, task); }
 }
+
+test("nested non-null assertions have distinct span identities and remain readable native evidence", () => fixture((root, config) => {
+  fs.writeFileSync(path.join(root, "src/a.ts"), "declare const object: { name?: string } | undefined; export const value = object!.name!;\n");
+  const result = runMeasure(config, "quality.escape_hatches", "test")[0];
+  assert.ok(result);
+  assert.equal(result.records?.length, 2);
+  assert.equal(new Set(result.records?.map((record) => record.id)).size, 2);
+  assert.equal(readArtifact(config, "ts_escape_hatches.json")?.records?.length, 2);
+  assert.equal(analysisIdentity(config).rulesets.escape_identity, "node-span-v2");
+}));
 
 test("runtime inputs require provenance even for valid empty reports", () => fixture((root, config) => {
   const file = path.join(root, "runtime.json");

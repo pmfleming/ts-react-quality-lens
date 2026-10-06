@@ -7,7 +7,8 @@ import { loadConfig } from "../config.js";
 import { createAnalysisContext } from "../analysis-context.js";
 import { analysisIdentity, artifactBase, sourceSetHash } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
-import type { WireEvidence } from "../wire-evidence.js";
+import { isWireEvidence, type WireEvidence } from "../wire-evidence.js";
+import { arrayOf } from "../validation.js";
 import { collectFindings, runAuditMeasurements } from "./findings.js";
 import type { AnalysisIdentity, Artifact, AuditFinding, Config } from "../types.js";
 
@@ -94,7 +95,9 @@ function measureBaseSnapshot(
     ...artifactBase(baseConfig, "audit.baseline", command, { complete: true }, sourceSetHash(context.project())),
     summary: { findings: findings.length },
   });
-  const run = (snapshot.evidence_contract as WireEvidence[]).find((entry): entry is Extract<WireEvidence, { kind: "run" }> => entry.kind === "run")!;
+  if (!arrayOf(isWireEvidence)(snapshot.evidence_contract)) return null;
+  const run = snapshot.evidence_contract.find((entry) => entry.kind === "run");
+  if (!run) return null;
   return {
     findingIds: new Set(findings.map((finding) => finding.id)),
     analysisIdentity: analysisIdentity(baseConfig),

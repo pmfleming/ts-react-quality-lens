@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { BLOCKING_TYPED_RULES, BLOCKING_REACT_RULES, BLOCKING_FAMILIES, validateBlockingInventory } from "../src/rule-policy.js";
+import { arrayOf, string } from "../src/validation.js";
 import { isRecord, parseJson } from "../src/collections.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -67,7 +68,8 @@ for (const item of typedCases) {
 }
 for (const item of [typed, ...families.families.filter(isRecord)]) {
   for (const key of ["prerequisites", "limitations", "tests"]) assert.ok(Array.isArray(item[key]) && item[key].length > 0);
-  for (const name of item.tests as string[]) assert.ok(fs.existsSync(path.join(root, name)), `missing regression ${name}`);
+  assert.ok(arrayOf(string)(item.tests));
+  for (const name of item.tests) assert.ok(fs.existsSync(path.join(root, name)), `missing regression ${name}`);
   for (const key of ["scope", "versions"]) assert.ok(requiredString(item, key).length > 0);
 }
 console.log(JSON.stringify({ rule_contracts: rules.length, corpus_cases: cases.length,

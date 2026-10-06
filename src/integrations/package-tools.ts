@@ -14,11 +14,12 @@ import {
   toolAvailable,
   toolPackageVersion,
   toolRunOptions,
+  toolResult,
+  toolError,
   recoverToolJson,
 } from "./tool-runner.js";
 
 const require = createRequire(import.meta.url);
-const PACKAGE_TIMEOUT_MS = 120_000;
 
 export function runPackageHealth(config: Config): PackageHealthResult {
   if (!config.packageHealth.enabled) return disabledResult(config);
@@ -46,11 +47,8 @@ function runDeclarationEmit(config: Config, outputDir: string): PackageToolStatu
   const tsconfig = config.tsconfig;
   if (!tsconfig || !fs.existsSync(tsconfig)) {
     return {
+      ...disabledStatus("declaration emit requires a readable tsconfig"),
       available: toolAvailable(config.projectRoot, "tsc", true),
-      ran: false,
-      complete: false,
-      reason: "declaration emit requires a readable tsconfig",
-      duration_ms: 0,
       version: null,
     };
   }
@@ -94,36 +92,15 @@ function packProject(config: Config, tempDir: string): {
       "--json",
       "--pack-destination",
       tempDir,
-    ], {
-      cwd: config.projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: PACKAGE_TIMEOUT_MS,
-    });
+    ], toolRunOptions(config));
     const result = npmPackResult(parseJson(stdout));
     return {
-      status: {
-        available: true,
-        ran: true,
-        complete: true,
-        reason: null,
-        duration_ms: Date.now() - startedAt,
-        files: Array.isArray(result.files) ? result.files.length : 0,
-        size: typeof result.size === "number" ? result.size : null,
-      },
+      status: toolResult(true, true, null, startedAt, { complete: true, files: result.files.length, size: result.size }),
       tarball: path.join(tempDir, result.filename),
     };
   } catch (error) {
     return {
-      status: {
-        available: true,
-        ran: false,
-        complete: false,
-        reason: processError(error),
-        duration_ms: Date.now() - startedAt,
-        files: 0,
-        size: null,
-      },
+      status: toolResult(true, false, toolError(error), startedAt, { complete: false, files: 0, size: null }),
       tarball: null,
     };
   }
@@ -141,32 +118,13 @@ function runPublint(config: Config, tempDir: string): PackageHealthResult["publi
       "process.stdout.write(JSON.stringify({ messages: result.messages }));",
       "",
     ].join("\n"), "utf8");
-    const stdout = childProcess.execFileSync(process.execPath, [runner], {
-      cwd: config.projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: PACKAGE_TIMEOUT_MS,
-    });
+    const stdout = childProcess.execFileSync(process.execPath, [runner], toolRunOptions(config));
     const parsed = parseJson(stdout);
-    return {
-      available: true,
-      ran: true,
-      complete: true,
-      reason: null,
-      duration_ms: Date.now() - startedAt,
-      version,
-      messages: normalizePublintMessages(isRecord(parsed) ? parsed.messages : null),
-    };
+    return toolResult(true, true, null, startedAt, {
+      complete: true, version, messages: normalizePublintMessages(isRecord(parsed) ? parsed.messages : null),
+    });
   } catch (error) {
-    return {
-      available: version !== null,
-      ran: false,
-      complete: false,
-      reason: processError(error),
-      duration_ms: Date.now() - startedAt,
-      version,
-      messages: [],
-    };
+    return toolResult(version !== null, false, toolError(error), startedAt, { complete: false, version, messages: [] });
   }
 }
 
@@ -204,48 +162,25 @@ function runAttw(config: Config, tarball: string): PackageHealthResult["attw"] {
 
 function normalizePublintMessages(value: unknown): PublintMessage[] {
   if (!validPublintMessages(value)) throw new Error("Invalid publint messages payload");
-  return (value as unknown[]).flatMap((message): PublintMessage[] => {
-    if (!isRecord(message) || typeof message.code !== "string") return [];
-    const type = message.type === "error" || message.type === "warning" ? message.type : "suggestion";
-    return [{
-      code: message.code,
-      type,
-      path: Array.isArray(message.path) ? message.path.filter((item): item is string => typeof item === "string") : [],
-      args: isRecord(message.args) ? message.args : {},
-    }];
-  });
+  return value.map(({ code, type, path, args }) => ({ code, type, path, args }));
 }
 
 function normalizeAttwProblems(
   value: unknown,
   profile: Config["packageHealth"]["attwProfile"],
 ): AttwProblem[] {
-  if (!isRecord(value) || !isRecord(value.problems) || !Object.values(value.problems).every(validAttwProblems)) {
-    throw new Error("Invalid ATTW problems payload");
-  }
-  return Object.values(value.problems).flatMap((items): AttwProblem[] => {
-    if (!Array.isArray(items)) throw new Error("Invalid ATTW problem list");
-    return items.flatMap((item): AttwProblem[] => {
-      if (!isRecord(item) || typeof item.kind !== "string") return [];
-      const resolutionKind = typeof item.resolutionKind === "string" ? item.resolutionKind : undefined;
-      if (profile === "esm-only" && resolutionKind?.endsWith("-cjs")) return [];
-      if (profile === "node16" && resolutionKind === "node10") return [];
-      return [{
-        kind: item.kind,
-        ...(typeof item.entrypoint === "string" ? { entrypoint: item.entrypoint } : {}),
-        ...(resolutionKind ? { resolutionKind } : {}),
-      }];
-    });
-  });
+  const groups = isRecord(value) && isRecord(value.problems) ? Object.values(value.problems) : null;
+  if (!groups?.every(validAttwProblems)) throw new Error("Invalid ATTW problems payload");
+  return groups.flat().filter(({ resolutionKind }) => !(profile === "esm-only" && resolutionKind?.endsWith("-cjs")) &&
+    !(profile === "node16" && resolutionKind === "node10")).map(({ kind, entrypoint, resolutionKind }) => ({
+      kind, ...(entrypoint ? { entrypoint } : {}), ...(resolutionKind ? { resolutionKind } : {}),
+    }));
 }
 
 function skippedAttw(config: Config, reason: string): PackageHealthResult["attw"] {
   return {
+    ...disabledStatus(reason),
     available: toolAvailable(config.projectRoot, "attw", true),
-    ran: false,
-    complete: false,
-    reason,
-    duration_ms: 0,
     version: toolPackageVersion("@arethetypeswrong/cli"),
     problems: [],
     profile: config.packageHealth.attwProfile,
@@ -270,13 +205,4 @@ function disabledResult(config: Config): PackageHealthResult {
 
 function disabledStatus(reason: string): PackageToolStatus {
   return { available: true, ran: false, complete: false, reason, duration_ms: 0 };
-}
-
-function processError(error: unknown): string {
-  if (isRecord(error)) {
-    const stderr = String(error.stderr ?? "").trim();
-    const stdout = String(error.stdout ?? "").trim();
-    if (stderr || stdout) return (stderr || stdout).slice(0, 4000);
-  }
-  return (error instanceof Error ? error.message : String(error)).slice(0, 4000);
 }

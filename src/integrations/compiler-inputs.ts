@@ -14,6 +14,7 @@ export type CompilerInputQuery =
 // Preserve negative resolution probes and directory queries, not just files that
 // made it into the Program. New declarations/packages can change the old result.
 export function trackCompilerInputs() {
+  const realpath = ts.sys.realpath?.bind(ts.sys);
   const files = new Set<string>();
   const queries = new Map<string, CompilerInputQuery>();
   function query<T>(input: CompilerInputQuery, read: () => T): T {
@@ -31,8 +32,8 @@ export function trackCompilerInputs() {
       ...(extensions ? { extensions } : {}), ...(excludes ? { excludes } : {}),
       ...(includes ? { includes } : {}), ...(depth !== undefined ? { depth } : {}),
     }, () => ts.sys.readDirectory(dir, extensions, excludes, includes, depth)),
-    ...(ts.sys.realpath ? {
-      realpath: (file: string) => query({ kind: "realpath", path: file }, () => ts.sys.realpath!(file)),
+    ...(realpath ? {
+      realpath: (file: string) => query({ kind: "realpath", path: file }, () => realpath(file)),
     } : {}),
   };
   return { system, files, queries };

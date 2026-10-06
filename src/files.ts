@@ -33,6 +33,11 @@ export function readSourceFile(file: string, projectRoot: string): SourceFileRec
   };
 }
 
+/** Hash inputs preserve missing files as evidence rather than dropping them. */
+export function fileInput(file: string, relativePath: string): { relativePath: string; text: string } {
+  return { relativePath, text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing" };
+}
+
 export function toPosix(value: string): string {
   return value.split(path.sep).join("/");
 }

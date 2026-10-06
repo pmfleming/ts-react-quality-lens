@@ -5,6 +5,8 @@ import path from "node:path";
 import { test } from "node:test";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { loadConfig } from "../src/config.js";
+import { fileInput, readSourceFile } from "../src/files.js";
+import { loadTypeScriptProjects } from "../src/integrations/typescript-project.js";
 import { measureCorrectnessCatalog } from "../src/measures/correctness.js";
 import { measureLeverage, measureLocality } from "../src/measures/locality.js";
 import type { Config } from "../src/types.js";
@@ -17,6 +19,25 @@ function fixture(run: (root: string, config: Config) => void): void {
   try { run(root, loadConfig(path.join(root, "lens.json"))); }
   finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
+
+test("compiler input snapshots preserve missing declarations and their diagnostic effects", () => fixture((root) => {
+  const declaration = path.join(root, "types/value.d.ts"), tsconfig = path.join(root, "tsconfig.json");
+  const key = "compiler-input:types/value.d.ts";
+  assert.deepEqual(fileInput(declaration, key), { relativePath: key, text: "missing" });
+  fs.mkdirSync(path.dirname(declaration));
+  fs.writeFileSync(declaration, "declare const externalValue: string;\n");
+  fs.writeFileSync(tsconfig, JSON.stringify({ compilerOptions: { strict: true, types: [] }, include: ["src", "types"] }));
+  fs.writeFileSync(path.join(root, "src/index.ts"), "export const value: string = externalValue;\n");
+  const config = loadConfig(path.join(root, "lens.json")), source = readSourceFile(path.join(root, "src/index.ts"), root);
+  const load = () => loadTypeScriptProjects(config, [source], [{ workspaceId: "fixture", path: tsconfig }]);
+  const before = load();
+  assert.ok(before.loaded);
+  assert.ok(before.input_files?.includes(declaration));
+  assert.deepEqual(before.diagnostics, []);
+  fs.writeFileSync(declaration, "declare const externalValue: number;\n");
+  assert.equal(fileInput(declaration, key).text, "declare const externalValue: number;\n");
+  assert.ok(load().diagnostics.some((item) => item.code === 2322));
+}));
 
 test("test classification ignores checkout ancestors while preserving project-local test paths", () => fixture((root) => {
   for (const parent of ["ordinary", "test", "tests", "spec", "e2e", "cypress", "__tests__"]) {

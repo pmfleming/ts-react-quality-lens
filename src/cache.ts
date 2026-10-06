@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as ts from "typescript";
 import { parseJson } from "./collections.js";
+import { fileInput } from "./files.js";
 import { compilerInputQueryResults, type CompilerInputQuery } from "./integrations/compiler-inputs.js";
 import { analysisIdentity, contentHash, sourceSetHash } from "./provenance.js";
 import type { Config, ProjectAnalysis, SourceFileRecord, TypedModuleRecord } from "./types.js";
@@ -104,10 +105,7 @@ function analysisCacheKey(
   queries: CompilerInputQuery[] = [],
 ): string {
   const measured = new Set([...sourceFiles, ...testFiles].map((file) => path.resolve(file.path)));
-  const dependencies = inputs.filter((file) => !measured.has(file)).map((file) => ({
-    relativePath: path.relative(config.projectRoot, file),
-    text: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "missing",
-  }));
+  const dependencies = inputs.filter((file) => !measured.has(file)).map((file) => fileInput(file, path.relative(config.projectRoot, file)));
   return contentHash([...sourceFiles, ...testFiles, ...dependencies], [
     String(CACHE_FORMAT), analysisIdentity(config).id, compilerInputQueryResults(queries),
   ]);

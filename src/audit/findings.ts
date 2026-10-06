@@ -1,5 +1,5 @@
 import { enrichFinding, findingKind, suppressionMatches } from "../actions.js";
-import { isRecord } from "../collections.js";
+import { findingRecords } from "../findings.js";
 import { MEASURE_TASKS } from "../measures/registry.js";
 import { TASKS } from "../tasks.js";
 import { readArtifact } from "../writer.js";
@@ -181,19 +181,19 @@ function verificationArtifact(config: Config, name: string) {
   return typeof artifact?.provenance.run_id === "string" ? artifact : null;
 }
 
+function toolEvidence(artifact: string, tool: string, label: string) {
+  return (config: Config): string | null => {
+    const status = verificationArtifact(config, artifact)?.tool_status?.[tool];
+    return status?.ran === true && status.complete === true ? null : `Required ${label} analysis did not complete.`;
+  };
+}
 const EVIDENCE_CHECKS: Record<PolicyCheck, (config: Config) => string | null> = {
   compiler: (config) => verificationArtifact(config, "type_health.json")?.confidence.typescript_program_loaded === true
     ? null
     : "TypeScript compiler program did not load.",
-  "typed-lint": (config) => {
-    const status = verificationArtifact(config, "lint_health.json")?.tool_status?.typed_eslint;
-    return status?.ran === true && status.complete === true ? null : "Required type-aware ESLint analysis did not complete.";
-  },
+  "typed-lint": toolEvidence("lint_health.json", "typed_eslint", "type-aware ESLint"),
   tests: testEvidenceReason,
-  "react-hooks": (config) => {
-    const status = verificationArtifact(config, "react_health.json")?.tool_status?.eslint_react_hooks;
-    return status?.ran === true && status.complete === true ? null : "Required React Hooks analysis did not complete.";
-  },
+  "react-hooks": toolEvidence("react_health.json", "eslint_react_hooks", "React Hooks"),
   package: (config) => verificationArtifact(config, "package_health.json")?.summary.complete === true
     ? null
     : "Required package health analysis did not complete.",
@@ -224,10 +224,4 @@ function testEvidenceReason(config: Config): string | null {
   if (!config.testCommand) return "Tests are required but no test command is configured.";
   const execution = verificationArtifact(config, "correctness_review.json")?.execution;
   return execution && ["passed", "failed"].includes(execution.status ?? "") ? null : "Required test execution did not complete.";
-}
-
-function findingRecords(value: unknown): ScoredRecord[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is ScoredRecord => isRecord(item) && typeof item.id === "string")
-    : [];
 }
