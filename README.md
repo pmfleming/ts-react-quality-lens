@@ -75,7 +75,7 @@ All commands accept `--config PATH` (or `-c PATH`); the default is `./ts-react-q
 | `quality.cleanup` | `cleanup.json` | Unused files/exports, dependency hygiene, and Knip cross-checks with explicit comparison outcomes. |
 | `quality.package_health` | `package_health.json` | Declaration emit, npm packing, publint, and Are The Types Wrong; disabled unless enabled by configuration/policy. |
 | `quality.sarif` | `sarif_findings.json` | Imported SARIF 2.1.0 findings and invocation status; does not run security scanners. |
-| `quality.runtime` | `runtime_health.json` | Imported React Profiler summaries, axe violations, and React Doctor diagnostics; does not launch the application. |
+| `quality.runtime` | `runtime_health.json` | Imported profiler/track observations, compiler execution reports, comparable bundle/runtime baselines, axe violations, and React Doctor diagnostics. |
 | `quality.modern_web` | `modern_web.json` | Optional Chrome modernization scanner candidates for JS/TS, HTML and CSS, with contextual verification criteria and browser-target-qualified advice. |
 | `correctness.catalog` | `correctness_review.json`, `test_catalog.json` | Test discovery and compiler-resolved source associations; no tests executed. |
 | `correctness.all` | `correctness_review.json`, `test_catalog.json` | Same catalog plus suite-level execution of the configured test command. |

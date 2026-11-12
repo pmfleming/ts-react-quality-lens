@@ -396,6 +396,8 @@ function normalizeRuntimeInputs(configDir: string, value: RuntimeInputConfig | u
   return {
     reactProfiler: value?.react_profiler ? path.resolve(configDir, value.react_profiler) : null,
     reactCompiler: value?.react_compiler ? path.resolve(configDir, value.react_compiler) : null,
+    performanceCurrent: value?.performance_current ? path.resolve(configDir, value.performance_current) : null,
+    performanceBaseline: value?.performance_baseline ? path.resolve(configDir, value.performance_baseline) : null,
     axe: value?.axe ? path.resolve(configDir, value.axe) : null,
     reactDoctor: value?.react_doctor ? path.resolve(configDir, value.react_doctor) : null,
   };

@@ -1,3 +1,4 @@
+import { performanceComparisonRecords } from "../performance-baseline.js";
 import { compilerExecutionRecords, type ImportedEvidence } from "../react-compiler-report.js";
 import { performanceTrackRecords } from "../react-performance.js";
 import fs from "node:fs";
@@ -8,7 +9,7 @@ import { stableHash } from "../clone-utils.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, RelatedLocation, ScoredRecord } from "../types.js";
-type RuntimeInput = { name: string; file: string | null; parse: (config: Config, value: unknown, environment: Record<string, unknown>, sourceVerified: boolean) => ScoredRecord[] | ImportedEvidence };
+type RuntimeInput = { name: string; file: string | null; parse: (config: Config, value: unknown, environment: Record<string, unknown>, sourceVerified: boolean, envelope: unknown) => ScoredRecord[] | ImportedEvidence };
 type RuntimeStatus = {
   available: boolean;
   ran: boolean;
@@ -20,6 +21,7 @@ type RuntimeStatus = {
 export function measureRuntime(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const inputs: RuntimeInput[] = [
+    { name: "performance_comparison", file: config.runtimeInputs.performanceCurrent ?? config.runtimeInputs.performanceBaseline, parse: performanceComparisonRecords },
     { name: "react_compiler", file: config.runtimeInputs.reactCompiler, parse: compilerExecutionRecords },
     { name: "react_profiler", file: config.runtimeInputs.reactProfiler, parse: profilerRecords },
     { name: "axe", file: config.runtimeInputs.axe, parse: axeRecords },
@@ -44,6 +46,7 @@ export function measureRuntime(config: Config, command: string, context: Analysi
       profiler_findings: records.filter((record) => record.source === "react-profiler").length,
       performance_track_observations: records.filter((record) => record.source === "react-performance-tracks").length,
       accessibility_findings: records.filter((record) => record.source === "axe").length,
+      performance_comparisons: records.filter((record) => record.kind === "performance_delta").length,
       compiler_observations: records.filter((record) => record.source === "react-compiler-report").length,
       react_doctor_findings: records.filter((record) => record.source === "react-doctor").length,
     },
@@ -71,7 +74,7 @@ function parseRuntimeInput(config: Config, input: RuntimeInput, sourceHash: stri
       typeof value.producer.version === "string" && Boolean(value.producer.version.trim()) &&
       isRecord(value.environment) && Object.keys(value.environment).length > 0;
     const environment = isRecord(value) && isRecord(value.environment) ? value.environment : {};
-    const result = input.parse(config, isRecord(value) && "data" in value ? value.data : value, environment, linked);
+    const result = input.parse(config, isRecord(value) && "data" in value ? value.data : value, environment, linked, value);
     const imported = Array.isArray(result) ? { records: result, complete: true, reason: null, metadata: undefined } : result;
     const records = imported.records.map((record) => ({ ...record, observation_environment: environment,
         ...(record.source === "react-profiler" && environment.build === "development"

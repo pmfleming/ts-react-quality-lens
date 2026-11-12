@@ -2,6 +2,7 @@ import { isRecord, isUnknownArray } from "./collections.js";
 import { arrayOf, boolean, integer, nonempty, nonnegative, nullable, oneOf, optional, positiveInteger, shape, string } from "./validation.js";
 import { validWireExtension } from "./wire-evidence.js";
 import type { Artifact, AttwProblem } from "./types.js";
+import { validPerformanceComparisonMetadata, validPerformanceDelta } from "./performance-baseline.js";
 import { validCompilerMetadata, validCompilerObservation } from "./react-compiler-report.js";
 import { validPerformanceTrackRecord } from "./react-performance.js";
 import { validModernWebPayload } from "./modern-web-payload.js";
@@ -42,12 +43,21 @@ function validReact(artifact: Artifact): boolean {
 function validRuntime(artifact: Artifact): boolean {
   const imports = artifact.import_metadata;
   if (imports !== undefined && (!isRecord(imports) || !Object.values(imports).every(shape({ source_verified: boolean, report: isRecord })))) return false;
+  for (const name of ["react_compiler", "performance_comparison"]) {
+    if (artifact.tool_status?.[name]?.ran === true && (!isRecord(imports) || !isRecord(imports[name]))) return false;
+  }
+  if ((artifact.records ?? []).some((record) => record.kind === "performance_delta") && (!isRecord(imports) || !isRecord(imports.performance_comparison))) return false;
   if (isRecord(imports) && imports.react_compiler !== undefined) {
     const item = imports.react_compiler;
     if (!shape({ source_verified: boolean, report: isRecord })(item) || !validCompilerMetadata(item.report, item.source_verified)) return false;
   }
+  if (isRecord(imports) && imports.performance_comparison !== undefined) {
+    const item = imports.performance_comparison;
+    if (!shape({ source_verified: boolean, report: isRecord })(item) || !validPerformanceComparisonMetadata(item.report, item.source_verified) ||
+        item.report.comparisons !== (artifact.records ?? []).filter((record) => record.kind === "performance_delta").length) return false;
+  }
   return validImports(artifact) && (artifact.records ?? []).every((record) =>
-    record.source === "react-compiler-report" ? validCompilerObservation(record) : record.source !== "react-performance-tracks" || validPerformanceTrackRecord(record));
+    record.kind === "performance_delta" ? validPerformanceDelta(record) : record.source === "react-compiler-report" ? validCompilerObservation(record) : record.source !== "react-performance-tracks" || validPerformanceTrackRecord(record));
 }
 function validImports(artifact: Artifact): boolean {
   const statuses = Object.values(artifact.tool_status ?? {});

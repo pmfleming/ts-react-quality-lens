@@ -214,6 +214,8 @@
       "properties": {
         "react_profiler": { "type": "string" },
         "react_compiler": { "type": "string", "minLength": 1 },
+        "performance_current": { "type": "string", "minLength": 1 },
+        "performance_baseline": { "type": "string", "minLength": 1 },
         "axe": { "type": "string" },
         "react_doctor": { "type": "string" }
       }

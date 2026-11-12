@@ -188,3 +188,71 @@ Files must belong to the lens's selected source set and locations must exist. Fu
 `import_metadata.react_compiler` retains source verification, build-scope counts and reported coverage. A percentage is emitted only with matching provenance, a complete declared inventory, one terminal outcome per inventoried function, no pipeline failure, and a nonempty denominator. Missing/stale provenance, partial scope, missing outcomes, or pipeline failure produce incomplete input status and no percentage. Skips/errors are recorded outcomes, not failures of report ingestion. Compilation success does not establish runtime correctness, a speedup, or whole-project compiler coverage. The collector must supply the complete inventory; silence in logger events is not an evaluated negative.
 
 The format deliberately normalizes [official logger events](https://react.dev/reference/react-compiler/logger), whose upstream structure can change between compiler versions. Source changes and edits to the report invalidate saved evidence. Configured incomplete reports participate in the existing runtime audit completeness policy.
+
+## Bundle and runtime baseline comparisons
+
+Configure both paths, relative to the lens config, then run `measure quality.runtime`:
+
+```json
+{
+  "runtime_inputs": {
+    "performance_current": "reports/current.json",
+    "performance_baseline": "reports/baseline.json"
+  }
+}
+```
+
+Both files use `react-performance-snapshot-v1`. They are normalized exports from your build/benchmark tooling, not arbitrary bundler JSON, raw Chrome traces, or the legacy architecture-map `performance_inputs.bundle_stats` format. The lens reads these snapshots and never overwrites or advances the baseline. Example current snapshot (the baseline uses its own historical source hash/build ID and measurements):
+
+```json
+{
+  "provenance": { "source_set_hash": "<current lens source hash>" },
+  "producer": { "name": "your-performance-exporter", "version": "1.0.0" },
+  "environment": {
+    "build_id": "build-124", "build": "production",
+    "build_config_hash": "<stable build settings hash excluding source/build ID>",
+    "toolchain_hash": "<build tool and plugin versions hash>",
+    "react_version": "19.2.0", "browser_targets": ["chrome 140"],
+    "runtime_context": {
+      "browser": "Chrome", "browser_version": "140", "os": "Linux",
+      "device": "controlled-runner-a", "network": "local-fixture", "viewport": "1280x800",
+      "harness_version": "1", "scenario_version": "search-v1", "cache_state": "warm"
+    }
+  },
+  "data": {
+    "format": "react-performance-snapshot-v1",
+    "bundles": {
+      "complete": true, "routes": ["/search"], "encodings": ["gzip"],
+      "entries": [
+        { "route": "/search", "chunk": "app", "loading": "initial", "encoding": "gzip", "bytes": 12000 },
+        { "route": "/search", "chunk": "editor", "loading": "deferred", "encoding": "gzip", "bytes": 4000 }
+      ]
+    },
+    "runtime": {
+      "complete": true,
+      "entries": [{
+        "scenario": "search", "metric": "render-duration", "unit": "ms",
+        "samples": [
+          { "run_id": "run-1", "value": 12 }, { "run_id": "run-2", "value": 13 },
+          { "run_id": "run-3", "value": 11 }, { "run_id": "run-4", "value": 14 },
+          { "run_id": "run-5", "value": 12 }
+        ]
+      }]
+    }
+  }
+}
+```
+
+A snapshot may contain bundles, runtime measurements, or both. Runtime context is required only for runtime data. Runtime samples represent separate scenario runs, not nested spans from one trace. Run IDs must be unique within each scenario/metric; values must be finite and nonnegative. Bundle sizes must be nonnegative safe integers. Route/encoding inventories and route/chunk/encoding keys must be unique. Use stable logical chunk names and attribute shared chunks per route. Do not report the same chunk in both loading phases for the same route/encoding. Supported encodings are `raw`, `gzip`, and `brotli`.
+
+Comparison rules:
+
+- The current snapshot must match the analyzed source hash. Baseline source identity is retained as a historical declaration; the lens cannot independently verify the archived build from this JSON alone. Different source hashes and build IDs are expected across revisions.
+- Producer name/version, build mode, build-settings hash, toolchain hash, concrete React version, and declared browser-target set must match. The exporter must include relevant minification, splitting, runtime, and target settings in those fingerprints. Development builds are not compared.
+- Bundle comparisons require complete production inventories. Each shared route/encoding gets initial and deferred totals plus chunk attribution. Missing chunks within a declared complete route/encoding scope count as zero. Missing routes or encodings are explicitly unpaired, not assumed to be zero. Shared chunks are never totaled across routes.
+- Runtime comparisons require complete reports, matching browser/version, OS, device, network, viewport, harness, scenario version and cache state, plus at least five samples on each side for each matched scenario/metric. Five is a lens minimum, not a statistical sufficiency claim. Profiling builds may be compared with profiling builds. Samples retain count, range, median and nearest-rank p95; raw spans are never summed.
+- Records report signed absolute and percentage differences. A zero baseline has a null percentage. No automatic regression/gain label, causal attribution, significance estimate, or blocking threshold is inferred. Comparisons are review evidence.
+
+`import_metadata.performance_comparison` records `comparable`, `incompatible`, or `unverified`, with reasons, source/build identities and `not_compared` subjects. A comparable subset can coexist with explicitly unpaired measurements. Valid incompatible snapshots count as completed ingestion and yield a review diagnostic; they produce no numerical comparisons. Missing files, malformed data or a missing path pair make runtime evidence incomplete. Unverified current provenance also makes it incomplete. Both snapshot contents participate in freshness and in-run input-change checks.
+
+These comparisons operationalize the [Vercel prioritization of waterfalls and bundle size](https://vercel.com/blog/introducing-react-best-practices), [Next.js production measurement guidance](https://nextjs.org/docs/app/guides/production-checklist), and [React Performance Tracks](https://react.dev/reference/dev-tools/react-performance-tracks). They do not yet infer request independence or diagnose waterfalls from timing alone.

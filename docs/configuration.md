@@ -44,7 +44,7 @@ Built-in excludes are `node_modules`, `.git`, `dist`, `build`, `coverage`, `.nex
 | `type_coverage` | Optional `minimum_percent`, `per_file_minimum_percent`, `changed_file_minimum_percent` (0–100), and `baseline` pointing to an earlier `type_health.json`. No default floors. |
 | `package_health` | `enabled` defaults to true for the `library` profile or an explicit required `package` check, false otherwise. `attw_profile` is `strict` (default), `node16`, or `esm-only`. Explicit `enabled: false` overrides activation but does not remove a required policy check. |
 | `sarif_inputs` | Array of `{ "path": "…", "name": "…", "required": false }`; only `path` is required. Default names are `sarif-1`, etc. |
-| `runtime_inputs` | Optional `react_profiler`, `axe`, and `react_doctor` JSON paths. All configured inputs are expected to parse successfully. |
+| `runtime_inputs` | Optional profiler, axe, React Doctor, compiler-report and paired performance-snapshot paths. Configured inputs must parse and satisfy their provenance/completeness requirements. |
 | `performance_inputs` | Optional `bundle_stats` and `render_costs` JSON paths, used by `map.architecture`, not `quality.runtime`. |
 | `public_api` | `entry`: project-relative entry paths; `exports`: objects with `file` and `names` arrays to preserve intentional public exports during cleanup. |
 | `layer_rules` | Ordered `{ "layer": "…", "patterns": ["…"] }` rules. A nonempty array replaces the built-in route/feature/ui/hook/lib/core rules. |
@@ -142,3 +142,5 @@ Set `react.additional_effect_hooks` to a JavaScript regular expression, for exam
 `react_health.json.custom_effect_hooks` records the pattern, run status, and matching direct named call sites. This is a syntactic inventory, not proof that every call was semantically evaluated. Member calls and alias resolution are not inventoried. Configure the names actually called in your source. Changing the setting invalidates prior analysis identity. See [the official setting](https://react.dev/reference/eslint-plugin-react-hooks/lints/exhaustive-deps#options).
 
 `runtime_inputs.react_compiler` accepts a source-linked normalized React Compiler build report. Its path resolves relative to the lens config. See [the execution-report format](integrations.md#react-compiler-execution-reports); absent input is optional, while a configured invalid or incomplete report makes runtime evidence incomplete.
+
+For measured baseline comparisons, set both `runtime_inputs.performance_current` and `runtime_inputs.performance_baseline` to normalized snapshot paths. Run `measure quality.runtime`; the lens does not run benchmarks or update the baseline. See [comparison requirements and format](integrations.md#bundle-and-runtime-baseline-comparisons). Legacy `performance_inputs.bundle_stats` and `render_costs` still feed the architecture map and do not establish comparable baseline evidence.

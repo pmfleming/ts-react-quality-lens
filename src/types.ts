@@ -67,7 +67,7 @@ type WorkspaceOverrideConfig = { workspace: string; framework?: string; policy_p
 export type WorkspacesConfig = {
   enabled?: boolean; patterns?: string[]; overrides?: WorkspaceOverrideConfig[];
 };
-export type RuntimeInputConfig = { react_profiler?: string; react_compiler?: string; axe?: string; react_doctor?: string };
+export type RuntimeInputConfig = { react_profiler?: string; react_compiler?: string; performance_current?: string; performance_baseline?: string; axe?: string; react_doctor?: string };
 export type SuppressionConfig = { id?: string; file?: string; kind?: string; reason?: string };
 export type AuditConfig = { base?: string; changed_since?: string; gate?: "new-only" | "all"; baseline?: string };
 export type LayerRule = { layer: string; patterns: string[] };
@@ -181,6 +181,8 @@ export type Config = {
   runtimeInputs: {
     reactProfiler: string | null;
     reactCompiler: string | null;
+    performanceCurrent: string | null;
+    performanceBaseline: string | null;
     axe: string | null;
     reactDoctor: string | null;
   };
