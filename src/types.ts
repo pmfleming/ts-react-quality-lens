@@ -322,6 +322,7 @@ export type TypedModuleRecord = {
   surface_type_references?: string[];
   safety_evidence?: SafetyEvidence;
   api_design?: ScoredRecord[];
+  callback_contracts?: ScoredRecord[];
   documentation?: { complete: boolean; exports: ExportDocumentation[] };
   sourceFile?: ts.SourceFile;
 };

@@ -4,6 +4,7 @@ import * as ts from "typescript";
 import { compilerOptionSummary } from "../compiler-options.js";
 import { collectSafetyEvidence } from "../typescript-safety.js";
 import { apiDesignRecords } from "../typescript-api-design.js";
+import { callbackContractRecords } from "../callback-contracts.js";
 import { collectExportDocumentation } from "../typescript-documentation.js";
 import { dedupeBy, isRecord } from "../collections.js";
 import { trackCompilerInputs } from "./compiler-inputs.js";
@@ -314,6 +315,7 @@ function typedModuleRecord(
     surface_type_references: moduleSurfaceTypeReferences(checker, sourceFile),
     safety_evidence: collectSafetyEvidence(checker, sourceFile, program),
     api_design: apiDesignRecords(checker, sourceFile, toPosix(path.relative(config.projectRoot, sourceFile.fileName))),
+    callback_contracts: callbackContractRecords(checker, sourceFile, toPosix(path.relative(config.projectRoot, sourceFile.fileName))),
     ...(config.documentation.enabled ? { documentation: {
       complete: program.getSyntacticDiagnostics(sourceFile).length === 0 && program.getSemanticDiagnostics(sourceFile).length === 0,
       exports: collectExportDocumentation(checker, sourceFile, config.projectRoot),

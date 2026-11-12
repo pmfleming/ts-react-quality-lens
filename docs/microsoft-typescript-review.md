@@ -25,3 +25,11 @@ Source: [Choosing Compiler Options](https://www.typescriptlang.org/docs/handbook
 Existing coverage: compiler import resolution, package diagnostics, and source/framework boundaries. Gap: no declared runtime context for compiler recommendations.
 
 Implemented: optional per-tsconfig Node/bundler/unbundled-browser/library declarations, compiler-computed module defaults, and advisory reviews for resolution, independent transpilation, duplicate emit, library declarations/output placement and runtime floor. Unconfigured contexts are unknown; undiscovered/unloaded target configs are unavailable. No package-format, browser-version, bundler execution or external declaration-pipeline claims are made. Library bundling remains a review because emitted JavaScript and declarations can have different compatibility constraints.
+
+## 4. Declaration Files: Do’s and Don’ts
+
+Source: [Declaration Do’s and Don’ts](https://www.typescriptlang.org/docs/handbook/declaration-files/do-s-and-don-ts.html).
+
+Existing coverage: boxed types, unsafe `any`, generic relationships, overload consolidation, declarations/package checks. Gap: callback signatures were not compared with their implementation usage.
+
+Implemented: advisory public source-contract reviews when every observed direct invocation discards an `any` callback result, or always supplies a non-undefined optional callback argument. Exported functions, arrows and public class methods are supported. Symbol resolution avoids shadowed callbacks; escapes, reassignments, spread calls, unknown arguments and declaration-only APIs cause abstention. Findings include observed call locations. These bounded observations cannot establish safe consumer-facing signature changes, so they never block or auto-edit declarations.

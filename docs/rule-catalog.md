@@ -138,3 +138,5 @@ With `documentation.enabled`, `quality.type_health` includes public export docum
 The Functions Handbook review adds `no-unsafe-function-type` warnings and advisory `unified-signatures`. The latter preserves differently named parameters and differently documented overloads. See [Microsoft guidance comparison](microsoft-typescript-review.md).
 
 `compiler_target_review` findings are advisory and require an explicit `typescript.targets` environment. They do not infer the runtime from module settings or require erasable syntax for every strict project.
+
+`callback_contract_review` is advisory source-backed declaration evidence. `discarded-callback-any-result` considers callbacks whose direct results are always discarded; `always-supplied-optional-callback-argument` considers optional arguments supplied at every observed call. Only public implementations and inline callback signatures are supported. Escapes, indirect/spread calls, reassignments and unknown argument types are excluded. No declaration-only usage proof is inferred; no consumer compatibility or path-sensitive guarantee is claimed.

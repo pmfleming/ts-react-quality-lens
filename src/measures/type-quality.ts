@@ -39,6 +39,7 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
   const records = [
     ...project.modules.flatMap(typeHealthRecords),
     ...project.modules.flatMap((module) => module.typed?.api_design ?? []),
+    ...project.modules.flatMap((module) => module.typed?.callback_contracts ?? []),
     ...documentation.records,
     ...targets.records,
     ...typeSafetyPostureRecords(config, project),
@@ -73,6 +74,10 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
     api_design_analysis: {
       scope: "Return-only generic candidates in callable signatures with explicit return annotations; parameter and constraint references are resolved by symbol. Inferred returns are outside this check.",
       files: project.modules.map((module) => ({ file: module.file, status: module.typed?.api_design ? "evaluated" : "unavailable" })),
+    },
+    callback_contract_analysis: {
+      scope: "Public source implementations with inline callback signatures and only direct non-spread uses; declarations without implementations and escaping callbacks are not assessed.",
+      files: project.modules.map((module) => ({ file: module.file, status: module.typed?.callback_contracts ? "evaluated" : "unavailable" })),
     },
   });
 }
