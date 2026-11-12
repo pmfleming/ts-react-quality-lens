@@ -1,5 +1,5 @@
 import { isRecord, isUnknownArray } from "./collections.js";
-import { arrayOf, boolean, integer, nonempty, nonnegative, nullable, oneOf, optional, positiveInteger, shape, string } from "./validation.js";
+import { arrayOf, boolean, count, integer, nonempty, nonnegative, nullable, oneOf, optional, positiveInteger, shape, string } from "./validation.js";
 import { validWireExtension } from "./wire-evidence.js";
 import type { Artifact, AttwProblem } from "./types.js";
 import { validPerformanceComparisonMetadata, validPerformanceDelta } from "./performance-baseline.js";
@@ -70,6 +70,23 @@ function validImports(artifact: Artifact): boolean {
 }
 const importStatus = oneOf("not_configured", "complete", "incomplete");
 const coveredFiles = arrayOf(shape({ file: nonempty, line_hits: arrayOf(shape({ line: positiveInteger, hits: nonnegative })) }));
+const percentage = nullable((value: unknown): value is number => nonnegative(value) && value <= 100);
+const coveredFunction = shape({ id: nonempty, file: nonempty, name: nonempty, line: positiveInteger,
+  executable_lines: count, coverage_percent: percentage, known_exclusive_coverage_percent: percentage,
+  attribution_status: oneOf("exclusive", "ambiguous", "unavailable"), complexity_coverage_risk: nullable(nonnegative),
+  ambiguous_lines: arrayOf(positiveInteger), excluded_nested_lines: arrayOf(positiveInteger),
+  inclusive_body_executable_lines: count, inclusive_body_coverage_percent: percentage });
+function validCoveredFunction(value: unknown): boolean {
+  if (!coveredFunction(value)) return false;
+  const excluded = [...value.ambiguous_lines, ...value.excluded_nested_lines];
+  const status = value.ambiguous_lines.length ? "ambiguous" : value.executable_lines ? "exclusive" : "unavailable";
+  return value.attribution_status === status && new Set(excluded).size === excluded.length &&
+    value.inclusive_body_executable_lines === value.executable_lines + excluded.length &&
+    (value.inclusive_body_coverage_percent === null) === (value.inclusive_body_executable_lines === 0) &&
+    (value.known_exclusive_coverage_percent === null) === (value.executable_lines === 0) &&
+    (status === "exclusive" ? value.coverage_percent === value.known_exclusive_coverage_percent && value.complexity_coverage_risk !== null
+      : value.coverage_percent === null && value.complexity_coverage_risk === null);
+}
 const checks = new Map<string, (artifact: Artifact) => boolean>([
   ["quality.modern_web", validModernWebPayload],
   ["quality.type_health", ({ confidence, tool_status, diagnostics, documentation, compiler_performance }) => boolean(confidence.typescript_program_loaded) &&
@@ -80,7 +97,7 @@ const checks = new Map<string, (artifact: Artifact) => boolean>([
   ["quality.react_health", validReact],
   ["correctness.all", (artifact) => execution.get(artifact.execution?.status ?? "")?.(artifact.execution) ?? false],
   ["quality.package_health", validPackage], ["quality.sarif", validImports], ["quality.runtime", validRuntime],
-  ["testing.coverage", (artifact) => importStatus(artifact.summary.status) && coveredFiles(artifact.files) && isUnknownArray(artifact.functions)],
+  ["testing.coverage", (artifact) => importStatus(artifact.summary.status) && coveredFiles(artifact.files) && isUnknownArray(artifact.functions) && artifact.functions.every(validCoveredFunction)],
   ["audit", (artifact) => isUnknownArray(artifact.findings) && boolean(artifact.summary.complete) &&
     strings(artifact.summary.incomplete_reasons) && strings(artifact.summary.verification_failures) && oneOf("pass", "warn", "fail", "incomplete")(artifact.summary.verdict)],
 ]);

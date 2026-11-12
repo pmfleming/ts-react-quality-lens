@@ -6,7 +6,7 @@ import { parseExecutionCoverage, type CoveredFile } from "../coverage.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { nonempty, shape, string } from "../validation.js";
 import { writeArtifact } from "../writer.js";
-import type { AnalysisContext, Artifact, Config, ProjectAnalysis } from "../types.js";
+import type { AnalysisContext, Artifact, Config, FunctionRecord, ProjectAnalysis } from "../types.js";
 
 type CoverageReport = { files: CoveredFile[]; status: "not_configured" | "incomplete" | "complete"; reason: string | null };
 const linkedReport = shape({ provenance: shape({ source_set_hash: string }), producer: shape({ name: nonempty, version: nonempty }) });
@@ -22,7 +22,9 @@ export function measureExecutionCoverage(config: Config, command: string, contex
     summary: { status, reason, observed_files: files.length, observed_executable_lines: observed.length, line_coverage_percent: percent(observed),
       ...changedCoverage(config, files) },
     files, functions: functionCoverage(project, files), records: [],
-    limitations: ["Observed execution is not proof of correctness.", "Line/range observations are not branch coverage.", "Function risk is advisory, not a correctness verdict."],
+    limitations: ["Observed execution is not proof of correctness.", "Line/range observations are not branch coverage.",
+      "Exclusive function coverage excludes nested declarations; overlapping boundary lines have unknown attribution. Inclusive body coverage is reported separately.",
+      "Function risk is withheld for ambiguous attribution or absent observations; line coverage cannot distinguish other same-line code."],
   };
   return writeArtifact(config, "execution_coverage.json", artifact);
 }
@@ -57,11 +59,29 @@ function functionCoverage(project: ProjectAnalysis, files: CoveredFile[]) {
   const index = new Map(files.map((file) => [file.file, file.line_hits]));
   return project.modules.flatMap((module) => module.functions.map((fn) => {
     const hits = (index.get(module.file) ?? []).filter((hit) => hit.line >= fn.body_line && hit.line < fn.body_line + fn.lines);
-    const coverage = percent(hits), cc = fn.cyclomatic_complexity;
-    return { file: module.file, name: fn.name, line: fn.line, executable_lines: hits.length, coverage_percent: coverage,
+    const nested = module.functions.filter((other) => contains(fn, other));
+    const hasParent = module.functions.some((other) => contains(other, fn));
+    const siblings = module.functions.filter((other) => other !== fn && !contains(fn, other) && !contains(other, fn));
+    const excluded = hits.filter((hit) => nested.some((child) => hit.line > child.body_line && hit.line < endLine(child)));
+    const remaining = hits.filter((hit) => !excluded.includes(hit));
+    const ambiguous = remaining.filter(({ line }) =>
+      nested.some((child) => line >= child.line && line <= endLine(child)) ||
+      hasParent && (line === fn.body_line || line === endLine(fn)) ||
+      siblings.some((other) => line >= other.line && line <= endLine(other)));
+    const exclusive = remaining.filter((hit) => !ambiguous.includes(hit));
+    const coverage = ambiguous.length ? null : percent(exclusive), cc = fn.cyclomatic_complexity;
+    return { id: fn.id, file: module.file, name: fn.name, line: fn.line, executable_lines: exclusive.length, coverage_percent: coverage,
+      attribution_status: ambiguous.length ? "ambiguous" : exclusive.length ? "exclusive" : "unavailable",
+      known_exclusive_coverage_percent: percent(exclusive), ambiguous_lines: ambiguous.map((hit) => hit.line),
+      excluded_nested_lines: excluded.map((hit) => hit.line),
+      inclusive_body_executable_lines: hits.length, inclusive_body_coverage_percent: percent(hits),
       complexity_coverage_risk: coverage === null ? null : cc * cc * Math.pow(1 - coverage / 100, 3) + cc };
   }));
 }
+function contains(parent: FunctionRecord, child: FunctionRecord): boolean {
+  return parent.start < child.start && child.end <= parent.end;
+}
+function endLine(fn: FunctionRecord): number { return fn.body_line + fn.lines - 1; }
 function percent(hits: Array<{ hits: number }>): number | null {
   return hits.length ? 100 * hits.filter((hit) => hit.hits > 0).length / hits.length : null;
 }

@@ -271,6 +271,8 @@ export type FunctionRecord = {
   lines: number;
   complexity: number;
   body_line: number;
+  start: number;
+  end: number;
   cyclomatic_complexity: number;
   cognitive_complexity: number;
   halstead_effort: number;

@@ -240,6 +240,8 @@ function extractFunctions(file: SourceFileRecord, sourceFile: ts.SourceFile): Fu
       line,
       lines,
       body_line: lineForNode(sourceFile, bodyNode),
+      start: node.getStart(sourceFile),
+      end: node.end,
       complexity: cyclomaticComplexity,
       cyclomatic_complexity: cyclomaticComplexity,
       cognitive_complexity: cognitiveComplexity,

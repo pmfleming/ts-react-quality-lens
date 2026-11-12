@@ -10,6 +10,7 @@ import { loadConfig } from "../src/config.js";
 import { parseExecutionCoverage } from "../src/coverage.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { sourceSetHash } from "../src/provenance.js";
+import { validProducerPayload } from "../src/producer-payload.js";
 import { arrayOf, finite, nullable, shape, string } from "../src/validation.js";
 
 test("coverage formats merge maxima, preserve zero-hit inner ranges and reject malformed boundaries", () => {
@@ -94,5 +95,52 @@ test("coverage orchestration distinguishes missing evidence, partial files, and 
     assert.equal(changed.summary.changed_executable_lines, 1);
     assert.equal(changed.summary.changed_line_coverage_percent, 100);
     assert.equal(changed.summary.line_coverage_percent, 100 * 2 / 3);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("exclusive coverage excludes nested implementations and withholds ambiguous shared-line risk", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lens-coverage-ownership-"));
+  try {
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(path.join(root, "src/a.ts"), [
+      "export function outer() {", "  const value = 1;", "  function inner(", "    arg = 0", "  ) {", "    return arg;", "  }", "  return value;", "}",
+      "export const first = () => 1, second = () => 2;",
+      "export const curry = () => () => 1;", "",
+    ].join("\n"));
+    const config = loadConfig(path.join(root, "lens.json"));
+    const reportPath = path.join(root, "coverage.json");
+    config.coverageReport = reportPath;
+    const context = createAnalysisContext(config), project = context.project();
+    const save = (extra: string) => fs.writeFileSync(reportPath, JSON.stringify({ format: "lcov",
+      data: `SF:src/a.ts\nDA:2,1\nDA:6,0\nDA:8,1\nDA:10,1\nDA:11,1\n${extra}end_of_record\n`,
+      provenance: { source_set_hash: sourceSetHash(project) }, producer: { name: "fixture", version: "1" } }));
+    const measure = () => {
+      const result = runMeasure(config, "testing.coverage", "ownership", { context })[0];
+      assert.ok(result && arrayOf(shape({ name: string, coverage_percent: nullable(finite), complexity_coverage_risk: nullable(finite) }))(result.functions));
+      assert.ok(validProducerPayload(result));
+      const forged = structuredClone(result);
+      assert.ok(Array.isArray(forged.functions));
+      const ambiguous = result.functions.findIndex((fn) => fn.attribution_status === "ambiguous");
+      forged.functions[ambiguous] = { ...result.functions[ambiguous], coverage_percent: 100, complexity_coverage_risk: 1 };
+      assert.equal(validProducerPayload(forged), false);
+      return result.functions;
+    };
+    save("");
+    const functions = measure(), outer = functions.find((fn) => fn.name === "outer");
+    assert.equal(outer?.coverage_percent, 100);
+    assert.equal(outer?.inclusive_body_coverage_percent, 100 * 2 / 3);
+    assert.deepEqual(outer?.excluded_nested_lines, [6]);
+    assert.equal(functions.find((fn) => fn.name === "inner")?.coverage_percent, 0);
+    for (const name of ["first", "second", "curry", "anonymous"]) {
+      const fn = functions.find((item) => item.name === name);
+      assert.equal(fn?.attribution_status, "ambiguous", name);
+      assert.equal(fn?.coverage_percent, null, name);
+      assert.equal(fn?.complexity_coverage_risk, null, name);
+    }
+    save("DA:4,1\nDA:5,1\nDA:7,0\n");
+    assert.ok(measure().filter((fn) => ["outer", "inner"].includes(fn.name)).every((fn) => fn.coverage_percent === null && fn.complexity_coverage_risk === null));
+    config.cache.enabled = true;
+    createAnalysisContext(config).project();
+    assert.deepEqual(createAnalysisContext(config).project().modules[0]?.functions, project.modules[0]?.functions);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
