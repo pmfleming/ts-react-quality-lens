@@ -140,3 +140,5 @@ The Functions Handbook review adds `no-unsafe-function-type` warnings and adviso
 `compiler_target_review` findings are advisory and require an explicit `typescript.targets` environment. They do not infer the runtime from module settings or require erasable syntax for every strict project.
 
 `callback_contract_review` is advisory source-backed declaration evidence. `discarded-callback-any-result` considers callbacks whose direct results are always discarded; `always-supplied-optional-callback-argument` considers optional arguments supplied at every observed call. Only public implementations and inline callback signatures are supported. Escapes, indirect/spread calls, reassignments and unknown argument types are excluded. No declaration-only usage proof is inferred; no consumer compatibility or path-sensitive guarantee is claimed.
+
+Optional compiler performance samples are observations in `compiler_performance`, not scored findings. No duration or type-count threshold gates the audit. Cache reuse is explicit and unavailable counters remain null. See [compiler performance configuration](configuration.md#optional-compiler-performance-observations).

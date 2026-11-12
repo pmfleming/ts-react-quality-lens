@@ -60,6 +60,7 @@
     "typescript": {
       "type": "object", "additionalProperties": false,
       "properties": {
+        "measure_performance": { "type": "boolean" },
         "targets": { "type": "array", "items": {
           "type": "object", "additionalProperties": false, "required": ["tsconfig", "environment"],
           "properties": {

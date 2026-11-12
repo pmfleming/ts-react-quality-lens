@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { typeSafetyPostureRecords } from "../compiler-options.js";
 import { compilerTargetEvidence } from "../compiler-targets.js";
+import { compilerPerformanceEvidence } from "../compiler-performance.js";
 import { documentationEvidence } from "../typescript-documentation.js";
 import { fileRuleApplicability } from "../rule-applicability.js";
 import { ADVISORY_TYPED_RULES, BLOCKING_TYPED_RULES, TYPED_RULES, TYPED_RULESET } from "../rule-policy.js";
@@ -58,8 +59,9 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
       : null,
   }, records, {
     compiler_options: project.tsProject.compiler_options ?? null,
-    compiler_projects: project.tsProject.project_configs ?? [],
+    compiler_projects: (project.tsProject.project_configs ?? []).map(({ performance: _performance, ...item }) => item),
     compiler_targets: targets.report,
+    compiler_performance: compilerPerformanceEvidence(config, project),
     tool_status: {
       compiler_api: {
         ...compilerProvenance().analysis,

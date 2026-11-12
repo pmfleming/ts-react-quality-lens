@@ -1,6 +1,7 @@
 import type * as ts from "typescript";
 import type { SafetyEvidence } from "./typescript-safety.js";
 import type { ExportDocumentation } from "./typescript-documentation.js";
+import type { CompilerPerformanceSample } from "./compiler-performance.js";
 import type { CompilerInputQuery } from "./integrations/compiler-inputs.js";
 import type { ModernWebConfig, ModernWebSettings } from "./modern-web-types.js";
 
@@ -43,7 +44,7 @@ export type RawConfig = {
   cleanup?: CleanupConfig;
   type_coverage?: TypeCoverageConfig;
   documentation?: DocumentationConfig;
-  typescript?: { targets?: CompilerTarget[] };
+  typescript?: { targets?: CompilerTarget[]; measure_performance?: boolean };
   package_health?: PackageHealthConfig;
   sarif_inputs?: SarifInputConfig[];
   workspaces?: WorkspacesConfig;
@@ -159,7 +160,7 @@ export type Config = {
     additionalEffectHooks: string | null;
   };
   typedLint: { mode: TypedLintMode };
-  typescript: { targets: CompilerTarget[] };
+  typescript: { targets: CompilerTarget[]; measurePerformance: boolean };
   documentation: {
     enabled: boolean;
     exclude: string[];
@@ -343,6 +344,7 @@ export type TypeCoverageSummary = Omit<TypeCoverageFile, "file"> & {
 };
 
 type TypeScriptProjectConfig = {
+  performance?: CompilerPerformanceSample;
   tsconfig: string;
   workspace_id: string;
   loaded: boolean;
@@ -353,6 +355,7 @@ type TypeScriptProjectConfig = {
 };
 
 export type TypeScriptProject = {
+  performance?: CompilerPerformanceSample;
   root_file_count?: number;
   project_reference_count?: number;
   input_files?: string[];

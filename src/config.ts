@@ -138,7 +138,7 @@ export function loadConfig(configArg?: string | null): Config {
     cache: normalizeCache(outputDir, rawConfig.cache),
     react: normalizeReact(rawConfig.react),
     typedLint: { mode: rawConfig.typed_lint?.mode ?? "auto" },
-    typescript: { targets: normalizeCompilerTargets(root, rawConfig.typescript?.targets ?? []) },
+    typescript: { targets: normalizeCompilerTargets(root, rawConfig.typescript?.targets ?? []), measurePerformance: rawConfig.typescript?.measure_performance ?? false },
     documentation: {
       enabled: rawConfig.documentation?.enabled ?? false,
       exclude: rawConfig.documentation?.exclude ?? [],

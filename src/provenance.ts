@@ -105,6 +105,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     compiler_posture: "effective-per-project-v1",
     compiler_targets: "declared-environments-v1",
     callback_contracts: "bounded-direct-calls-v1",
+    compiler_performance: "analysis-phases-v1",
     react_guidance: REACT_GUIDANCE_VERSION,
     runtime_observations: "runtime-observations-v4",
     rule_applicability: "bounded-dispatch-v1",

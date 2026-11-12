@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as ts from "typescript";
+import { performance } from "node:perf_hooks";
+import { compilerPerformanceSample } from "../compiler-performance.js";
 import { compilerOptionSummary } from "../compiler-options.js";
 import { collectSafetyEvidence } from "../typescript-safety.js";
 import { apiDesignRecords } from "../typescript-api-design.js";
@@ -68,6 +70,7 @@ export function loadTypeScriptProjects(
       workspace_id: item.workspaceId,
       loaded: project.loaded,
       reason: project.reason,
+      ...(project.performance ? { performance: project.performance } : {}),
       ...(project.compiler_options ? { compiler_options: project.compiler_options } : {}),
       ...(project.root_file_count !== undefined ? { root_file_count: project.root_file_count } : {}),
       ...(project.project_reference_count !== undefined ? { project_reference_count: project.project_reference_count } : {}),
@@ -130,18 +133,25 @@ function createTypedProject(
     readDirectory: inputs.system.readDirectory,
     ...(inputs.system.realpath ? { realpath: inputs.system.realpath } : {}),
   });
+  const started = config.typescript.measurePerformance ? performance.now() : 0;
   const program = ts.createProgram({
     rootNames: parsed.fileNames,
     options,
     host,
     ...(parsed.projectReferences ? { projectReferences: parsed.projectReferences } : {}),
   });
+  const created = config.typescript.measurePerformance ? performance.now() : 0;
   const checker = program.getTypeChecker();
+  const initialized = config.typescript.measurePerformance ? performance.now() : 0;
   const diagnostics = ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnosticRecord(diagnostic, config.projectRoot));
+  const checked = config.typescript.measurePerformance ? performance.now() : 0;
   return {
     available: true,
     loaded: true,
     reason: null,
+    ...(config.typescript.measurePerformance ? { performance: compilerPerformanceSample(program, config, sourceFiles, {
+      program_creation: created - started, checker_initialization: initialized - created, diagnostics: checked - initialized,
+    }) } : {}),
     compiler_options: compilerOptionSummary(parsed.options),
     root_file_count: parsed.fileNames.length,
     project_reference_count: parsed.projectReferences?.length ?? 0,

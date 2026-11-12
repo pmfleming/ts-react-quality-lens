@@ -33,3 +33,11 @@ Source: [Declaration Do’s and Don’ts](https://www.typescriptlang.org/docs/ha
 Existing coverage: boxed types, unsafe `any`, generic relationships, overload consolidation, declarations/package checks. Gap: callback signatures were not compared with their implementation usage.
 
 Implemented: advisory public source-contract reviews when every observed direct invocation discards an `any` callback result, or always supplies a non-undefined optional callback argument. Exported functions, arrows and public class methods are supported. Symbol resolution avoids shadowed callbacks; escapes, reassignments, spread calls, unknown arguments and declaration-only APIs cause abstention. Findings include observed call locations. These bounded observations cannot establish safe consumer-facing signature changes, so they never block or auto-edit declarations.
+
+## 5. TypeScript Performance
+
+Source: [TypeScript Performance](https://github.com/microsoft/TypeScript/wiki/Performance).
+
+Existing coverage: structural type-complexity metrics, lens benchmarks, cached analysis and compiler provenance. Gap: neither structural size nor lint duration measures compiler work or explains the compiler's input scope.
+
+Implemented: opt-in compiler API phase observations, guarded compiler counters, per-project file inventories, source/declaration/default-library/external-library counts, and original timestamps/identities for cached samples. Unexpected source inclusion can be inspected directly. Unknown counters remain null; unavailable projects remain incomplete. Measurements describe this analysis compiler, not native builds, editor responsiveness or individual expensive types. No blanket interface rewrite, skipLibCheck recommendation, timing gate or statistically unsupported regression claim is added. Deeper investigation still calls for compiler traces or repeated controlled builds.
