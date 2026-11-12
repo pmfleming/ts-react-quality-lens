@@ -7,7 +7,7 @@ import { compilerInputQueryResults, type CompilerInputQuery } from "./integratio
 import { analysisIdentity, contentHash, sourceSetHash } from "./provenance.js";
 import type { Config, ProjectAnalysis, SourceFileRecord, TypedModuleRecord } from "./types.js";
 
-const CACHE_FORMAT = 4;
+const CACHE_FORMAT = 5;
 
 type CachePayload = {
   cache_format: number;

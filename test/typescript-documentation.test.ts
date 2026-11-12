@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
+import { typescriptFixture } from "./project-fixture.js";
 import path from "node:path";
 import test from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -13,20 +13,18 @@ import { readArtifact } from "../src/writer.js";
 import type { Config } from "../src/types.js";
 
 function fixture(run: (root: string, config: Config) => void) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lens-docs-"));
-  const write = (file: string, content: string | object) => fs.writeFileSync(path.join(root, file), typeof content === "string" ? content : JSON.stringify(content));
-  fs.mkdirSync(path.join(root, "src"));
-  write("package.json", { name: "docs", type: "module", exports: "./src/api.ts" });
-  write("tsconfig.json", { compilerOptions: { strict: true, target: "ES2022", module: "NodeNext" }, include: ["src"] });
-  write("lens.json", { source_roots: ["src"], documentation: { enabled: true, exempt_exports: [
-    { file: "src/api.ts", names: ["default", "framework"], reason: "Framework consumes these exports by convention." },
-  ] } });
-  write("src/api.ts", `export { documented as alias, undocumented, old, replaced, framework } from './impl.js';
+  typescriptFixture((root) => {
+    const write = (file: string, content: string | object) => fs.writeFileSync(path.join(root, file), typeof content === "string" ? content : JSON.stringify(content));
+    write("package.json", { name: "docs", type: "module", exports: "./src/api.ts" });
+    write("lens.json", { source_roots: ["src"], documentation: { enabled: true, exempt_exports: [
+      { file: "src/api.ts", names: ["default", "framework"], reason: "Framework consumes these exports by convention." },
+    ] } });
+    write("src/api.ts", `export { documented as alias, undocumented, old, replaced, framework } from './impl.js';
 export { generated } from './generated.js';
 export type { Remote } from '../external.js';
 export default function Tool() {}
 `);
-  write("src/impl.ts", `/** Explain the operation to consumers. */
+    write("src/impl.ts", `/** Explain the operation to consumers. */
 export function documented() {}
 export function undocumented() {}
 /** @deprecated */
@@ -35,10 +33,10 @@ export function old() {}
 export function replaced() {}
 export function framework() {}
 `);
-  write("src/generated.ts", "/** @generated */\nexport const generated = 1;\n");
-  write("external.d.ts", "export interface Remote { value: string }\n");
-  try { run(root, loadConfig(path.join(root, "lens.json"))); }
-  finally { fs.rmSync(root, { recursive: true, force: true }); }
+    write("src/generated.ts", "/** @generated */\nexport const generated = 1;\n");
+    write("external.d.ts", "export interface Remote { value: string }\n");
+    run(root, loadConfig(path.join(root, "lens.json")));
+  });
 }
 
 test("optional public documentation follows re-exports and excludes generated/framework/external declarations", () => fixture((_root, config) => {
@@ -83,6 +81,10 @@ test("documentation scope, exclusions and unavailable inventories never invent c
   assert.equal(result.report.status, "not_applicable");
   assert.equal(result.report.summary.coverage_percent, null);
   config.documentation.exclude = [];
+  config.publicApi.exports[0]!.names = [];
+  result = documentationEvidence(config, createAnalysisContext(config).project());
+  assert.equal(result.report.files.length, 1, "An empty name selector still inventories its file");
+  assert.equal(result.report.status, "not_applicable");
   config.publicApi.exports[0]!.names = ["missing"];
   result = documentationEvidence(config, createAnalysisContext(config).project());
   assert.equal(result.report.status, "incomplete");

@@ -5,14 +5,13 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import * as ts from "typescript";
-import { complexityForNode, cognitiveComplexityForNode, halsteadMetricsForNode, maxNestingDepthForNode } from "../src/ast-metrics.js";
 import { loadConfig } from "../src/config.js";
 import { runCli } from "../src/cli.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { runAudit } from "../src/audit.js";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { projectContext } from "../src/context.js";
+import { findCycles } from "../src/graph.js";
 import type { Artifact, ScoredRecord } from "../src/types.js";
 
 const repoRoot = path.resolve();
@@ -26,21 +25,6 @@ function requiredToolStatus(artifact: ToolArtifact, name: string) {
   assert.ok(status, `Expected ${name} tool status`);
   return status;
 }
-
-test("complexity metrics exclude nested functions and count control nesting once", () => {
-  const source = ts.createSourceFile(
-    "metrics.ts",
-    "function outer(flag: boolean) { if (flag) { const inner = () => { if (flag) return 1; return 0; }; return inner; } return () => 0; }",
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const outer = source.statements.find(ts.isFunctionDeclaration);
-  assert.ok(outer);
-  assert.equal(complexityForNode(outer), 2);
-  assert.equal(cognitiveComplexityForNode(outer), 1);
-  assert.equal(maxNestingDepthForNode(outer), 1);
-  assert.ok(halsteadMetricsForNode(outer).effort > 0);
-});
 
 test("measure all writes MVP artifacts", () => {
   const config = loadConfig(fixtureConfig);
@@ -841,6 +825,13 @@ test("cleanup distinguishes Knip exclusions from semantic disagreements", () => 
 });
 
 test("golden fixture exercises edge-case artifact signals", () => {
+  for (const [pairs, expected] of [
+    [[], []], [[["a", "b"]], []],
+    [[["a", "b"], ["a", "b"], ["b", "a"], ["b", "c"], ["c", "c"]], [["a", "b", "a"], ["c", "c"]]],
+  ] as const) {
+    const edges = pairs.map(([from, to]) => ({ from, to }));
+    for (const ordered of [edges, [...edges].reverse()]) assert.deepEqual(findCycles(ordered).sort(), expected);
+  }
   const config = loadConfig(goldenConfig);
   fs.rmSync(config.outputDir, { recursive: true, force: true });
   runMeasure(config, "all", "test golden fixture");

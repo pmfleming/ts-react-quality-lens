@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { isRecord } from "./collections.js";
 import { isExcluded, isTestPath, toPosix } from "./files.js";
 import type { Config } from "./types.js";
 
@@ -78,7 +79,7 @@ export function discoverWebInputs(config: Config): WebInputSet {
       if (fs.lstatSync(file).isSymbolicLink()) text = "unsupported:symlink";
       else if (fs.statSync(file).size > MAX_FILE_BYTES) text = "unsupported:size_limit";
       else text = fs.readFileSync(file, "utf8");
-    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") text = "unreadable"; }
+    } catch (error) { if (!isRecord(error) || error.code !== "ENOENT") text = "unreadable"; }
     return { relativePath: relative(file), text };
   }));
   const result = {

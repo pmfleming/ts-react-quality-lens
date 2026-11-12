@@ -6,7 +6,7 @@ import { isRecord, parseJson } from "../collections.js";
 import { webContentHash, within } from "../web-inputs.js";
 import type { Config } from "../types.js";
 
-export const MODERN_WEB_VERSION = "1.0.0";
+const MODERN_WEB_VERSION = "1.0.0";
 export type ModernWebTool = { manifest: string; executable: string; version: string; engine: string; fingerprint: string };
 
 /** Resolve installed files only. The adapter never invokes npx or installs a package. */

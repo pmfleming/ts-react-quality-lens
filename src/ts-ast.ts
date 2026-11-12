@@ -20,6 +20,6 @@ export function countMatchingNodes(node: ts.Node, predicate: (node: ts.Node) => 
   return count;
 }
 
-export function isFunctionWithBody(node: ts.Node): node is ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration {
-  return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
+export function isFunctionWithBody(node: ts.Node): node is ts.FunctionLikeDeclaration & { body: ts.ConciseBody } {
+  return ts.isFunctionLike(node) && "body" in node && node.body !== undefined;
 }

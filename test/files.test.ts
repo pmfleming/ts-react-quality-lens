@@ -94,3 +94,38 @@ test("exact tsconfig aliases produce internal graph edges on fresh and cached an
     assert.equal(locality?.find((record) => record.file === "src/consumer.ts")?.dependency_distance, 0);
   }
 }));
+
+test("metrics inventory all executable functions without nested effort or phantom physical lines", () => fixture((root, config) => {
+  const file = path.join(root, "src/index.ts");
+  for (const [text, count] of [["", 0], ["\n", 1], ["x", 1], ["x\n", 1], ["x\r\n", 1], ["x\n\n", 2]] as const) {
+    fs.writeFileSync(file, text);
+    assert.equal(readSourceFile(file, root).lines.length, count, JSON.stringify(text));
+  }
+  const source = `function outer(flag: boolean) { if (flag) { const inner = () => { if (flag) return 1; return 0; }; return inner; } return () => 0; }
+class Service { constructor() { if (true) {} } get value() { return 1; } set value(v: number) { if (v) {} } method() { return [1].map(v => v ? 1 : 0); } }
+const object = { method() { return 1; }, cb: () => () => 1 };
+declare function signature(): void;
+`;
+  const analyze = (text: string) => {
+    fs.writeFileSync(file, text);
+    const module = createAnalysisContext(config).project().modules[0];
+    assert.ok(module);
+    return module;
+  };
+  const module = analyze(source);
+  assert.equal(module.lines, 4);
+  assert.equal(module.functions.length, 11);
+  assert.equal(new Set(module.functions.map((fn) => fn.id)).size, 11);
+  const outer = module.functions.find((fn) => fn.name === "outer");
+  assert.ok(outer);
+  assert.equal(outer.cyclomatic_complexity, 2);
+  assert.equal(outer.cognitive_complexity, 1);
+  assert.equal(outer.nesting_depth, 1);
+  assert.ok(outer.halstead_effort > 0);
+  assert.equal(module.functions.find((fn) => fn.name === "constructor")?.cyclomatic_complexity, 2);
+  assert.equal(module.functions.filter((fn) => fn.name === "value").length, 2);
+  assert.equal(module.functions.find((fn) => fn.name === "cb")?.cyclomatic_complexity, 1);
+  const changed = analyze(source.replace("if (flag) return 1; return 0;", "while (flag) { if (flag) return 42; } return 10;"));
+  assert.equal(changed.functions.find((fn) => fn.name === "outer")?.halstead_effort, outer.halstead_effort);
+  assert.notEqual(changed.functions.find((fn) => fn.name === "inner")?.halstead_effort, module.functions.find((fn) => fn.name === "inner")?.halstead_effort);
+}));

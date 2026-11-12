@@ -1,37 +1,25 @@
 import * as ts from "typescript";
 import { countMatchingNodes, isFunctionWithBody } from "./ts-ast.js";
 
-const CYCLOMATIC_CHECKS = [
+const CONTROL_FLOW = [
   ts.isIfStatement,
   ts.isForStatement,
   ts.isForInStatement,
   ts.isForOfStatement,
   ts.isWhileStatement,
   ts.isDoStatement,
-  ts.isCaseClause,
-  ts.isCatchClause,
-  ts.isConditionalExpression,
-  isLogicalExpression,
 ];
 
+const CYCLOMATIC_CHECKS = [...CONTROL_FLOW, ts.isCaseClause, ts.isCatchClause, ts.isConditionalExpression, isLogicalExpression];
+
 const NESTING_CHECKS = [
-  ts.isIfStatement,
-  ts.isForStatement,
-  ts.isForInStatement,
-  ts.isForOfStatement,
-  ts.isWhileStatement,
-  ts.isDoStatement,
+  ...CONTROL_FLOW,
   ts.isSwitchStatement,
   ts.isTryStatement,
 ];
 
 const COGNITIVE_BREAKS = [
-  ts.isIfStatement,
-  ts.isForStatement,
-  ts.isForInStatement,
-  ts.isForOfStatement,
-  ts.isWhileStatement,
-  ts.isDoStatement,
+  ...CONTROL_FLOW,
   ts.isSwitchStatement,
   ts.isCatchClause,
   ts.isConditionalExpression,
@@ -47,12 +35,8 @@ type HalsteadMetrics = {
   effort: number;
 };
 
-/** Compatibility alias: complexity is standard cyclomatic complexity. */
+/** Cyclomatic variant: base one plus branches, catches, cases, ternaries and logical operators. */
 export function complexityForNode(node: ts.Node): number {
-  return cyclomaticComplexityForNode(node);
-}
-
-function cyclomaticComplexityForNode(node: ts.Node): number {
   let complexity = 1;
   visitChildrenOutsideNestedFunctions(node, (current) => {
     if (CYCLOMATIC_CHECKS.some((check) => check(current))) complexity += 1;
@@ -78,7 +62,7 @@ export function cognitiveComplexityForNode(node: ts.Node): number {
 export function halsteadMetricsForNode(node: ts.Node): HalsteadMetrics {
   const operators = new Map<string, number>();
   const operands = new Map<string, number>();
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, node.getText());
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, ownFunctionText(node));
   for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
     const text = scanner.getTokenText();
     const target = isOperandToken(token) ? operands : operators;
@@ -201,6 +185,21 @@ function isOperandToken(token: ts.SyntaxKind): boolean {
 
 function sumCounts(values: Map<string, number>): number {
   return [...values.values()].reduce((total, value) => total + value, 0);
+}
+
+/** Nested functions have their own inventory record; never charge their tokens twice. */
+function ownFunctionText(node: ts.Node): string {
+  const text = node.getSourceFile().text;
+  const parts: string[] = [];
+  let start = node.getStart();
+  function visit(current: ts.Node): void {
+    if (current !== node && isFunctionWithBody(current)) {
+      parts.push(text.slice(start, current.getStart()), " ");
+      start = current.end;
+    } else ts.forEachChild(current, visit);
+  }
+  visit(node);
+  return parts.join("") + text.slice(start, node.end);
 }
 
 function rounded(value: number): number {

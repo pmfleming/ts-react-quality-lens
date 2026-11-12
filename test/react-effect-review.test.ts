@@ -23,6 +23,11 @@ test("async Effect review recognizes local cleanup guards without trusting unrel
     ["useEffect(() => { fetch(query).then(value => setData(value)); return () => controller.abort(); }, [query]);", true],
     ["let ignore=false; useEffect(() => { fetch(query).then(value => { if(!ignore) setData(value); }); return () => {ignore=true;}; }, [query]);", true],
     ["useEffect(() => { let ignore=false; fetch(query).then(value => { ignore=false; if(!ignore) setData(value); }); return () => {ignore=true;}; }, [query]);", true],
+    ["useEffect(() => { let active=true; fetch(query).then(value => { if(active) setData(value); }); return () => active=false; }, [query]);", false],
+    ["useEffect(() => { const active=true; fetch(query).then(value => { if(active) setData(value); }); return () => active=false; }, [query]);", true],
+    ["useEffect(() => { let active=true; fetch(query).then(value => { active++; if(active) setData(value); }); return () => active=false; }, [query]);", true],
+    ["useEffect(() => { let active=true; fetch(query).then(value => { if(active) setData(value); }); return () => active=true; }, [query]);", true],
+    ["useEffect(() => { (async () => { setData(await fetch(query)); })(); }, [query]);", true],
     ["useEffect(() => { subscribe(value => setData(value)); return () => unsubscribe(); }, [query]);", false],
   ];
   for (const [body, expected] of cases) {

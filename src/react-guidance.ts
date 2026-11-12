@@ -3,7 +3,7 @@ import { isRecord } from "./collections.js";
 import { reactRulePolicy } from "./react-rules.js";
 import type { EslintReactHooksResult, ReactRuleset } from "./types.js";
 
-export const REACT_GUIDANCE_VERSION = "react-guidance-v3";
+export const REACT_GUIDANCE_VERSION = "react-guidance-v4";
 export const OFFICIAL_REACT_RULES = ["exhaustive-deps", "rules-of-hooks", "component-hook-factories", "config", "error-boundaries", "gating",
   "globals", "immutability", "incompatible-library", "preserve-manual-memoization", "purity", "refs", "set-state-in-effect",
   "set-state-in-render", "static-components", "unsupported-syntax", "use-memo"];
@@ -20,12 +20,14 @@ export function reactRuleDocumentation(ruleId: string): string | null {
 export function selectReactRules(ruleset: ReactRuleset) {
   if (ruleset === "classic-v1") return { preset: "classic-v1", rules: classicRules };
   try {
-    const plugin = createRequire(import.meta.url)("eslint-plugin-react-hooks");
+    const plugin: unknown = createRequire(import.meta.url)("eslint-plugin-react-hooks");
+    const configs = isRecord(plugin) && isRecord(plugin.configs) ? plugin.configs : {};
+    const flat = isRecord(configs.flat) ? configs.flat : {};
     for (const [preset, config] of [
-      ["flat/recommended-latest", plugin.configs?.flat?.["recommended-latest"]],
-      ["recommended-latest", plugin.configs?.["recommended-latest"]],
-      ["flat/recommended", plugin.configs?.flat?.recommended],
-      ["recommended", plugin.configs?.recommended],
+      ["flat/recommended-latest", flat["recommended-latest"]],
+      ["recommended-latest", configs["recommended-latest"]],
+      ["flat/recommended", flat.recommended],
+      ["recommended", configs.recommended],
     ] as const) if (isRecord(config) && isRecord(config.rules)) return { preset, rules: config.rules };
   } catch { /* Tool execution reports unavailable packages separately. */ }
   return { preset: "classic-fallback", rules: classicRules };
@@ -33,7 +35,7 @@ export function selectReactRules(ruleset: ReactRuleset) {
 
 export function enabledReactRules(rules: Record<string, unknown>): string[] {
   return Object.entries(rules).filter(([, value]) => {
-    const severity = Array.isArray(value) ? value[0] : value;
+    const severity: unknown = Array.isArray(value) ? value[0] : value;
     return severity === "warn" || severity === "error" || severity === 1 || severity === 2;
   }).map(([id]) => id).sort();
 }

@@ -56,7 +56,7 @@ function changedCoverage(config: Config, files: CoveredFile[]) {
 function functionCoverage(project: ProjectAnalysis, files: CoveredFile[]) {
   const index = new Map(files.map((file) => [file.file, file.line_hits]));
   return project.modules.flatMap((module) => module.functions.map((fn) => {
-    const hits = (index.get(module.file) ?? []).filter((hit) => hit.line >= fn.line && hit.line < fn.line + fn.lines);
+    const hits = (index.get(module.file) ?? []).filter((hit) => hit.line >= fn.body_line && hit.line < fn.body_line + fn.lines);
     const coverage = percent(hits), cc = fn.cyclomatic_complexity;
     return { file: module.file, name: fn.name, line: fn.line, executable_lines: hits.length, coverage_percent: coverage,
       complexity_coverage_risk: coverage === null ? null : cc * cc * Math.pow(1 - coverage / 100, 3) + cc };

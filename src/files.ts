@@ -27,7 +27,7 @@ export function readSourceFile(file: string, projectRoot: string): SourceFileRec
     path: file,
     relativePath: toPosix(path.relative(projectRoot, file)),
     text,
-    lines: text.split(/\r?\n/),
+    lines: text === "" ? [] : text.replace(/\r?\n$/, "").split(/\r?\n/),
     extension: path.extname(file),
     isTest: isTestPath(path.relative(projectRoot, file)),
   };
@@ -40,6 +40,11 @@ export function fileInput(file: string, relativePath: string): { relativePath: s
 
 export function toPosix(value: string): string {
   return value.split(path.sep).join("/");
+}
+
+/** Project-relative public API selectors: stars may span path separators. */
+export function matchesPathPattern(file: string, pattern: string): boolean {
+  return new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`).test(file);
 }
 
 export function isTestPath(file: string): boolean {

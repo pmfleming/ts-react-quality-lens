@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
+import { reactFixture as fixture } from "./react-improvement-helpers.js";
 import path from "node:path";
 import { test } from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { loadConfig } from "../src/config.js";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { enabledReactRules, OFFICIAL_REACT_RULES, reactRuleCoverage, reactRuleDocumentation, selectReactRules } from "../src/react-guidance.js";
 import { reactReviewRecords } from "../src/react-review.js";
@@ -16,16 +15,8 @@ import { collectFindings } from "../src/audit/findings.js";
 import { validProducerPayload } from "../src/producer-payload.js";
 import { readArtifact } from "../src/writer.js";
 import { frameworkRiskRecords } from "../src/scoring.js";
-import type { Config, EslintReactHooksResult } from "../src/types.js";
+import type { EslintReactHooksResult } from "../src/types.js";
 
-function fixture(run: (root: string, config: Config) => void) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lens-react-guidance-"));
-  fs.mkdirSync(path.join(root, "src"));
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "guidance", dependencies: { react: "^19.2.0" } }));
-  fs.writeFileSync(path.join(root, "src/main.tsx"), 'export const App = () => <div />;\n');
-  fs.writeFileSync(path.join(root, "lens.json"), JSON.stringify({ source_roots: ["src"], cache: { enabled: false }, policy: { required_checks: [] } }));
-  try { run(root, loadConfig(path.join(root, "lens.json"))); } finally { fs.rmSync(root, { recursive: true, force: true }); }
-}
 const schema = new Ajv2020({ strict: false }).compile(JSON.parse(fs.readFileSync("ts-react-quality-lens.schema.json", "utf8")));
 const positive = `import { useState as state, useEffect as effect } from 'react';
 export function Profile({ first, last }) {

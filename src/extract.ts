@@ -2,7 +2,7 @@ import * as ts from "typescript";
 import { normalizeImportPath, relativeModuleId } from "./files.js";
 import { cognitiveComplexityForNode, complexityForNode, countJsxConditionals, countOptionalTypeFields, countTypeFieldsForNode, countUnionMembers, halsteadMetricsForNode, maxNestingDepthForNode } from "./ast-metrics.js";
 import { countMatches, dedupeBy } from "./collections.js";
-import { callExpressionName, countMatchingNodes, lineForNode } from "./ts-ast.js";
+import { callExpressionName, countMatchingNodes, isFunctionWithBody, lineForNode } from "./ts-ast.js";
 import type { Config, ConfidenceSignal, ExportRecord, FunctionRecord, ImportKind, ImportRecord, ModuleRecord, SourceFileRecord, TypeRecord, TypeScriptProject } from "./types.js";
 
 type ImportExtraction = { imports: ImportRecord[]; unsupportedPatterns: ConfidenceSignal[] };
@@ -220,7 +220,8 @@ function aliasPatternMatches(specifier: string, pattern: string): boolean {
 function extractFunctions(file: SourceFileRecord, sourceFile: ts.SourceFile): FunctionRecord[] {
   const records: FunctionRecord[] = [];
 
-  function addFunction(name: string, node: ts.Node, bodyNode: ts.Node): void {
+  function addFunction(name: string, node: ts.FunctionLikeDeclaration & { body: ts.ConciseBody }): void {
+    const bodyNode = node.body;
     const body = bodyNode.getText(sourceFile);
     const line = lineForNode(sourceFile, node);
     const lines = lineSpanForNode(sourceFile, bodyNode);
@@ -229,20 +230,21 @@ function extractFunctions(file: SourceFileRecord, sourceFile: ts.SourceFile): Fu
     const effects = countCallsMatching(bodyNode, /^use(?:Effect|LayoutEffect|InsertionEffect)$/);
     const jsxConditionals = countJsxConditionals(bodyNode);
     const kind = classifyFunction(name, body, jsxDensity);
-    const cyclomaticComplexity = complexityForNode(bodyNode);
-    const cognitiveComplexity = cognitiveComplexityForNode(bodyNode);
-    const halstead = halsteadMetricsForNode(bodyNode);
+    const cyclomaticComplexity = complexityForNode(node);
+    const cognitiveComplexity = cognitiveComplexityForNode(node);
+    const halstead = halsteadMetricsForNode(node);
     records.push({
-      id: `${file.relativePath}:${name}:${line}`,
+      id: `${file.relativePath}:${name}:${line}:${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).character + 1}`,
       name,
       kind,
       line,
       lines,
+      body_line: lineForNode(sourceFile, bodyNode),
       complexity: cyclomaticComplexity,
       cyclomatic_complexity: cyclomaticComplexity,
       cognitive_complexity: cognitiveComplexity,
       halstead_effort: halstead.effort,
-      nesting_depth: maxNestingDepthForNode(bodyNode),
+      nesting_depth: maxNestingDepthForNode(node),
       jsx_density: jsxDensity,
       hooks,
       effects,
@@ -251,21 +253,16 @@ function extractFunctions(file: SourceFileRecord, sourceFile: ts.SourceFile): Fu
   }
 
   function visit(node: ts.Node): void {
-    if (ts.isFunctionDeclaration(node) && node.body) {
-      addFunction(node.name?.text ?? "default", node, node.body);
-    } else if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
-    ) {
-      addFunction(node.name.text, node, node.initializer.body);
+    if (isFunctionWithBody(node)) {
+      const owner = ts.isVariableDeclaration(node.parent) || ts.isPropertyAssignment(node.parent) || ts.isPropertyDeclaration(node.parent) ? node.parent : node;
+      const name = owner.name?.getText(sourceFile) ?? (ts.isConstructorDeclaration(node) ? "constructor" : ts.isFunctionDeclaration(node) ? "default" : "anonymous");
+      addFunction(name, node);
     }
     ts.forEachChild(node, visit);
   }
 
   visit(sourceFile);
-  return dedupeBy(records, (record) => record.id);
+  return records;
 }
 
 function extractTypes(sourceFile: ts.SourceFile): TypeRecord[] {

@@ -71,7 +71,7 @@ export function groupMapNodes(nodes: Array<{ group: string; risk_score: number }
   }));
 }
 
-export function findCycles(edges: ImportRecord[]): string[][] {
+export function findCycles(edges: Array<Pick<ImportRecord, "from" | "to">>): string[][] {
   const graph = new Map<string, string[]>();
   for (const edge of edges) {
     if (!graph.has(edge.from)) graph.set(edge.from, []);

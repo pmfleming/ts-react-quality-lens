@@ -1,4 +1,5 @@
 import path from "node:path";
+import { matchesPathPattern as matches } from "./files.js";
 import * as ts from "typescript";
 import { arrayOf, boolean, count, finite, nonempty, nullable, oneOf, positiveInteger, shape, string } from "./validation.js";
 import type { Config, ProjectAnalysis, ScoredRecord } from "./types.js";
@@ -46,9 +47,8 @@ export function documentationEvidence(config: Config, project: ProjectAnalysis) 
   const unmatched: string[] = [];
   const modules = new Map(project.modules.map((module) => [module.file, module]));
   const hasExplicitScope = config.publicApi.entry.length > 0 || config.publicApi.exports.length > 0;
-  const publicFiles = project.modules.filter((module) => hasExplicitScope
-    ? config.publicApi.entry.some((pattern) => matches(module.file, pattern)) || config.publicApi.exports.some((rule) => matches(module.file, rule.file))
-    : module.entrypointRoles.some((role) => ["package_export", "package_main", "package_module", "package_types"].includes(role)));
+  const entireFile = (file: string) => !hasExplicitScope || config.publicApi.entry.some((pattern) => matches(file, pattern));
+  const selectors = (file: string) => config.publicApi.exports.filter((rule) => matches(file, rule.file));
   if (config.documentation.enabled) {
     for (const pattern of config.publicApi.entry) {
       if (!project.modules.some((module) => matches(module.file, pattern))) unmatched.push(`entry:${pattern}`);
@@ -56,49 +56,35 @@ export function documentationEvidence(config: Config, project: ProjectAnalysis) 
     for (const rule of config.publicApi.exports) {
       const matching = project.modules.filter((module) => matches(module.file, rule.file));
       if (!matching.length) unmatched.push(`exports:${rule.file}`);
-      for (const module of matching) for (const name of rule.names) {
-        if (module.typed?.documentation && !module.typed.documentation.exports.some((item) => item.name === name)) unmatched.push(`export:${module.file}:${name}`);
+      for (const module of matching) {
+        const inventory = module.typed?.documentation;
+        if (!inventory) continue;
+        unmatched.push(...rule.names.filter((name) => !inventory.exports.some((item) => item.name === name)).map((name) => `export:${module.file}:${name}`));
       }
     }
-    for (const module of publicFiles) {
+    for (const module of project.modules) {
+      const rules = selectors(module.file), names = rules.flatMap((rule) => rule.names);
+      const selected = hasExplicitScope ? entireFile(module.file) || rules.length > 0
+        : module.entrypointRoles.some((role) => ["package_export", "package_main", "package_module", "package_types"].includes(role));
+      if (!selected) continue;
       const excluded = exclusion(module.file);
       const inventory = module.typed?.documentation;
-      const status = excluded ? "excluded" : !inventory?.complete ? "unavailable" : "evaluated";
-      files.push({ file: module.file, status, reason: excluded ?? (status === "unavailable" ? "Compiler export inventory is missing or has diagnostics." : null) });
+      files.push({ file: module.file, ...assessment(excluded, Boolean(inventory?.complete), "Compiler export inventory is missing or has diagnostics.") });
       for (const item of inventory?.exports ?? []) {
-        const entireFile = !hasExplicitScope || config.publicApi.entry.some((pattern) => matches(module.file, pattern));
-        if (!entireFile && !config.publicApi.exports.some((rule) => matches(module.file, rule.file) && rule.names.includes(item.name))) continue;
-        const exemption = config.documentation.exemptExports.find((rule) => matches(module.file, rule.file) && rule.names.includes(item.name));
-        const originExclusion = item.declaration_file ? exclusion(item.declaration_file) : null;
-        const external = item.declaration_file !== null && !modules.has(item.declaration_file);
-        const reason = excluded ?? exemption?.reason ?? originExclusion ?? (external ? "Declaration is outside selected source files." : null);
-        items.push({ ...item, file: module.file,
-          status: reason ? "excluded" : !inventory?.complete || item.declaration_file === null ? "unavailable" : "evaluated",
-          reason: reason ?? (!inventory?.complete || item.declaration_file === null ? "Export could not be evaluated reliably." : null),
-        });
+        if (!entireFile(module.file) && !names.includes(item.name)) continue;
+        items.push({ ...item, file: module.file, ...assessment(exportExclusion(module.file, item, excluded),
+          Boolean(inventory?.complete && item.declaration_file), "Export could not be evaluated reliably.") });
       }
     }
   }
   const evaluated = items.filter((item) => item.status === "evaluated");
-  const documented = evaluated.filter((item) => item.documented).length;
-  const deprecated = evaluated.filter((item) => item.deprecated);
-  const guidance = deprecated.filter((item) => item.deprecation_guidance).length;
-  const incomplete = unmatched.length > 0 || files.some((file) => file.status === "unavailable") || items.some((item) => item.status === "unavailable");
-  const status = !config.documentation.enabled ? "disabled" : incomplete ? "incomplete" : evaluated.length === 0 ? "not_applicable" : "complete";
+  const status = documentationStatusFor(config.documentation.enabled, files, items, unmatched);
   return {
     report: {
       status,
       scope: hasExplicitScope ? "configured-public-api" : "detected-package-entrypoints",
       limitations: "Top-level exported names only, counted per entrypoint/name. Presence of documentation and deprecation text is measured; prose quality and migration correctness are not verified. External or unselected declaration files are excluded.",
-      summary: {
-        public_exports: items.length, evaluated_exports: evaluated.length,
-        excluded_exports: items.filter((item) => item.status === "excluded").length,
-        unavailable_exports: items.filter((item) => item.status === "unavailable").length,
-        documented_exports: documented, undocumented_exports: evaluated.length - documented,
-        coverage_percent: status === "complete" ? Math.round(documented / evaluated.length * 10_000) / 100 : null,
-        deprecated_exports: deprecated.length, deprecated_with_guidance_text: guidance,
-        missing_deprecation_guidance: deprecated.length - guidance,
-      },
+      summary: documentationSummary(items, status),
       files, exports: items, unmatched_selectors: unmatched,
     },
     records: evaluated.flatMap((item) => [
@@ -106,6 +92,12 @@ export function documentationEvidence(config: Config, project: ProjectAnalysis) 
       ...(item.deprecated && !item.deprecation_guidance ? [documentationFinding(item, "missing-deprecation-guidance", `Deprecated export ${item.name} has no guidance text. Document a replacement, migration steps, or why no replacement exists.`)] : []),
     ]),
   };
+
+  function exportExclusion(file: string, item: ExportDocumentation, excluded: string | null): string | null {
+    const exemption = config.documentation.exemptExports.find((rule) => matches(file, rule.file) && rule.names.includes(item.name));
+    const origin = item.declaration_file;
+    return excluded ?? exemption?.reason ?? (origin ? exclusion(origin) ?? (!modules.has(origin) ? "Declaration is outside selected source files." : null) : null);
+  }
 
   function exclusion(file: string): string | null {
     const module = modules.get(file);
@@ -125,9 +117,28 @@ function documentationFinding(item: DocumentationItem, kind: string, message: st
   };
 }
 
-/** Same project-relative star matching used by public_api cleanup selectors. */
-function matches(file: string, pattern: string): boolean {
-  return new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`).test(file);
+function assessment(reason: string | null, available: boolean, unavailable: string): Pick<DocumentationFile, "status" | "reason"> {
+  if (reason) return { status: "excluded", reason };
+  return available ? { status: "evaluated", reason: null } : { status: "unavailable", reason: unavailable };
+}
+
+function documentationStatusFor(enabled: boolean, files: DocumentationFile[], items: DocumentationItem[], unmatched: string[]) {
+  if (!enabled) return "disabled";
+  if (unmatched.length || [...files, ...items].some((item) => item.status === "unavailable")) return "incomplete";
+  return items.some((item) => item.status === "evaluated") ? "complete" : "not_applicable";
+}
+
+function documentationSummary(items: DocumentationItem[], status: string) {
+  const evaluated = items.filter((item) => item.status === "evaluated");
+  const documented = evaluated.filter((item) => item.documented).length;
+  const deprecated = evaluated.filter((item) => item.deprecated);
+  const guidance = deprecated.filter((item) => item.deprecation_guidance).length;
+  return { public_exports: items.length, evaluated_exports: evaluated.length,
+    excluded_exports: items.filter((item) => item.status === "excluded").length,
+    unavailable_exports: items.filter((item) => item.status === "unavailable").length,
+    documented_exports: documented, undocumented_exports: evaluated.length - documented,
+    coverage_percent: status === "complete" ? Math.round(documented / evaluated.length * 10_000) / 100 : null,
+    deprecated_exports: deprecated.length, deprecated_with_guidance_text: guidance, missing_deprecation_guidance: deprecated.length - guidance };
 }
 
 const documentationStatus = oneOf("evaluated", "excluded", "unavailable");
@@ -147,17 +158,7 @@ export function validDocumentationReport(value: unknown): boolean {
   if (!reportShape(value)) return false;
   const evaluated = value.exports.filter((item) => item.status === "evaluated");
   if (evaluated.some((item) => item.declaration_file === null || item.line === null)) return false;
-  const documented = evaluated.filter((item) => item.documented).length;
-  const deprecated = evaluated.filter((item) => item.deprecated);
-  const guidance = deprecated.filter((item) => item.deprecation_guidance).length;
-  const incomplete = value.unmatched_selectors.length > 0 || [...value.files, ...value.exports].some((item) => item.status === "unavailable");
-  const expectedStatus = value.status === "disabled" ? "disabled" : incomplete ? "incomplete" : evaluated.length ? "complete" : "not_applicable";
+  const expectedStatus = documentationStatusFor(value.status !== "disabled", value.files, value.exports, value.unmatched_selectors);
   if (value.status !== expectedStatus || value.status === "disabled" && (value.files.length || value.exports.length || value.unmatched_selectors.length)) return false;
-  const expected = { public_exports: value.exports.length, evaluated_exports: evaluated.length,
-    excluded_exports: value.exports.filter((item) => item.status === "excluded").length,
-    unavailable_exports: value.exports.filter((item) => item.status === "unavailable").length,
-    documented_exports: documented, undocumented_exports: evaluated.length - documented,
-    coverage_percent: value.status === "complete" ? Math.round(documented / evaluated.length * 10_000) / 100 : null,
-    deprecated_exports: deprecated.length, deprecated_with_guidance_text: guidance, missing_deprecation_guidance: deprecated.length - guidance };
-  return Object.entries(expected).every(([key, expectedValue]) => value.summary[key] === expectedValue);
+  return Object.entries(documentationSummary(value.exports, expectedStatus)).every(([key, expected]) => value.summary[key] === expected);
 }

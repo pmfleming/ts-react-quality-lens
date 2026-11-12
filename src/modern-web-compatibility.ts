@@ -1,7 +1,7 @@
-import { createRequire } from "node:module";
+import bcd from "@mdn/browser-compat-data" with { type: "json" };
 import semver from "semver";
 import * as ts from "typescript";
-import type { BrowserName, CompatData, Identifier, SimpleSupportStatement } from "@mdn/browser-compat-data/types";
+import type { BrowserName, Identifier, SimpleSupportStatement } from "@mdn/browser-compat-data/types";
 import type { BrowserTargets, ModernWebCandidate, ModernWebCompatibility } from "./modern-web-types.js";
 import type { WebInput } from "./web-inputs.js";
 
@@ -19,8 +19,7 @@ const MAPPINGS: Record<string, Mapping> = {
 const BROWSERS: Record<string, BrowserName> = { chrome: "chrome", and_chr: "chrome_android", edge: "edge", firefox: "firefox",
   and_ff: "firefox_android", safari: "safari", ios_saf: "safari_ios", opera: "opera", op_mob: "opera_android",
   samsung: "samsunginternet_android", ie: "ie" };
-let compatData: CompatData | undefined;
-function data(): CompatData { return compatData ??= createRequire(import.meta.url)("@mdn/browser-compat-data") as CompatData; }
+const { __meta: _meta, browsers: _browsers, ...features } = bcd;
 
 export function qualifyModernWeb(candidate: ModernWebCandidate, input: WebInput | undefined, targets: BrowserTargets | undefined): ModernWebCompatibility {
   const mapping = featureMapping(candidate, input);
@@ -96,11 +95,11 @@ function fallbackGuard(candidate: ModernWebCandidate, input: WebInput, mapping: 
 }
 
 export function featureSupport(feature: string, target: string): "supported" | "unsupported" | "unknown" {
-  let entry: unknown = data();
-  for (const segment of feature.split(".")) entry = (entry as Identifier | undefined)?.[segment];
+  let entry: Identifier | undefined = features;
+  for (const segment of feature.split(".")) entry = entry?.[segment];
   const [browser = "", version = ""] = target.split(" ");
   const mapped = BROWSERS[browser];
-  const statements = mapped ? (entry as Identifier | undefined)?.__compat?.support[mapped] : undefined;
+  const statements = mapped ? entry?.__compat?.support[mapped] : undefined;
   if (!statements) return "unknown";
   const values = (Array.isArray(statements) ? statements : [statements]).map((statement) => supportStatement(statement, version));
   return values.includes("supported") ? "supported" : values.includes("unknown") ? "unknown" : "unsupported";

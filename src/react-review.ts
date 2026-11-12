@@ -34,7 +34,7 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
       occurrences.set(anchor, occurrence);
       records.push({ id: `react-review:${module.file}:${rule}:${stableHash(anchor)}:${occurrence}`,
         rule_id: `ts-react-quality-lens/${rule}`, kind: rule, file: module.file,
-        line: source!.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+        line: node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1,
         source: "react-guidance-review", evidence_kind: "heuristic", disposition: "review", finding_confidence: "low",
         semantic_decision: "unresolved", scope: "file", score: 25, risk: "low", react_category: "optimization",
         message, guidance_sources: guides, verification: { keepWhen: [keep], dropWhen: [drop] },
@@ -42,25 +42,7 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
         actions: [{ type: "fix", auto_fixable: false, description: "Review the documented React pattern.", fix: keep, note: drop }],
       });
     }
-    const bindings = new Map<ts.Symbol, string>();
-    for (const statement of source.statements) {
-      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "react" || statement.importClause?.isTypeOnly) continue;
-      const clause = statement.importClause;
-      const named = clause?.namedBindings;
-      if (named && ts.isNamedImports(named)) for (const element of named.elements) {
-        const symbol = checker.getSymbolAtLocation(element.name);
-        if (symbol && !element.isTypeOnly) bindings.set(symbol, element.propertyName?.text ?? element.name.text);
-      }
-      for (const name of [clause?.name, named && ts.isNamespaceImport(named) ? named.name : undefined]) {
-        const symbol = name && checker.getSymbolAtLocation(name);
-        if (symbol) bindings.set(symbol, "namespace");
-      }
-    }
-    const hook = (expression: ts.Expression, name: string): boolean => {
-      if (ts.isIdentifier(expression)) return bindings.get(checker.getSymbolAtLocation(expression)!) === name;
-      return ts.isPropertyAccessExpression(expression) && expression.name.text === name &&
-        bindings.get(checker.getSymbolAtLocation(expression.expression)!) === "namespace";
-    };
+    const hook = reactHooks(source, checker);
     const functions = source.statements.flatMap<{ name: string; fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression }>((statement) => {
       if (ts.isFunctionDeclaration(statement) && statement.name) return [{ name: statement.name.text, fn: statement }];
       if (!ts.isVariableStatement(statement)) return [];
@@ -68,8 +50,10 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
         (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))
         ? [{ name: declaration.name.text, fn: declaration.initializer }] : []);
     });
-    for (const { name, fn } of functions) {
-      if (!/^(?:[A-Z]|use[A-Z])/.test(name) || !fn.body || !ts.isBlock(fn.body)) continue;
+    for (const { name, fn } of functions) reviewFunction(name, fn);
+
+    function reviewFunction(name: string, fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression): void {
+      if (!/^(?:[A-Z]|use[A-Z])/.test(name) || !fn.body || !ts.isBlock(fn.body)) return;
       const setters = new Set<ts.Symbol>();
       const stateSetters = new Map<ts.Symbol, ts.Symbol>();
       const reactive = new Set<ts.Symbol>();
@@ -103,7 +87,11 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
       for (const candidate of effectCandidates(fn.body, checker, (expression) => hook(expression, "useEffect"), stateSetters)) {
         emit(candidate.node, candidate.rule, candidate.message, [EFFECT_GUIDE, STATE_GUIDE], candidate.keep, candidate.drop);
       }
-      for (const statement of fn.body.statements) {
+      reviewDerivedEffects(fn.body, setters, reactive);
+    }
+
+    function reviewDerivedEffects(body: ts.Block, setters: Set<ts.Symbol>, reactive: Set<ts.Symbol>): void {
+      for (const statement of body.statements) {
         if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression) || !hook(statement.expression.expression, "useEffect")) continue;
         const [callback, dependencies] = statement.expression.arguments;
         if (!callback || !(ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) || callback.parameters.length ||
@@ -111,10 +99,10 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
         const body = callback.body;
         const only = ts.isBlock(body) && body.statements.length === 1 ? body.statements[0] : undefined;
         const call = only && ts.isExpressionStatement(only) ? only.expression : undefined;
-        if (!call || !ts.isCallExpression(call) || !ts.isIdentifier(call.expression) || !setters.has(checker.getSymbolAtLocation(call.expression)!) || call.arguments.length !== 1) continue;
+        if (!call || !ts.isCallExpression(call) || !ts.isIdentifier(call.expression) || !hasSymbol(setters, call.expression, checker) || call.arguments.length !== 1) continue;
         let usesReactive = false;
         const simple = (node: ts.Node): boolean => {
-          if (ts.isIdentifier(node)) { if (reactive.has(checker.getSymbolAtLocation(node)!)) usesReactive = true; return true; }
+          if (ts.isIdentifier(node)) { if (hasSymbol(reactive, node, checker)) usesReactive = true; return true; }
           if (ts.isPropertyAccessExpression(node)) return node.name.text !== "current" && simple(node.expression);
           if (ts.isParenthesizedExpression(node)) return simple(node.expression);
           if (ts.isBinaryExpression(node)) return [ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken,
@@ -122,7 +110,8 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
             ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken].includes(node.operatorToken.kind) && simple(node.left) && simple(node.right);
           return ts.isLiteralExpression(node) || [ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(node.kind);
         };
-        if (simple(call.arguments[0]!) && usesReactive) emit(statement, "derived-state-effect",
+        const argument = call.arguments[0];
+        if (argument && simple(argument) && usesReactive) emit(statement, "derived-state-effect",
           "This Effect only copies or derives props/state into state. Review whether the value can be calculated during render.", [EFFECT_GUIDE, STATE_GUIDE],
           "Keep when the value is fully derivable from current props/state and no independent edits or external synchronization are required.",
           "Drop when deferred synchronization, an editable draft, getters, or other intentional state lifetime semantics require this Effect.");
@@ -142,4 +131,35 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
       "Drop when the root boundary is intentional or extraction provides no benefit. Server-rendered children passed as props do not automatically become client modules.");
     return records;
   });
+}
+
+function reactHooks(source: ts.SourceFile, checker: ts.TypeChecker) {
+  const bindings = new Map<ts.Symbol, string>();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "react" || statement.importClause?.isTypeOnly) continue;
+    const clause = statement.importClause;
+    const named = clause?.namedBindings;
+    if (named && ts.isNamedImports(named)) for (const element of named.elements) {
+      const symbol = checker.getSymbolAtLocation(element.name);
+      if (symbol && !element.isTypeOnly) bindings.set(symbol, element.propertyName?.text ?? element.name.text);
+    }
+    for (const name of [clause?.name, named && ts.isNamespaceImport(named) ? named.name : undefined]) {
+      const symbol = name && checker.getSymbolAtLocation(name);
+      if (symbol) bindings.set(symbol, "namespace");
+    }
+  }
+  const binding = (node: ts.Node) => {
+    const symbol = checker.getSymbolAtLocation(node);
+    return symbol ? bindings.get(symbol) : undefined;
+  };
+  return (expression: ts.Expression, name: string): boolean => {
+    if (ts.isIdentifier(expression)) return binding(expression) === name;
+    return ts.isPropertyAccessExpression(expression) && expression.name.text === name &&
+      binding(expression.expression) === "namespace";
+  };
+}
+
+function hasSymbol(symbols: Set<ts.Symbol>, node: ts.Node, checker: ts.TypeChecker): boolean {
+  const symbol = checker.getSymbolAtLocation(node);
+  return symbol !== undefined && symbols.has(symbol);
 }

@@ -40,7 +40,7 @@ function computedOption(name: string, options: ts.CompilerOptions): number | und
   if (!isRecord(api) || !isRecord(api.computedOptions)) return undefined;
   const entry = api.computedOptions[name];
   if (!isRecord(entry) || typeof entry.computeValue !== "function") return undefined;
-  const value: unknown = entry.computeValue(options);
+  const value: unknown = Reflect.apply(entry.computeValue, entry, [options]);
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 

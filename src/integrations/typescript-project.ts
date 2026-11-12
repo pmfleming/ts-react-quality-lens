@@ -78,7 +78,7 @@ export function loadTypeScriptProjects(
   };
 }
 
-function firstCompilerOptions(projects: LoadedWorkspaceProject[]): Pick<TypeScriptProject, "compiler_options"> | {} {
+function firstCompilerOptions(projects: LoadedWorkspaceProject[]): Pick<TypeScriptProject, "compiler_options"> {
   const options = projects.find(({ project }) => project.compiler_options)?.project.compiler_options;
   return options ? { compiler_options: options } : {};
 }

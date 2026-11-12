@@ -31,8 +31,8 @@ export function countBy<T, K>(values: T[], keyFn: (value: T) => K): Map<K, numbe
   return map;
 }
 
-export function dedupeBy<T, K>(values: T[], keyFn: (value: T) => K): T[] {
-  const seen = new Set<K>();
+export function dedupeBy<T>(values: T[], keyFn: (value: T) => unknown): T[] {
+  const seen = new Set<unknown>();
   return values.filter((value) => {
     const key = keyFn(value);
     if (seen.has(key)) return false;

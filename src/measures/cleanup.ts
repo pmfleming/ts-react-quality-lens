@@ -4,6 +4,7 @@ import path from "node:path";
 import * as ts from "typescript";
 import { isRecord, parseJson } from "../collections.js";
 import { analyzeModule } from "../extract.js";
+import { matchesPathPattern as globMatch } from "../files.js";
 import { isEntrypointFile, packageEntryFiles, readPackageJson } from "../entrypoints.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
@@ -674,15 +675,6 @@ function isPublicApiFile(config: Config, file: string): boolean {
 
 function isPublicApiExport(config: Config, file: string, name: string): boolean {
   return config.publicApi.exports.some((rule) => globMatch(file, rule.file) && rule.names.includes(name));
-}
-
-function globMatch(file: string, pattern: string): boolean {
-  if (!pattern.includes("*")) return file === pattern;
-  const escaped = pattern
-    .split("*")
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join(".*");
-  return new RegExp(`^${escaped}$`).test(file);
 }
 
 function escapeRegExp(value: string): string {

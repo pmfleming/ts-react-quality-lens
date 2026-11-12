@@ -66,7 +66,7 @@ export type CleanupConfig = { knip?: boolean; production?: boolean };
 export type TypeCoverageConfig = {
   minimum_percent?: number; per_file_minimum_percent?: number; changed_file_minimum_percent?: number; baseline?: string;
 };
-export type DocumentationConfig = {
+type DocumentationConfig = {
   enabled?: boolean;
   exclude?: string[];
   exempt_exports?: Array<{ file: string; names: string[]; reason: string }>;
@@ -270,6 +270,7 @@ export type FunctionRecord = {
   line: number;
   lines: number;
   complexity: number;
+  body_line: number;
   cyclomatic_complexity: number;
   cognitive_complexity: number;
   halstead_effort: number;
