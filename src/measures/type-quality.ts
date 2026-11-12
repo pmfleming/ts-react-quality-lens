@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { typeSafetyPostureRecords } from "../compiler-options.js";
+import { compilerTargetEvidence } from "../compiler-targets.js";
 import { documentationEvidence } from "../typescript-documentation.js";
 import { fileRuleApplicability } from "../rule-applicability.js";
 import { ADVISORY_TYPED_RULES, BLOCKING_TYPED_RULES, TYPED_RULES, TYPED_RULESET } from "../rule-policy.js";
@@ -34,10 +35,12 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
   const diagnostics = project.tsProject.diagnostics;
   const coverage = project.tsProject.type_coverage;
   const documentation = documentationEvidence(config, project);
+  const targets = compilerTargetEvidence(config, project);
   const records = [
     ...project.modules.flatMap(typeHealthRecords),
     ...project.modules.flatMap((module) => module.typed?.api_design ?? []),
     ...documentation.records,
+    ...targets.records,
     ...typeSafetyPostureRecords(config, project),
     ...typeCoverageRecords(config, coverage),
     ...diagnostics.map(compilerDiagnosticFinding),
@@ -55,6 +58,7 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
   }, records, {
     compiler_options: project.tsProject.compiler_options ?? null,
     compiler_projects: project.tsProject.project_configs ?? [],
+    compiler_targets: targets.report,
     tool_status: {
       compiler_api: {
         ...compilerProvenance().analysis,

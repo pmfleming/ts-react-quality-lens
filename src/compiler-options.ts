@@ -1,4 +1,5 @@
 import * as ts from "typescript";
+import { isRecord } from "./collections.js";
 import type { Config, JsonValue, ProjectAnalysis, ScoredRecord } from "./types.js";
 
 export const STRICT_OPTIONS = ["noImplicitAny", "noImplicitThis", "strictNullChecks", "strictFunctionTypes", "strictBindCallApply",
@@ -24,8 +25,23 @@ export function compilerOptionSummary(options: ts.CompilerOptions): Record<strin
     declaration: options.declaration ?? options.composite ?? false,
     isolatedDeclarations: options.isolatedDeclarations ?? false,
     isolatedModules: Boolean(options.isolatedModules || options.verbatimModuleSyntax),
-    jsx: options.jsx, moduleResolution: options.moduleResolution, target: options.target,
+    jsx: options.jsx,
+    module: computedOption("module", options), moduleResolution: computedOption("moduleResolution", options), target: computedOption("target", options),
+    target_explicit: options.target !== undefined,
+    noEmit: options.noEmit ?? false, emitDeclarationOnly: options.emitDeclarationOnly ?? false,
+    declarationMap: Boolean(options.declarationMap && (options.declaration ?? options.composite)),
+    outDir: options.outDir, rootDir: options.rootDir,
   };
+}
+
+/** Runtime exports are checked: an incompatible compiler yields unknown, never guessed defaults. */
+function computedOption(name: string, options: ts.CompilerOptions): number | undefined {
+  const api: unknown = ts;
+  if (!isRecord(api) || !isRecord(api.computedOptions)) return undefined;
+  const entry = api.computedOptions[name];
+  if (!isRecord(entry) || typeof entry.computeValue !== "function") return undefined;
+  const value: unknown = entry.computeValue(options);
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export function typeSafetyPostureRecords(config: Config, project: ProjectAnalysis): ScoredRecord[] {

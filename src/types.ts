@@ -43,6 +43,7 @@ export type RawConfig = {
   cleanup?: CleanupConfig;
   type_coverage?: TypeCoverageConfig;
   documentation?: DocumentationConfig;
+  typescript?: { targets?: CompilerTarget[] };
   package_health?: PackageHealthConfig;
   sarif_inputs?: SarifInputConfig[];
   workspaces?: WorkspacesConfig;
@@ -69,6 +70,7 @@ export type DocumentationConfig = {
   exclude?: string[];
   exempt_exports?: Array<{ file: string; names: string[]; reason: string }>;
 };
+export type CompilerTarget = { tsconfig: string; environment: "node" | "bundler" | "browser" | "library" };
 export type PackageHealthConfig = { enabled?: boolean; attw_profile?: "strict" | "node16" | "esm-only" };
 export type SarifInputConfig = { path: string; name?: string; required?: boolean };
 type WorkspaceOverrideConfig = { workspace: string; framework?: string; policy_profile?: PolicyProfile };
@@ -157,6 +159,7 @@ export type Config = {
     additionalEffectHooks: string | null;
   };
   typedLint: { mode: TypedLintMode };
+  typescript: { targets: CompilerTarget[] };
   documentation: {
     enabled: boolean;
     exclude: string[];

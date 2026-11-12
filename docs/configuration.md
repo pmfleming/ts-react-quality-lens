@@ -170,3 +170,22 @@ Compiler-resolved aliases and star re-exports inherit documentation from their t
 `documentation.summary` reports evaluated/documented/undocumented/excluded/unavailable export counts, coverage percentage, and deprecated exports with/without guidance text. Nonempty JSDoc descriptions or descriptive param/return/remarks/example/deprecated tags count as documentation. A nonempty `@deprecated` message counts as guidance text; usefulness and migration correctness still require review.
 
 The report distinguishes `disabled`, `not_applicable`, `complete`, and `incomplete`. Coverage is `null` without an eligible denominator or when requested scope/compiler inventory is incomplete, including unmatched selectors and source diagnostics. Missing evidence is not a clean result. Available findings remain advisory and this optional report does not add a required audit check or coverage gate. Changing its configuration invalidates cached analysis.
+
+## Compiler runtime contexts
+
+Optional `typescript.targets` declares an execution environment for each analyzed tsconfig:
+
+```json
+{
+  "typescript": {
+    "targets": [
+      { "tsconfig": "tsconfig.json", "environment": "node" },
+      { "tsconfig": "packages/ui/tsconfig.json", "environment": "bundler" }
+    ]
+  }
+}
+```
+
+Environments are `node`, `bundler`, `browser` (unbundled modules), and `library`. Paths are project-relative, unique and confined to the project. Targets describe already analyzed configurations; they do not load extra configs. Select custom configs with `tsconfig`, or use discovered workspace configs. Missing target configs report unavailable. Configs with no declared environment report unknown and receive no runtime-specific recommendations.
+
+`type_health.json.compiler_targets` contains contexts and effective module options. Reviews cover runtime resolution, independent transpilation, duplicate emit, and library declaration/output/runtime-floor concerns. External emitters may intentionally satisfy these requirements elsewhere. No runtime-specific review gates the audit. Compiler defaults are read from checked runtime exports of the installed analysis compiler; unavailable computed defaults cause abstention.

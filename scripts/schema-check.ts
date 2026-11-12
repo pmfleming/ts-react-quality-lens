@@ -45,6 +45,7 @@ for (const key of [
   "cleanup",
   "type_coverage",
   "documentation",
+  "typescript",
   "package_health",
   "sarif_inputs",
   "workspaces",

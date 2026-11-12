@@ -138,6 +138,7 @@ export function loadConfig(configArg?: string | null): Config {
     cache: normalizeCache(outputDir, rawConfig.cache),
     react: normalizeReact(rawConfig.react),
     typedLint: { mode: rawConfig.typed_lint?.mode ?? "auto" },
+    typescript: { targets: normalizeCompilerTargets(root, rawConfig.typescript?.targets ?? []) },
     documentation: {
       enabled: rawConfig.documentation?.enabled ?? false,
       exclude: rawConfig.documentation?.exclude ?? [],
@@ -333,6 +334,17 @@ function normalizePublicApi(value: PublicApiConfig | undefined): Config["publicA
     entry: value?.entry ?? [],
     exports: value?.exports ?? [],
   };
+}
+
+function normalizeCompilerTargets(root: string, targets: Config["typescript"]["targets"]): Config["typescript"]["targets"] {
+  const seen = new Set<string>();
+  return targets.map((target) => {
+    const relative = path.relative(root, path.resolve(root, target.tsconfig)).replace(/\\/g, "/");
+    if (!relative || relative === ".." || relative.startsWith("../") || path.isAbsolute(relative)) throw new Error("TypeScript targets must name project-relative tsconfigs.");
+    if (seen.has(relative)) throw new Error(`Duplicate TypeScript target: ${relative}`);
+    seen.add(relative);
+    return { ...target, tsconfig: relative };
+  });
 }
 
 function normalizeCache(outputDir: string, value: RawConfig["cache"] | undefined): Config["cache"] {

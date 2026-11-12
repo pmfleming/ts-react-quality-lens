@@ -57,6 +57,18 @@
         }
       }
     },
+    "typescript": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "targets": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["tsconfig", "environment"],
+          "properties": {
+            "tsconfig": { "type": "string", "minLength": 1 },
+            "environment": { "enum": ["node", "bundler", "browser", "library"] }
+          }
+        } }
+      }
+    },
     "documentation": {
       "type": "object",
       "additionalProperties": false,
