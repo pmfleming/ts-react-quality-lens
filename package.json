@@ -85,7 +85,8 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.18",
     "@types/semver": "^7.8.0",
-    "@typescript/native": "npm:typescript@^7.0.2"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "modern-web-guidance": "1.0.0"
   },
   "dependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
@@ -101,5 +102,13 @@
     "publint": "^0.3.24",
     "semver": "^7.8.5",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "peerDependencies": {
+    "modern-web-guidance": "1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "modern-web-guidance": {
+      "optional": true
+    }
   }
 }
