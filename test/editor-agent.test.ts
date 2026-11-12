@@ -148,3 +148,34 @@ test("MCP requires explicit permission to execute project tests", () => fixture(
     assert.ok(ran.includes("correctness.all"));
   } finally { for (const [id, task] of tasks) MEASURE_TASKS.set(id, task); }
 }));
+
+test("editor save bursts share active work, refresh only the latest generation, and publish once", () => fixture(async (_root, config) => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let runs = 0;
+  const notifications: unknown[] = [];
+  const session = createLspSession(config, async () => {
+    runs++;
+    if (runs === 1) { await gate; throw new Error("obsolete failure"); }
+    return [finding];
+  }, (_method, value) => notifications.push(value));
+  try {
+    const initial = session.handle({ method: "initialized" });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const saves = Array.from({ length: 10 }, () => session.handle({ method: "textDocument/didSave" }));
+    release();
+    await Promise.all([initial, ...saves]);
+    assert.equal(runs, 2);
+    assert.equal(notifications.length, 1);
+    await session.handle({ method: "textDocument/didOpen", params: { textDocument: { uri: pathToFileURL(path.join(config.projectRoot, "src/a.ts")).href } } });
+    assert.equal(runs, 2, "opening a document reuses findings");
+    assert.equal(notifications.length, 2, "opening republishes only that document");
+  } finally { release(); session.dispose(); }
+  let attempts = 0;
+  const retry = createLspSession(config, async () => { if (++attempts === 1) throw new Error("current failure"); return []; }, () => {});
+  try {
+    await assert.rejects(retry.handle({ method: "workspace/diagnostic" }), /current failure/);
+    await retry.handle({ method: "workspace/diagnostic" });
+    assert.equal(attempts, 2);
+  } finally { retry.dispose(); }
+}));

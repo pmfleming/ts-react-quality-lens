@@ -73,45 +73,43 @@ export function runLspServer(config: Config): void {
 export function createLspSession(initialConfig: Config, measure?: Measure, notify: Notify = writeNotification) {
   let config = initialConfig;
   let generation = 0;
-  let findings: Promise<ScoredRecord[]> | null = null;
+  let analysis: { generation: number; promise: Promise<ScoredRecord[]> } | null = null;
+  let publishedGeneration = -1;
   let shutdown = false;
   let disposed = false;
   const published = new Set<string>();
   const workers = new Set<Worker>();
   const pending = new Set<Promise<unknown>>();
   const perform = measure ?? ((current: Config) => workerFindings(current, workers));
-  let analysisTail: Promise<unknown> = Promise.resolve();
-  const analyze: Measure = (current) => {
-    const result = analysisTail.then(() => disposed ? [] : perform(current));
-    analysisTail = result.catch(() => {});
-    return result;
-  };
-
-  async function currentFindings(): Promise<ScoredRecord[]> {
-    while (!disposed) {
-      const version = generation;
-      const promise = findings ??= analyze(config);
+  async function currentFindings() {
+    while (!disposed && !shutdown) {
+      // Saves advance the generation, but share the active run until it settles.
+      // Only the latest generation is scheduled next; obsolete work never queues.
+      const snapshot = config;
+      const current = analysis ??= { generation, promise: Promise.resolve().then(() => disposed || shutdown ? [] : perform(snapshot)) };
       try {
-        const result = await promise;
-        if (version === generation) return result.filter((finding) => !isSuppressed(finding));
+        const records = await current.promise;
+        if (current.generation === generation) return { generation, records: records.filter((finding) => !isSuppressed(finding)) };
       } catch (error) {
-        if (version === generation) { findings = null; throw error; }
+        if (analysis === current) analysis = null;
+        if (current.generation === generation) throw error;
       }
+      if (analysis === current) analysis = null;
     }
-    return [];
+    return { generation, records: [] };
   }
 
   const handlers = new Map<string, (params: unknown) => Promise<unknown>>([
     ["textDocument/diagnostic", async (params) => {
-      const records = await currentFindings();
+      const { records } = await currentFindings();
       return documentReport(config, params, records);
     }],
     ["workspace/diagnostic", async () => {
-      const records = await currentFindings();
+      const { records } = await currentFindings();
       return workspaceReport(config, published, records);
     }],
-    ["textDocument/codeAction", async (params) => codeActions(config, params, await currentFindings())],
-    ["workspace/executeCommand", async (params) => executeCommand(params, await currentFindings())],
+    ["textDocument/codeAction", async (params) => codeActions(config, params, (await currentFindings()).records)],
+    ["workspace/executeCommand", async (params) => executeCommand(params, (await currentFindings()).records)],
   ]);
 
   async function handleRequest(request: LspRequest): Promise<unknown> {
@@ -125,11 +123,17 @@ export function createLspSession(initialConfig: Config, measure?: Measure, notif
     }
     if (["textDocument/didSave", "workspace/didChangeConfiguration"].includes(request.method ?? "")) {
       generation += 1;
-      findings = null;
+
     }
     if (["initialized", "textDocument/didOpen", "textDocument/didSave", "workspace/didChangeConfiguration"].includes(request.method ?? "")) {
-      const records = await currentFindings();
-      if (!disposed && !shutdown) publish(records);
+      const result = await currentFindings();
+      if (!disposed && !shutdown && result.generation === generation) {
+        if (publishedGeneration !== generation) { publish(result.records); publishedGeneration = generation; }
+        else if (request.method === "textDocument/didOpen") {
+          const uri = documentUri(request.params);
+          if (uri) notify("textDocument/publishDiagnostics", { uri, diagnostics: diagnostics(config, result.records, relativeUri(config, uri)) });
+        }
+      }
       return NO_RESPONSE;
     }
     const handler = handlers.get(request.method ?? "");
