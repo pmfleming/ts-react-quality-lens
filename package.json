@@ -28,6 +28,7 @@
     "package:smoke": "npm run build && node dist/scripts/package-smoke.js",
     "format:check": "npm run build && node dist/scripts/format-check.js",
     "test": "npm run build && node dist/scripts/test-runner.js",
+    "test:coverage": "npm run build && node dist/scripts/test-runner.js --coverage",
     "catalog": "npm run build && node ./dist/bin/ts-react-quality-lens.js catalog --config ./examples/basic/ts-react-quality-lens.config.json",
     "measure": "npm run build && node ./dist/bin/ts-react-quality-lens.js measure all --config ./examples/basic/ts-react-quality-lens.config.json",
     "self:measure": "npm run build && node ./dist/bin/ts-react-quality-lens.js measure all --config ./ts-react-quality-lens.config.json",

@@ -63,6 +63,7 @@ function exchange(
     });
     let output = "";
     let errors = "";
+    let response: ProtocolResponse | null = null;
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`${command} protocol response timed out: ${errors}`));
@@ -72,11 +73,12 @@ function exchange(
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       output += chunk;
-      const parsed = parse(output);
-      if (!parsed) return;
+      response = parse(output);
+    });
+    child.on("close", (code) => {
       clearTimeout(timer);
-      child.kill();
-      resolve(parsed);
+      if (code === 0 && response) resolve(response);
+      else reject(new Error(`${command} exited ${code} without a successful protocol response: ${errors}`));
     });
     child.on("error", (error) => {
       clearTimeout(timer);

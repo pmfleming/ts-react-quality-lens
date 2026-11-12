@@ -4,6 +4,7 @@ import { Worker } from "node:worker_threads";
 import { isSuppressed } from "./actions.js";
 import { isRecord, isUnknownArray, parseJson } from "./collections.js";
 import { loadConfig } from "./config.js";
+import { decodeEditorResult, type EditorRequest } from "./lsp-protocol.js";
 import { suppressionEdit } from "./lsp-actions.js";
 import type { Config, ScoredRecord } from "./types.js";
 
@@ -175,12 +176,16 @@ function workspaceReport(config: Config, published: Set<string>, records: Scored
   })) };
 }
 
-function workerFindings(config: Config, workers: Set<Worker>): Promise<ScoredRecord[]> {
+export function workerFindings(config: Config, workers: Set<Worker>, url = new URL("./lsp-worker.js", import.meta.url)): Promise<ScoredRecord[]> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./lsp-worker.js", import.meta.url), { workerData: config });
+    const worker = new Worker(url, { workerData: { version: 1, config } satisfies EditorRequest });
     workers.add(worker);
     let received = false;
-    worker.once("message", (value: ScoredRecord[]) => { received = true; resolve(value); });
+    worker.once("message", (value: unknown) => {
+      received = true;
+      try { resolve(decodeEditorResult(value)); }
+      catch (error) { reject(error); void worker.terminate(); }
+    });
     worker.once("error", reject);
     worker.once("exit", (code) => {
       workers.delete(worker);

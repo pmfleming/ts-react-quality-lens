@@ -126,6 +126,7 @@ Modern web evidence is disabled by default. Install the optional `modern-web-gui
 | `npm run build` | Compile source, CLI, tests, and scripts into `dist/`. |
 | `npm run typecheck` / `npm run lint` | Type checking only; `lint` is an alias, not an ESLint run. |
 | `npm test` | Build and run Node's test suite. |
+| `npm run test:coverage` | Run the suite with raw V8 traces in `target/coverage/v8`, including inherited subprocess and worker coverage. Replaces the previous traces. |
 | `npm run ci` | Typecheck, build, schema/rule checks, formatting checks, tests, performance smoke, package smoke. |
 | `npm run catalog` / `npm run measure` | Build and operate on `examples/basic`. |
 | `npm run self:measure` / `npm run self:audit` | Build and analyze this repository's root config. |
@@ -136,11 +137,13 @@ Modern web evidence is disabled by default. Install the optional `modern-web-gui
 
 The build uses the TypeScript 7 native compiler through `@typescript/native`. Runtime compiler-API analysis uses `typescript`, aliased to `@typescript/typescript6`. GitHub Actions runs CI on Ubuntu and Windows with Node 24.
 
+Coverage collection preserves raw per-process V8 observations; it does not claim an aggregated or source-mapped TypeScript coverage percentage. Editor integration tests exercise the real subprocess and analysis worker and verify that both appear in the traces. The worker protocol validates versioned configuration snapshots and returned findings before use, including nested locations and actions.
+
 See the [self-refactoring report](docs/self-refactor.md) for measured before/after results, hotspot summary fields, and the interpretation of leverage and locality evidence.
 
 Artifacts identify the analysis API and native build tool separately under `provenance.compilers`. React health reports each workspace's declared React support range and applicable API guidance, with separate correctness and optimization categories. Typed lint defaults to project-service discovery for conventional projects and preserves explicit custom tsconfigs. See [integrations](docs/integrations.md) and [configuration](docs/configuration.md) for scope and overrides.
 
-The enabled-by-default disk cache stores a reusable project-analysis snapshot at `output_dir/.cache/analysis-v2.json` (internal cache format 4). It fingerprints source/test/compiler inputs, compiler file-discovery and resolution queries (including missing dependencies), and analysis identity; it does not persist external-tool results or a live TypeScript Program. Projects with no source files or unloaded configured TypeScript projects are not cached; external-tool completion is not part of that cache-admission check. Tool results are memoized within one analysis context. This is project-snapshot reuse, not changed-file-only incremental checking.
+The enabled-by-default disk cache stores a reusable project-analysis snapshot at `output_dir/.cache/analysis-v2.json` (internal cache format 6). It fingerprints source/test/compiler inputs, compiler file-discovery and resolution queries (including missing dependencies), and analysis identity; it does not persist external-tool results or a live TypeScript Program. Projects with no source files or unloaded configured TypeScript projects are not cached; external-tool completion is not part of that cache-admission check. Tool results are memoized within one analysis context. This is project-snapshot reuse, not changed-file-only incremental checking.
 
 Further reading: [rule development](docs/rule-development.md), [implementation status and remaining work](docs/typescript-quality-roadmap.md). The [GitHub checker review](docs/github-quality-checker-review.md), [Fallow comparison](docs/fallow-comparison-opportunities.md), and [original HTML plan](plan.html) are historical research, not current API references.
 
