@@ -1,3 +1,4 @@
+import { effectCandidates } from "./react-effect-review.js";
 import path from "node:path";
 import * as ts from "typescript";
 import { stableHash } from "./clone-utils.js";
@@ -70,6 +71,7 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
     for (const { name, fn } of functions) {
       if (!/^(?:[A-Z]|use[A-Z])/.test(name) || !fn.body || !ts.isBlock(fn.body)) continue;
       const setters = new Set<ts.Symbol>();
+      const stateSetters = new Map<ts.Symbol, ts.Symbol>();
       const reactive = new Set<ts.Symbol>();
       function capture(node: ts.Node) {
         if (ts.isIdentifier(node)) { const symbol = checker.getSymbolAtLocation(node); if (symbol) reactive.add(symbol); }
@@ -86,6 +88,8 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
             if (state && ts.isBindingElement(state)) capture(state.name);
             if (setter && ts.isBindingElement(setter) && ts.isIdentifier(setter.name)) {
               const symbol = checker.getSymbolAtLocation(setter.name); if (symbol) setters.add(symbol);
+              const stateSymbol = state && ts.isBindingElement(state) && ts.isIdentifier(state.name) ? checker.getSymbolAtLocation(state.name) : undefined;
+              if (symbol && stateSymbol) stateSetters.set(symbol, stateSymbol);
             }
           }
           const initial = call.arguments[0];
@@ -95,6 +99,9 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
             "Keep when repeated initialization is costly and the calculation can run as a pure initializer.",
             "Drop when the calculation is cheap, deliberately repeated, or changing when it runs would alter behavior. Measure before optimizing.");
         }
+      }
+      for (const candidate of effectCandidates(fn.body, checker, (expression) => hook(expression, "useEffect"), stateSetters)) {
+        emit(candidate.node, candidate.rule, candidate.message, [EFFECT_GUIDE, STATE_GUIDE], candidate.keep, candidate.drop);
       }
       for (const statement of fn.body.statements) {
         if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression) || !hook(statement.expression.expression, "useEffect")) continue;

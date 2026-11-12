@@ -3,7 +3,7 @@ import { isRecord } from "./collections.js";
 import { reactRulePolicy } from "./react-rules.js";
 import type { EslintReactHooksResult, ReactRuleset } from "./types.js";
 
-export const REACT_GUIDANCE_VERSION = "react-guidance-v2";
+export const REACT_GUIDANCE_VERSION = "react-guidance-v3";
 export const OFFICIAL_REACT_RULES = ["exhaustive-deps", "rules-of-hooks", "component-hook-factories", "config", "error-boundaries", "gating",
   "globals", "immutability", "incompatible-library", "preserve-manual-memoization", "purity", "refs", "set-state-in-effect",
   "set-state-in-render", "static-components", "unsupported-syntax", "use-memo"];
