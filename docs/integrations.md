@@ -159,3 +159,32 @@ Every event needs a unique nonempty ID/name and finite nonnegative millisecond s
 The environment must declare `development` or `profiling` and React 19.2+ support. Server events require `development`, following React's documented availability. Missing or mismatched source/producer provenance leaves otherwise valid observations unverified and the input incomplete. Invalid formats, phases, duplicate IDs, impossible metrics, or unsupported environments fail the input explicitly, including empty reports.
 
 Events retain their separate phases and environment; imported durations can overlap or include descendants. No totals, waterfall diagnoses, before/after gains, or production claims are inferred. `complete` means validated ingestion with matching provenance, not exhaustive runtime coverage. See [React's Performance Tracks documentation](https://react.dev/reference/dev-tools/react-performance-tracks) and [Profiler timing definitions](https://react.dev/reference/react/Profiler).
+
+## React Compiler execution reports
+
+Configure `runtime_inputs.react_compiler` with a JSON path and run `measure quality.runtime`. This imports normalized build logs; it does not install or invoke React Compiler, execute build configuration, or infer activation from a dependency declaration. `react_health.json` retains its separate unverified declaration context.
+
+Use the usual source/producer/environment wrapper. Example:
+
+```json
+{
+  "provenance": { "source_set_hash": "<matching lens source hash>" },
+  "producer": { "name": "your-compiler-log-normalizer", "version": "1.0.0" },
+  "environment": { "build_id": "build-123", "react_version": "19.2.0", "target": "19" },
+  "data": {
+    "format": "react-compiler-report-v1",
+    "compiler": { "name": "babel-plugin-react-compiler", "version": "1.0.0" },
+    "scope": {
+      "name": "application components", "complete": true,
+      "functions": [{ "id": "App", "file": "src/App.tsx", "line": 1, "name": "App" }]
+    },
+    "events": [{ "function_id": "App", "kind": "CompileSuccess" }]
+  }
+}
+```
+
+Files must belong to the lens's selected source set and locations must exist. Function IDs and file/line/name identities must be unique. Each function may have one terminal outcome: `CompileSuccess`, `CompileSkip`, or `CompileError`. Skips/errors require a reason and remain review evidence. `CompileDiagnostic` requires a reason; `Timing` requires a nonnegative finite `duration_ms`; `PipelineError` requires a reason and may use a null function ID. React and compiler versions must be concrete semver values; `target` is `17`, `18`, or `19`. Unknown events, missing functions, duplicate outcomes, or invalid locations fail ingestion.
+
+`import_metadata.react_compiler` retains source verification, build-scope counts and reported coverage. A percentage is emitted only with matching provenance, a complete declared inventory, one terminal outcome per inventoried function, no pipeline failure, and a nonempty denominator. Missing/stale provenance, partial scope, missing outcomes, or pipeline failure produce incomplete input status and no percentage. Skips/errors are recorded outcomes, not failures of report ingestion. Compilation success does not establish runtime correctness, a speedup, or whole-project compiler coverage. The collector must supply the complete inventory; silence in logger events is not an evaluated negative.
+
+The format deliberately normalizes [official logger events](https://react.dev/reference/react-compiler/logger), whose upstream structure can change between compiler versions. Source changes and edits to the report invalidate saved evidence. Configured incomplete reports participate in the existing runtime audit completeness policy.

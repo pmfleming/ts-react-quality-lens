@@ -1,3 +1,4 @@
+import { compilerExecutionRecords, type ImportedEvidence } from "../react-compiler-report.js";
 import { performanceTrackRecords } from "../react-performance.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -7,7 +8,7 @@ import { stableHash } from "../clone-utils.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, RelatedLocation, ScoredRecord } from "../types.js";
-type RuntimeInput = { name: string; file: string | null; parse: (config: Config, value: unknown, environment: Record<string, unknown>) => ScoredRecord[] };
+type RuntimeInput = { name: string; file: string | null; parse: (config: Config, value: unknown, environment: Record<string, unknown>, sourceVerified: boolean) => ScoredRecord[] | ImportedEvidence };
 type RuntimeStatus = {
   available: boolean;
   ran: boolean;
@@ -19,6 +20,7 @@ type RuntimeStatus = {
 export function measureRuntime(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const inputs: RuntimeInput[] = [
+    { name: "react_compiler", file: config.runtimeInputs.reactCompiler, parse: compilerExecutionRecords },
     { name: "react_profiler", file: config.runtimeInputs.reactProfiler, parse: profilerRecords },
     { name: "axe", file: config.runtimeInputs.axe, parse: axeRecords },
     { name: "react_doctor", file: config.runtimeInputs.reactDoctor, parse: reactDoctorRecords },
@@ -42,14 +44,16 @@ export function measureRuntime(config: Config, command: string, context: Analysi
       profiler_findings: records.filter((record) => record.source === "react-profiler").length,
       performance_track_observations: records.filter((record) => record.source === "react-performance-tracks").length,
       accessibility_findings: records.filter((record) => record.source === "axe").length,
+      compiler_observations: records.filter((record) => record.source === "react-compiler-report").length,
       react_doctor_findings: records.filter((record) => record.source === "react-doctor").length,
     },
+    import_metadata: Object.fromEntries(parsed.filter((item) => item.metadata).map((item) => [item.name, item.metadata])),
     tool_status: Object.fromEntries(parsed.map((item) => [item.name, item.status])),
     records,
   };
   return writeArtifact(config, "runtime_health.json", artifact);
 }
-function parseRuntimeInput(config: Config, input: RuntimeInput, sourceHash: string): { name: string; status: RuntimeStatus; records: ScoredRecord[] } {
+function parseRuntimeInput(config: Config, input: RuntimeInput, sourceHash: string): { name: string; status: RuntimeStatus; records: ScoredRecord[]; metadata?: Record<string, unknown> } {
   if (!input.file) return {
     name: input.name,
     status: { available: false, ran: false, complete: false, reason: "input is not configured", path: null, records: 0 },
@@ -67,13 +71,15 @@ function parseRuntimeInput(config: Config, input: RuntimeInput, sourceHash: stri
       typeof value.producer.version === "string" && Boolean(value.producer.version.trim()) &&
       isRecord(value.environment) && Object.keys(value.environment).length > 0;
     const environment = isRecord(value) && isRecord(value.environment) ? value.environment : {};
-    const records = input.parse(config, isRecord(value) && "data" in value ? value.data : value, environment)
-      .map((record) => ({ ...record, observation_environment: environment,
+    const result = input.parse(config, isRecord(value) && "data" in value ? value.data : value, environment, linked);
+    const imported = Array.isArray(result) ? { records: result, complete: true, reason: null, metadata: undefined } : result;
+    const records = imported.records.map((record) => ({ ...record, observation_environment: environment,
         ...(record.source === "react-profiler" && environment.build === "development"
           ? { disposition: "review" as const, production_representative: false, measurement_caveat: "Development timings include instrumentation and may include Strict Mode work; verify with a profiling build and representative workload." } : {}) }));
     return {
       name: input.name,
-      status: { available: true, ran: true, complete: linked, reason: linked ? null : "Imported observations lack matching source/producer/environment provenance.", path: input.file, records: records.length },
+      status: { available: true, ran: true, complete: linked && imported.complete, reason: !linked ? "Imported observations lack matching source/producer/environment provenance." : imported.reason, path: input.file, records: records.length },
+      ...(imported.metadata ? { metadata: { source_verified: linked, report: imported.metadata } } : {}),
       records: linked ? records : records.map((record) => ({ ...record, disposition: "review", finding_confidence: "low", semantic_decision: "unresolved", reason_code: "unverified-runtime-provenance" })),
     };
   } catch (error) {

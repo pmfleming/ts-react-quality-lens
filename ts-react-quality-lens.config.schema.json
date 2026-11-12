@@ -213,6 +213,7 @@
       "additionalProperties": false,
       "properties": {
         "react_profiler": { "type": "string" },
+        "react_compiler": { "type": "string", "minLength": 1 },
         "axe": { "type": "string" },
         "react_doctor": { "type": "string" }
       }

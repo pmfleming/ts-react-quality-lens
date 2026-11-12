@@ -395,6 +395,7 @@ function normalizeWorkspaces(value: WorkspacesConfig | undefined): Config["works
 function normalizeRuntimeInputs(configDir: string, value: RuntimeInputConfig | undefined): Config["runtimeInputs"] {
   return {
     reactProfiler: value?.react_profiler ? path.resolve(configDir, value.react_profiler) : null,
+    reactCompiler: value?.react_compiler ? path.resolve(configDir, value.react_compiler) : null,
     axe: value?.axe ? path.resolve(configDir, value.axe) : null,
     reactDoctor: value?.react_doctor ? path.resolve(configDir, value.react_doctor) : null,
   };

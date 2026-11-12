@@ -2,6 +2,7 @@ import { isRecord, isUnknownArray } from "./collections.js";
 import { arrayOf, boolean, integer, nonempty, nonnegative, nullable, oneOf, optional, positiveInteger, shape, string } from "./validation.js";
 import { validWireExtension } from "./wire-evidence.js";
 import type { Artifact, AttwProblem } from "./types.js";
+import { validCompilerMetadata, validCompilerObservation } from "./react-compiler-report.js";
 import { validPerformanceTrackRecord } from "./react-performance.js";
 import { validModernWebPayload } from "./modern-web-payload.js";
 
@@ -39,8 +40,14 @@ function validReact(artifact: Artifact): boolean {
         (rule.status === "incomplete" ? !tool.complete : tool.complete && (rule.status !== "not_applicable" || Array.isArray(tool.evaluated_files) && tool.evaluated_files.length === 0))));
 }
 function validRuntime(artifact: Artifact): boolean {
+  const imports = artifact.import_metadata;
+  if (imports !== undefined && (!isRecord(imports) || !Object.values(imports).every(shape({ source_verified: boolean, report: isRecord })))) return false;
+  if (isRecord(imports) && imports.react_compiler !== undefined) {
+    const item = imports.react_compiler;
+    if (!shape({ source_verified: boolean, report: isRecord })(item) || !validCompilerMetadata(item.report, item.source_verified)) return false;
+  }
   return validImports(artifact) && (artifact.records ?? []).every((record) =>
-    record.source !== "react-performance-tracks" || validPerformanceTrackRecord(record));
+    record.source === "react-compiler-report" ? validCompilerObservation(record) : record.source !== "react-performance-tracks" || validPerformanceTrackRecord(record));
 }
 function validImports(artifact: Artifact): boolean {
   const statuses = Object.values(artifact.tool_status ?? {});

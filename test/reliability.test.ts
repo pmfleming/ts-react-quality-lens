@@ -76,7 +76,7 @@ test("runtime inputs require provenance even for valid empty reports", () => fix
     ["reactProfiler", { commits: [{}] }, { commits: [] }],
     ["reactDoctor", { projects: [{}] }, { diagnostics: [] }],
   ] as const) {
-    config.runtimeInputs = { axe: null, reactProfiler: null, reactDoctor: null, [key]: file };
+    config.runtimeInputs = { axe: null, reactProfiler: null, reactCompiler: null, reactDoctor: null, [key]: file };
     for (const value of [{ unrelated: true }, invalid]) {
       fs.writeFileSync(file, JSON.stringify(value));
       const [result] = runMeasure(config, "quality.runtime", "test");

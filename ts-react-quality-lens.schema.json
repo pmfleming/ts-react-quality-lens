@@ -108,6 +108,7 @@
       "additionalProperties": true
     },
     "custom_effect_hooks": {"type":"object","required":["pattern","calls","status","scope"],"properties":{"pattern":{"type":["string","null"]},"status":{"enum":["not_configured","evaluated","incomplete"]},"scope":{"type":"string"},"calls":{"type":"array","items":{"type":"object","required":["name","file","line"],"properties":{"name":{"type":"string"},"file":{"type":"string"},"line":{"type":"integer","minimum":1}},"additionalProperties":false}}},"additionalProperties":false},
+    "import_metadata": { "type": "object", "additionalProperties": { "type": "object", "required": ["source_verified", "report"], "properties": { "source_verified": { "type": "boolean" }, "report": { "type": "object" } }, "additionalProperties": false } },
     "guidance_version": { "type": "string" },
     "rule_coverage": {
       "type": "array",
