@@ -1,3 +1,4 @@
+import type { GitHistorySnapshot } from "./history.js";
 import type * as ts from "typescript";
 import type { SafetyEvidence } from "./typescript-safety.js";
 import type { ExportDocumentation } from "./typescript-documentation.js";
@@ -439,6 +440,7 @@ export type ProjectAnalysis = {
 };
 
 export type AnalysisContext = {
+  history: () => GitHistorySnapshot;
   syntaxProgram: () => ts.Program;
   workspaceManifest: (root: string) => PackageJson | null;
   sourceHash: () => string;

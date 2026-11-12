@@ -42,7 +42,7 @@ export function measureArchitectureMap(config: Config, command: string, context:
   for (const test of artifacts.correctness?.tests ?? []) {
     for (const file of directTestSources(test)) correctnessFiles.add(file);
   }
-  const artifactStatus = artifactFreshness(config, artifacts, currentSourceHash, context.identity());
+  const artifactStatus = artifactFreshness(config, artifacts, currentSourceHash, context.identity(), () => context.history().fingerprint);
   const nodes = project.modules.map((module) => mapNode(module, artifacts, artifactStatus, correctnessFiles));
   const edges = project.imports.map((edge) => ({
     id: `import:${edge.from}:${edge.to}:${edge.line}`,
@@ -110,11 +110,13 @@ export function artifactFreshness(
   artifacts: Record<string, MapInputArtifact | null>,
   currentSourceHash: string,
   identity = analysisIdentity(config),
+  historyFingerprint?: () => string,
 ): ArtifactFreshnessLookup {
   return Object.fromEntries(
     Object.entries(artifacts).map(([name, value]) => {
       const fresh = value?.task_id && value.analysis_identity?.id === identity.id &&
-        value.provenance?.input_set_hash === taskInputHash(config, value.task_id, currentSourceHash, identity);
+        value.provenance?.input_set_hash === taskInputHash(config, value.task_id, currentSourceHash, identity, undefined,
+          value.task_id === "quality.locality_dynamic" ? historyFingerprint?.() : undefined);
       const status: ArtifactFreshness = !value ? "missing" : name === "performance" || fresh ? "available" : "stale";
       return [name, status];
     }),

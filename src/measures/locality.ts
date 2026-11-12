@@ -1,7 +1,6 @@
 import { createAnalysisContext } from "../analysis-context.js";
 import path from "node:path";
 import { dedupeBy, groupBy } from "../collections.js";
-import { gitHistory } from "../history.js";
 import { riskForScore } from "../risk-model.js";
 import { escapeRecords, hiddenCouplingSignals } from "../scoring.js";
 import { readArtifact } from "../writer.js";
@@ -13,7 +12,7 @@ export function measureLocality(config: Config, command: string, context: Analys
   const project = context.project();
   const testCatalog = readArtifact(config, "test_catalog.json");
   const testEvidence = new Set((testCatalog?.tests ?? []).flatMap(directTestSources));
-  const history = gitHistory(config);
+  const history = context.history().records;
   const records = project.modules.map((module): ScoredRecord => {
     const farImports = module.imports.filter((edge) => edge.to_kind === "relative" &&
       path.posix.relative(path.posix.dirname(module.id), edge.to).startsWith("../../"));

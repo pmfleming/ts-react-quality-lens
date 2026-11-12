@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { createAnalysisContext } from "../src/analysis-context.js";
+import { artifactFreshness } from "../src/measures/architecture.js";
+import { measureLocality } from "../src/measures/locality.js";
+import { typescriptFixture } from "./project-fixture.js";
+
+test("locality metrics and freshness share one Git snapshot, refreshed after history changes", (t) => typescriptFixture((root, config) => {
+  config.cache.enabled = false;
+  const context = createAnalysisContext(config);
+  assert.equal(context.history().fingerprint, "unavailable");
+  fs.writeFileSync(path.join(root, "src/a.ts"), "export const a = 1;");
+  fs.writeFileSync(path.join(root, "src/b.ts"), "export const b = 1;");
+  const git = (...args: string[]) => childProcess.execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  const commit = () => { git("add", "src"); git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "-qm", "fix pair"); };
+  git("init", "-q"); commit();
+  context.refresh();
+  const execute = t.mock.method(childProcess, "execFileSync");
+  const logCalls = () => execute.mock.calls.filter((call) => Array.isArray(call.arguments[1]) && call.arguments[1][0] === "log").length;
+  const artifact = measureLocality(config, "history", context);
+  const first = context.history();
+  assert.deepEqual(first.records.get("src/a.ts"), { commits: 1, contributors: 1, defect_commits: 1, cochange_partners: [{ file: "src/b.ts", commits: 1 }] });
+  assert.equal(artifactFreshness(config, { locality: artifact }, context.sourceHash(), context.identity(), () => context.history().fingerprint).locality, "available");
+  assert.equal(logCalls(), 1);
+  fs.writeFileSync(path.join(root, "src/a.ts"), "export const a = 2;"); commit();
+  assert.equal(context.history(), first);
+  context.refresh();
+  assert.notEqual(context.history().fingerprint, first.fingerprint);
+  assert.equal(context.history().records.get("src/a.ts")?.commits, 2);
+  assert.deepEqual(context.history().records.get("src/a.ts")?.cochange_partners, [{ file: "src/b.ts", commits: 1 }]);
+  assert.equal(artifactFreshness(config, { locality: artifact }, context.sourceHash(), context.identity(), () => context.history().fingerprint).locality, "stale");
+  assert.equal(logCalls(), 2);
+}));

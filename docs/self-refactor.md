@@ -76,3 +76,33 @@ The local reproduction snapshots are `target/self-review/next-five-before` and `
 Validation: all 153 tests passed with raw subprocess/worker coverage enabled; schema and rule contracts, formatting, performance smoke, and the installed-package smoke checks passed. Focused regressions cover directed-edge witnesses, shared-line and nested coverage attribution, clone precision and boilerplate classification, and malformed worker messages and lifecycle failures.
 
 Final self-review reports zero compiler diagnostics, lint findings, dependency cycles, or cleanup findings. It retains one implementation clone candidate and one informational import-boilerplate group. These clone counts reflect the corrected normalization/classification rules and are not evidence that equivalent amounts of source code were removed.
+
+## Performance audit follow-up (2026-11-12)
+
+The six optimizations target repeated work without weakening evidence checks:
+
+- Editor saves share the active analysis and schedule only the latest outstanding generation. Diagnostics publish once per generation; opening a document can republish that document's cached diagnostics. Failed current analyses remain retryable.
+- Source fingerprints and analysis identities are reused within a generation. Project test execution clears generation caches afterward, while execution evidence retains its pre-command identity. New contexts and explicit refreshes recheck source and compiler dependencies.
+- Hooks and accessibility rules share a syntax-only ESLint invocation, with separate finding collections and completion status. Configuration failures fall back to isolated invocations so one broken family cannot hide the other. Disabled accessibility starts no tool on its own.
+- Clone and React review share a lazily constructed local syntax program. Workspace manifests, including missing manifests, are read once per generation. Refresh releases the cached references.
+- Function coverage uses sorted line lookups and a sweep over overlapping declarations. No ownership comparisons are needed without observations. Sets replace repeated array membership scans; nested and shared-line ambiguity semantics remain unchanged. Deeply overlapping inventories can still require quadratic relationships.
+- Locality metrics and their provenance use the same captured Git history. Architecture freshness reuses that fingerprint. Exact co-change counts and partner ordering are unchanged; no history truncation or approximate counting was introduced.
+
+The baseline is the preceding audit at `0f99cd3`. The repeat uses the same root project, Node 24.18.0, disabled disk caching, disabled project-test execution, and cold/warm passes sharing one context. Read counts and bytes cover synchronous reads in the parent process, including OS-cached reads. They exclude subprocess I/O.
+
+| Observation | Before | After |
+| --- | ---: | ---: |
+| Analyses for initialization plus ten rapid saves | 11 | 2 |
+| Diagnostic publications for that burst | 11 | 1 |
+| Warm-pass file reads | 7,113 | 93 |
+| Warm-pass bytes read, decimal MB | 94.51 | 8.14 |
+| ESLint subprocesses across both passes | 3 | 2 |
+| Git history commands across both passes | 6 | 1 |
+| Coverage kernel: 5,000 flat functions, no observations, median ms | 192.68 | 1.96 |
+| Coverage kernel: 5,000 flat functions with observations, median ms | 297.19 | 10.00 |
+
+A separate alternating comparison ran the previous Hooks/accessibility adapter and the combined adapter against the same current source files, three times each. Median elapsed time was 2,544 ms for separate invocations and 1,467 ms combined; all runs completed with identical finding counts. Coverage figures are medians of four isolated kernel calls, not whole-analysis timings.
+
+The full-run timing sample did **not** establish an end-to-end speedup: cold elapsed time was 12.17 s before and 26.43 s after; warm elapsed time was 0.90 s before and 1.22 s after. Concurrent background compilation was observed during the repeat, so these samples are not controlled latency comparisons. Parent peak RSS was 649 MiB before and 628 MiB after, excluding child-process peaks; this is not a memory-leak assessment. The reduction in invocation counts and logical I/O is independently observable.
+
+Validation passed: all 159 tests, schema/rule/format checks, performance smoke, installed-package smoke, and schema validation of 18 measured artifacts. Self-review reports zero compiler diagnostics, lint findings, and cleanup findings. Generated measurements are under `target/performance-audit`: `before-profile.json`, `profile.json`, `comparison.json`, `frequency.json`, `coverage-scaling.json`, and `lint-comparison.json`.

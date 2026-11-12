@@ -1,3 +1,4 @@
+import { captureGitHistory } from "./history.js";
 import { syntaxProgram } from "./syntax-program.js";
 import { analysisIdentity, sourceSetHash } from "./provenance.js";
 import { createConfidence } from "./config.js";
@@ -92,6 +93,7 @@ export function createAnalysisContext(config: Config): AnalysisContext {
   const syntaxLint = memoize(() => runReactSyntaxLint(config));
   return {
     project,
+    history: memoize(() => captureGitHistory(config)),
     syntaxProgram: memoize(() => syntaxProgram(project().modules)),
     workspaceManifest: (root) => manifests()(root),
     sourceHash: memoize(() => sourceSetHash(project())),

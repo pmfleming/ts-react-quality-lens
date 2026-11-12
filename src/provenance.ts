@@ -57,6 +57,7 @@ export function artifactBase(
   confidence: Confidence,
   sourceSetHash: string | null = null,
   identity: AnalysisIdentity = analysisIdentity(config),
+  historyFingerprint?: string,
 ) {
   return {
     schema_version: SCHEMA_VERSION,
@@ -72,7 +73,7 @@ export function artifactBase(
       ...provenance(command),
       ...(sourceSetHash ? {
         source_set_hash: sourceSetHash,
-        input_set_hash: taskInputHash(config, taskId, sourceSetHash, identity),
+        input_set_hash: taskInputHash(config, taskId, sourceSetHash, identity, undefined, historyFingerprint),
       } : {}),
     },
     analysis_identity: identity,
@@ -199,7 +200,7 @@ export function sourceSetHash(
   return contentHash([...files.values(), ...dependencies]);
 }
 
-export function taskInputHash(config: Config, taskId: string, sourceHash: string, identity = analysisIdentity(config), webInputs?: WebInputSet): string {
+export function taskInputHash(config: Config, taskId: string, sourceHash: string, identity = analysisIdentity(config), webInputs?: WebInputSet, historyFingerprint?: string): string {
   if (taskId === "quality.modern_web") {
     const inputs = webInputs ?? discoverWebInputs(config);
     return contentHash([], [identity.id, taskId, inputs.fingerprint, MODERN_WEB_MAPPING_VERSION,
@@ -213,7 +214,7 @@ export function taskInputHash(config: Config, taskId: string, sourceHash: string
     : taskId === "quality.type_health" ? [config.typeCoverage.baseline]
     : taskId === "map.architecture" ? Object.values(config.performanceInputs) : [];
   const inputs = files.filter((file): file is string => file !== null).map((file) => fileInput(file, path.relative(config.projectRoot, file)));
-  return contentHash(inputs, [sourceHash, identity.id, taskId, ...(taskId === "quality.locality_dynamic" ? [gitHistoryFingerprint(config)] : [])]);
+  return contentHash(inputs, [sourceHash, identity.id, taskId, ...(taskId === "quality.locality_dynamic" ? [historyFingerprint ?? gitHistoryFingerprint(config)] : [])]);
 }
 
 function collectCompilerConfigInputs(

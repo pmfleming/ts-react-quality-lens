@@ -15,7 +15,8 @@ export function writeQualityArtifact(
 ): Artifact {
   const project = context.project();
   const artifact = {
-    ...artifactBase(config, taskId, command, analysisConfidence(config, project), context.sourceHash(), context.identity()),
+    ...artifactBase(config, taskId, command, analysisConfidence(config, project), context.sourceHash(), context.identity(),
+      taskId === "quality.locality_dynamic" ? context.history().fingerprint : undefined),
     summary,
     ...extra,
     records,

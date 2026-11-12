@@ -15,14 +15,18 @@ type GitHistoryRecord = ChurnRecord & {
   cochange_partners: Array<{ file: string; commits: number }>;
 };
 
-export function gitHistory(config: Config): Map<string, GitHistoryRecord> {
-  const result = new Map<string, HistoryAccumulator>();
+export type GitHistorySnapshot = { records: Map<string, GitHistoryRecord>; fingerprint: string };
+
+export function captureGitHistory(config: Config): GitHistorySnapshot {
   try {
     const output = historyOutput(config);
-    for (const commit of parseGitCommits(output)) addCommitHistory(result, commit);
-  } catch {
-    return new Map();
-  }
+    return { records: parseHistory(output), fingerprint: stableHash(output) };
+  } catch { return { records: new Map(), fingerprint: "unavailable" }; }
+}
+
+function parseHistory(output: string): Map<string, GitHistoryRecord> {
+  const result = new Map<string, HistoryAccumulator>();
+  for (const commit of parseGitCommits(output)) addCommitHistory(result, commit);
   const compact = new Map<string, GitHistoryRecord>();
   for (const [key, value] of result) {
     compact.set(key, {
