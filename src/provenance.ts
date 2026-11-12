@@ -14,6 +14,8 @@ import { discoverWorkspaces } from "./workspaces.js";
 import { gitHistoryFingerprint } from "./history.js";
 import { discoverWebInputs } from "./web-inputs.js";
 import { resolveModernWebTool } from "./integrations/modern-web-tool.js";
+import { browserTargetsFingerprint } from "./browser-targets.js";
+import { MODERN_WEB_MAPPING_VERSION } from "./modern-web-compatibility.js";
 import type { AnalysisIdentity, Confidence, Config, ProjectAnalysis } from "./types.js";
 
 const manifest = parseJson(fs.readFileSync(path.join(packageRootFrom(import.meta.url), "package.json"), "utf8"));
@@ -181,8 +183,12 @@ export function sourceSetHash(
 }
 
 export function taskInputHash(config: Config, taskId: string, sourceHash: string, identity = analysisIdentity(config)): string {
-  if (taskId === "quality.modern_web") return contentHash([], [identity.id, taskId, discoverWebInputs(config).fingerprint,
-    config.modernWeb.enabled ? resolveModernWebTool(config)?.fingerprint ?? "unavailable" : "disabled"]);
+  if (taskId === "quality.modern_web") {
+    const inputs = discoverWebInputs(config);
+    return contentHash([], [identity.id, taskId, inputs.fingerprint, MODERN_WEB_MAPPING_VERSION,
+      config.modernWeb.enabled ? browserTargetsFingerprint(config, inputs) : "disabled",
+      config.modernWeb.enabled ? resolveModernWebTool(config)?.fingerprint ?? "unavailable" : "disabled"]);
+  }
   const files = taskId === "quality.runtime"
     ? Object.values(config.runtimeInputs)
     : taskId === "quality.sarif" ? config.sarifInputs.map((input) => input.path)
