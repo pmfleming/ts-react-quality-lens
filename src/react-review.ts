@@ -1,3 +1,4 @@
+import { syntaxProgram } from "./syntax-program.js";
 import { effectCandidates } from "./react-effect-review.js";
 import path from "node:path";
 import * as ts from "typescript";
@@ -14,14 +15,7 @@ const NEXT_GUIDE = "https://nextjs.org/docs/app/guides/production-checklist";
 
 /** Bounded syntactic review, with local binding identity; no inferred purity or measured cost. */
 export function reactReviewRecords(config: Config, project: ProjectAnalysis): ScoredRecord[] {
-  const sources = new Map(project.modules.map((module) => [module.absolutePath, module.text]));
-  const options: ts.CompilerOptions = { noLib: true, noResolve: true, allowJs: true, jsx: ts.JsxEmit.Preserve };
-  const host = ts.createCompilerHost(options);
-  host.getSourceFile = (file, languageVersion) => {
-    const text = sources.get(file);
-    return text === undefined ? undefined : ts.createSourceFile(file, text, languageVersion, true);
-  };
-  const program = ts.createProgram([...sources.keys()], options, host);
+  const program = syntaxProgram(project.modules);
   const checker = program.getTypeChecker();
   return project.modules.flatMap((module) => {
     const source = program.getSourceFile(module.absolutePath);

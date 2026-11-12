@@ -83,6 +83,8 @@ All commands accept `--config PATH` (or `-c PATH`); the default is `./ts-react-q
 
 A single task may run prerequisites and write additional artifacts: locality needs the correctness catalog, and the map refreshes eleven static/correctness input tasks. A standalone map **does not run tests**. It preserves an existing passed/failed suite result only when the review and test catalog match current source and analysis identities. Otherwise correctness risk remains unknown until tests run. See [risk model v3](docs/risk-model-v3.md).
 
+Structural clone candidates preserve local binding relationships, property names, literal values, and operators while allowing local renaming. They describe similar syntax, not behavioral equivalence. Verified import-only spans and simple object projections remain visible as informational boilerplate, with their original producer scores retained; they do not contribute to implementation duplication pressure. Raw engine totals still include these observations.
+
 `measure` produces evidence; it is not a CI verdict command. Findings or failed tests recorded by a measurement do not themselves set its CLI exit status to 1. Use `audit` for gating.
 
 ## Audits and evidence

@@ -114,6 +114,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     artifact_generation: "audit-digests-v1",
     blocking_inventory: "managed-family-v1",
     clone_adapter: "managed-config-absolute-scope-v2",
+    clone_semantics: "local-bindings-literals-boilerplate-v2",
     engine_reconciliation: "explicit-subject-no-silent-negative-v3",
     execution_coverage: "exclusive-function-attribution-v3",
     function_metrics: "all-function-bodies-exclusive-tokens-v2",

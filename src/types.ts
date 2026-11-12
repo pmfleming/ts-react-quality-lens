@@ -654,6 +654,11 @@ export type CloneGroup = {
   risk: RiskLevel;
   signals: Signal[];
   instances: CloneInstance[];
+  review_category?: "implementation" | "boilerplate";
+  pressure_included?: boolean;
+  boilerplate_reason?: string;
+  producer_score?: number;
+  disposition?: FindingDisposition;
 };
 
 type JscpdDuplicateFile = {

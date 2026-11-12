@@ -1,10 +1,11 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
-import { cloneGroup, cloneGroupFromBlocks, jscpdCloneGroup, normalizeCloneLine, stableHash } from "../clone-utils.js";
+import { cloneGroup, jscpdCloneGroup, normalizeCloneLine, stableHash } from "../clone-utils.js";
 import { compareRisk, groupBy } from "../collections.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { riskForScore } from "../risk-model.js";
 import { writeArtifact } from "../writer.js";
-import { isFunctionWithBody } from "../ts-ast.js";
+import { structuralCloneGroups } from "../structural-clones.js";
+import { lineForNode } from "../ts-ast.js";
 import * as ts from "typescript";
 import type { AnalysisContext, CloneBlock, CloneGroup, CloneInstance, Config, EntryPointRole, ModuleRecord, ProjectAnalysis, ScoredRecord } from "../types.js";
 
@@ -24,10 +25,10 @@ type PurposeCandidate = {
 export function measureClones(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const jscpd = context.jscpd();
-  const jscpdGroups = jscpd.ran ? jscpd.duplicates.map((duplicate, index) => jscpdCloneGroup(config, duplicate, index)) : [];
-  const rawHeuristicGroups = jscpd.ran ? [] : heuristicCloneGroups(project);
+  const jscpdGroups = classifyCloneGroups(project, jscpd.ran ? jscpd.duplicates.map((duplicate, index) => jscpdCloneGroup(config, duplicate, index)) : []);
+  const rawHeuristicGroups = classifyCloneGroups(project, jscpd.ran ? [] : heuristicCloneGroups(project));
   const heuristicGroups = dedupeCloneRegions(rawHeuristicGroups);
-  const astGroups = structuralCloneGroups(project);
+  const astGroups = classifyCloneGroups(project, structuralCloneGroups(project));
   const groups = dedupeCloneRegions([...jscpdGroups, ...heuristicGroups, ...astGroups]).sort((left, right) => right.score - left.score);
   const duplicationPressure = duplicationPressureRecords(project, groups);
   const samePurpose = samePurposeRecords(project);
@@ -45,6 +46,8 @@ export function measureClones(config: Config, command: string, context: Analysis
     ),
     summary: {
       clone_groups: groups.length,
+      implementation_clone_groups: groups.filter((group) => group.review_category === "implementation").length,
+      boilerplate_clone_groups: groups.filter((group) => group.review_category === "boilerplate").length,
       jscpd_clone_groups: jscpdGroups.length,
       heuristic_clone_groups: heuristicGroups.length,
       ast_clone_groups: astGroups.length,
@@ -237,7 +240,7 @@ function typedDeclarationType(module: ModuleRecord, name: string, line: number |
 function duplicationPressureRecords(project: ProjectAnalysis, groups: CloneGroup[]): ScoredRecord[] {
   return project.modules
     .flatMap((module) => {
-      const sourceGroups = groups.filter((group) => !group.test_code && group.instances.some((instance) => instance.file === module.file));
+      const sourceGroups = groups.filter((group) => group.pressure_included && group.instances.some((instance) => instance.file === module.file));
       if (!sourceGroups.length) return [];
       const duplicatedLines = duplicatedLineCount(sourceGroups.flatMap((group) => group.instances.filter((instance) => instance.file === module.file)));
       const crossFileGroups = sourceGroups.filter((group) => new Set(group.instances.map((instance) => instance.file)).size > 1).length;
@@ -292,67 +295,6 @@ function duplicatedLineCount(instances: CloneInstance[]): number {
   }
   if (current) total += current.end - current.start + 1;
   return total;
-}
-
-function structuralCloneGroups(project: ProjectAnalysis): CloneGroup[] {
-  const blocks = project.modules.flatMap((module) => structuralCloneBlocks(module.astSourceFile, module.file, module.sourceFile.isTest));
-  return [...groupBy(blocks, (block) => block.hash).values()]
-    .filter((group) => group.length > 1)
-    .map(astCloneGroup)
-    .sort((left, right) => right.score - left.score);
-}
-
-function structuralCloneBlocks(sourceFile: ts.SourceFile | undefined, file: string, testCode: boolean): CloneBlock[] {
-  if (!sourceFile) return [];
-  const astSourceFile = sourceFile;
-  const blocks: CloneBlock[] = [];
-  function visit(node: ts.Node): void {
-    const body = isFunctionWithBody(node) && node.body;
-    if (body) {
-      const normalized = normalizeAst(body);
-      const nodeCount = normalized.split(" ").length;
-      if (nodeCount >= 18) {
-        blocks.push({
-          hash: stableHash(normalized),
-          normalized,
-          file,
-          start_line: astSourceFile.getLineAndCharacterOfPosition(body.getStart(astSourceFile)).line + 1,
-          end_line: astSourceFile.getLineAndCharacterOfPosition(body.getEnd()).line + 1,
-          test_code: testCode,
-        });
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(astSourceFile);
-  return blocks;
-}
-
-function astCloneGroup(group: CloneBlock[]): CloneGroup {
-  return cloneGroupFromBlocks(group, {
-    idPrefix: "ast-clone",
-    engine: "ast",
-    extraSignals: [{ kind: "confidence_scope", value: "syntax_facts" }],
-    weights: { block: 12, file: 18, source: 12 },
-  });
-}
-
-function normalizeAst(node: ts.Node): string {
-  const parts: string[] = [];
-  function visit(current: ts.Node): void {
-    if (ts.isIdentifier(current)) {
-      parts.push("Identifier");
-      return;
-    }
-    if (ts.isStringLiteralLike(current) || current.kind === ts.SyntaxKind.NumericLiteral) {
-      parts.push("Literal");
-      return;
-    }
-    parts.push(ts.SyntaxKind[current.kind] ?? String(current.kind));
-    ts.forEachChild(current, visit);
-  }
-  visit(node);
-  return parts.join(" ");
 }
 
 function heuristicCloneGroups(project: { sourceFiles: Array<{ lines: string[]; relativePath: string; isTest: boolean }>; testFiles: Array<{ lines: string[]; relativePath: string; isTest: boolean }> }): CloneGroup[] {
@@ -416,4 +358,19 @@ function rangesOverlap(left: CloneInstance, right: CloneInstance): boolean {
     return false;
   }
   return left.start_line <= right.end_line && right.start_line <= left.end_line;
+}
+
+function classifyCloneGroups(project: ProjectAnalysis, groups: CloneGroup[]): CloneGroup[] {
+  const sources = new Map(project.modules.map((module) => [module.file, module.astSourceFile]));
+  return groups.map((group): CloneGroup => {
+    const imports = group.instances.length > 0 && group.instances.every((instance) => {
+      const source = sources.get(instance.file), start = instance.start_line, end = instance.end_line;
+      if (!source || start === null || end === null) return false;
+      const statements = source.statements.filter((node) => lineForNode(source, node) <= end && source.getLineAndCharacterOfPosition(node.end).line + 1 >= start);
+      return statements.length > 0 && statements.every((node) => ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node) || ts.isExportDeclaration(node) && Boolean(node.moduleSpecifier));
+    });
+    const reason = group.boilerplate_reason ?? (imports ? "import-declarations" : null);
+    return { ...group, review_category: reason ? "boilerplate" : "implementation", pressure_included: !reason && !group.test_code,
+      ...(reason ? { boilerplate_reason: reason, producer_score: group.score, score: 0, risk: "low", disposition: "info" } : {}) };
+  });
 }
