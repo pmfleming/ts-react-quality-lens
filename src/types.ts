@@ -1,5 +1,6 @@
 import type * as ts from "typescript";
 import type { CompilerInputQuery } from "./integrations/compiler-inputs.js";
+import type { ModernWebConfig, ModernWebSettings } from "./modern-web-types.js";
 
 type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -43,6 +44,7 @@ export type RawConfig = {
   sarif_inputs?: SarifInputConfig[];
   workspaces?: WorkspacesConfig;
   runtime_inputs?: RuntimeInputConfig;
+  modern_web?: ModernWebConfig;
   policy?: PolicyConfig;
   suppressions?: SuppressionConfig[];
   audit?: AuditConfig;
@@ -180,6 +182,7 @@ export type Config = {
     axe: string | null;
     reactDoctor: string | null;
   };
+  modernWeb: ModernWebSettings;
   policy: {
     profile: PolicyProfile;
     requiredChecks: PolicyCheck[];

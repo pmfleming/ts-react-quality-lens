@@ -48,6 +48,7 @@ for (const key of [
   "sarif_inputs",
   "workspaces",
   "runtime_inputs",
+  "modern_web",
   "policy",
   "suppressions",
   "audit",

@@ -145,6 +145,17 @@ export function loadConfig(configArg?: string | null): Config {
     sarifInputs: normalizeSarifInputs(configDir, rawConfig.sarif_inputs),
     workspaces: normalizeWorkspaces(rawConfig.workspaces),
     runtimeInputs: normalizeRuntimeInputs(configDir, rawConfig.runtime_inputs),
+    modernWeb: {
+      enabled: rawConfig.modern_web?.enabled ?? false,
+      roots: (rawConfig.modern_web?.roots ?? [root]).map((value) => path.resolve(configDir, value)),
+      exclude: rawConfig.modern_web?.exclude ?? [],
+      timeoutMs: rawConfig.modern_web?.timeout_ms ?? 120000,
+      maxOutputBytes: rawConfig.modern_web?.max_output_bytes ?? 8 * 1024 * 1024,
+      browsers: {
+        targets: rawConfig.modern_web?.browsers?.targets ?? null,
+        environment: rawConfig.modern_web?.browsers?.environment ?? "production",
+      },
+    },
     policy: normalizePolicy(rawConfig.policy, Boolean(tsconfig), Boolean(testCommand)),
     suppressions: normalizeSuppressions(rawConfig.suppressions),
     audit: normalizeAuditConfig(configDir, rawConfig.audit),
