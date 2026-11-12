@@ -134,3 +134,9 @@ An override matches a workspace's name or relative root. It changes the workspac
 | `suppressions` | Array of exact `id`, `file`, and/or `kind` selectors, with optional `reason`. At least one selector is required; supplied selectors are ANDed. |
 
 See [rule profiles](rule-catalog.md) and the [audit reference](audit.md). Disabling a tool is not the same as removing its policy requirement. Replacing `required_checks` also does not disable measurement tasks or universally silence compiler, accessibility, runtime, or imported SARIF findings.
+
+## Custom Effect hooks
+
+Set `react.additional_effect_hooks` to a JavaScript regular expression, for example `"^(useRemoteEffect|useSubscriptionEffect)$"`. The managed Hooks plugin receives it through the official shared `additionalEffectHooks` setting in both `classic-v1` and `recommended-v2`. Empty, malformed, or over-256-character expressions are rejected. The managed plugin dependency supports this setting (React documents it for plugin 6.1.1+).
+
+`react_health.json.custom_effect_hooks` records the pattern, run status, and matching direct named call sites. This is a syntactic inventory, not proof that every call was semantically evaluated. Member calls and alias resolution are not inventoried. Configure the names actually called in your source. Changing the setting invalidates prior analysis identity. See [the official setting](https://react.dev/reference/eslint-plugin-react-hooks/lints/exhaustive-deps#options).

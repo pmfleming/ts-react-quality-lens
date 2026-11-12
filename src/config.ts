@@ -338,7 +338,11 @@ function normalizeCache(outputDir: string, value: RawConfig["cache"] | undefined
 }
 
 function normalizeReact(value: ReactConfig | undefined): Config["react"] {
-  return { ruleset: value?.ruleset ?? "recommended-v2", version: value?.version ?? null };
+  const pattern = value?.additional_effect_hooks ?? null;
+  if (pattern !== null) {
+    try { new RegExp(pattern); } catch { throw new Error("react.additional_effect_hooks must be a valid regular expression."); }
+  }
+  return { ruleset: value?.ruleset ?? "recommended-v2", version: value?.version ?? null, additionalEffectHooks: pattern };
 }
 
 function normalizeAccessibility(value: AccessibilityConfig | undefined): Config["accessibility"] {

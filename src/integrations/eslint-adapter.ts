@@ -88,7 +88,7 @@ export function runReactHooksLint(config: Config): EslintReactHooksResult {
   const result = runTemporaryEslint(
     config,
     "react-hooks",
-    reactHooksConfig(managedPackageJsonUrl(), selection.rules),
+    reactHooksConfig(managedPackageJsonUrl(), selection.rules, config.react.additionalEffectHooks),
     "react-hooks/",
     true,
   );
@@ -192,7 +192,7 @@ export default [{
 `;
 }
 
-function reactHooksConfig(toolPackageUrl: string, rules: Record<string, unknown>): string {
+function reactHooksConfig(toolPackageUrl: string, rules: Record<string, unknown>, additionalEffectHooks: string | null): string {
   return `import { createRequire } from "node:module";
 const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
 const reactHooks = toolRequire("eslint-plugin-react-hooks");
@@ -201,6 +201,7 @@ export default [{
   files: ["**/*.{js,jsx,ts,tsx}"], ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
   languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module" } },
   plugins: { "react-hooks": reactHooks },
+  settings: { "react-hooks": ${JSON.stringify(additionalEffectHooks ? { additionalEffectHooks } : {})} },
   rules: ${JSON.stringify(rules)}
 }];
 `;

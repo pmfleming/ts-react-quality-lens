@@ -76,6 +76,7 @@
       "additionalProperties": false,
       "properties": {
         "ruleset": { "enum": ["classic-v1", "recommended-v2"] },
+        "additional_effect_hooks": { "type": "string", "minLength": 1, "maxLength": 256 },
         "version": { "type": "string", "minLength": 1, "description": "Explicit supported React range for all workspaces; otherwise use each package manifest." }
       }
     },

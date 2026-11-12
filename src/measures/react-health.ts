@@ -1,3 +1,4 @@
+import { customEffectHookCalls } from "../custom-effect-hooks.js";
 import { fileRuleApplicability } from "../rule-applicability.js";
 import { BLOCKING_REACT_RULES } from "../rule-policy.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
@@ -51,6 +52,9 @@ export function measureReactHealth(config: Config, command: string, context: Ana
     framework: project.frameworkDetails,
     guidance_version: REACT_GUIDANCE_VERSION,
     rule_coverage: reactRuleCoverage(hooksLint),
+    custom_effect_hooks: { pattern: config.react.additionalEffectHooks, calls: customEffectHookCalls(config),
+      status: !config.react.additionalEffectHooks ? "not_configured" : hooksLint.complete ? "evaluated" : "incomplete",
+      scope: "Syntactic direct named calls matching the configured expression; not per-call semantic coverage." },
     react_support: reactSupport(config, project.workspaces),
     tool_status: {
       eslint_react_hooks: {
