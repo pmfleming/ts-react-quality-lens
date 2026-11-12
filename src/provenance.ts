@@ -101,6 +101,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     ...(config.modernWeb.enabled ? { modern_web: "provisional-scanner-v1", browser_targets: "bounded-config-v1", modern_web_mapping: MODERN_WEB_MAPPING_VERSION } : {}),
     builtin: "tsrqlens-analysis-v6",
     typescript_api_design: "bounded-signatures-v1",
+    typescript_documentation: "public-export-presence-v1",
     react_guidance: REACT_GUIDANCE_VERSION,
     runtime_observations: "runtime-observations-v4",
     rule_applicability: "bounded-dispatch-v1",

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { documentationEvidence } from "../typescript-documentation.js";
 import { fileRuleApplicability } from "../rule-applicability.js";
 import { ADVISORY_TYPED_RULES, BLOCKING_TYPED_RULES, TYPED_RULES, TYPED_RULESET } from "../rule-policy.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
@@ -32,9 +33,11 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
   const project = context.project();
   const diagnostics = project.tsProject.diagnostics;
   const coverage = project.tsProject.type_coverage;
+  const documentation = documentationEvidence(config, project);
   const records = [
     ...project.modules.flatMap(typeHealthRecords),
     ...project.modules.flatMap((module) => module.typed?.api_design ?? []),
+    ...documentation.records,
     ...typeSafetyPostureRecords(config, project),
     ...typeCoverageRecords(config, coverage),
     ...diagnostics.map(compilerDiagnosticFinding),
@@ -61,6 +64,7 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
     },
     diagnostics,
     type_coverage: coverage ?? null,
+    documentation: documentation.report,
     api_design_analysis: {
       scope: "Return-only generic candidates in callable signatures with explicit return annotations; parameter and constraint references are resolved by symbol. Inferred returns are outside this check.",
       files: project.modules.map((module) => ({ file: module.file, status: module.typed?.api_design ? "evaluated" : "unavailable" })),

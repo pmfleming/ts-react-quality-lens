@@ -1,5 +1,6 @@
 import type * as ts from "typescript";
 import type { SafetyEvidence } from "./typescript-safety.js";
+import type { ExportDocumentation } from "./typescript-documentation.js";
 import type { CompilerInputQuery } from "./integrations/compiler-inputs.js";
 import type { ModernWebConfig, ModernWebSettings } from "./modern-web-types.js";
 
@@ -41,6 +42,7 @@ export type RawConfig = {
   accessibility?: AccessibilityConfig;
   cleanup?: CleanupConfig;
   type_coverage?: TypeCoverageConfig;
+  documentation?: DocumentationConfig;
   package_health?: PackageHealthConfig;
   sarif_inputs?: SarifInputConfig[];
   workspaces?: WorkspacesConfig;
@@ -61,6 +63,11 @@ export type AccessibilityConfig = {
 export type CleanupConfig = { knip?: boolean; production?: boolean };
 export type TypeCoverageConfig = {
   minimum_percent?: number; per_file_minimum_percent?: number; changed_file_minimum_percent?: number; baseline?: string;
+};
+export type DocumentationConfig = {
+  enabled?: boolean;
+  exclude?: string[];
+  exempt_exports?: Array<{ file: string; names: string[]; reason: string }>;
 };
 export type PackageHealthConfig = { enabled?: boolean; attw_profile?: "strict" | "node16" | "esm-only" };
 export type SarifInputConfig = { path: string; name?: string; required?: boolean };
@@ -150,6 +157,11 @@ export type Config = {
     additionalEffectHooks: string | null;
   };
   typedLint: { mode: TypedLintMode };
+  documentation: {
+    enabled: boolean;
+    exclude: string[];
+    exemptExports: Array<{ file: string; names: string[]; reason: string }>;
+  };
   accessibility: {
     enabled: boolean;
     components: Record<string, string>;
@@ -307,6 +319,7 @@ export type TypedModuleRecord = {
   surface_type_references?: string[];
   safety_evidence?: SafetyEvidence;
   api_design?: ScoredRecord[];
+  documentation?: { complete: boolean; exports: ExportDocumentation[] };
   sourceFile?: ts.SourceFile;
 };
 

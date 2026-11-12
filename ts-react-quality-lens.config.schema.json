@@ -57,6 +57,26 @@
         }
       }
     },
+    "documentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "exclude": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "exempt_exports": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["file", "names", "reason"],
+            "properties": {
+              "file": { "type": "string", "minLength": 1 },
+              "names": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+              "reason": { "type": "string", "pattern": "\\S" }
+            }
+          }
+        }
+      }
+    },
     "cache": {
       "type": "object",
       "additionalProperties": false,

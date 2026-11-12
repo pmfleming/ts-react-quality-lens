@@ -41,12 +41,13 @@ Built-in excludes are `node_modules`, `.git`, `dist`, `build`, `coverage`, `.nex
 | `typed_lint` | `mode: "auto"` uses project service for a conventional root `tsconfig.json` or workspaces without a root config. A selected custom config uses `project` mode. Set `"project-service"` to explicitly discover each file's nearest tsconfig, or `"project"` to use only the selected `tsconfig`. |
 | `accessibility` | `enabled: true`, `components: {}`, optional `polymorphic_prop_name`. Disabling managed analysis does not disable built-in fallback heuristics. |
 | `cleanup` | `knip: true`, `production: false`. Knip production mode changes its scope and therefore cross-check comparability. |
+| `documentation` | `enabled: false`; optional project-relative `exclude` patterns and `exempt_exports` entries (`file`, `names`, nonblank `reason`). Reports public export documentation presence in `type_health.json`; see below. |
 | `type_coverage` | Optional `minimum_percent`, `per_file_minimum_percent`, `changed_file_minimum_percent` (0–100), and `baseline` pointing to an earlier `type_health.json`. No default floors. |
 | `package_health` | `enabled` defaults to true for the `library` profile or an explicit required `package` check, false otherwise. `attw_profile` is `strict` (default), `node16`, or `esm-only`. Explicit `enabled: false` overrides activation but does not remove a required policy check. |
 | `sarif_inputs` | Array of `{ "path": "…", "name": "…", "required": false }`; only `path` is required. Default names are `sarif-1`, etc. |
 | `runtime_inputs` | Optional profiler, axe, React Doctor, compiler-report and paired performance-snapshot paths. Configured inputs must parse and satisfy their provenance/completeness requirements. |
 | `performance_inputs` | Optional `bundle_stats` and `render_costs` JSON paths, used by `map.architecture`, not `quality.runtime`. |
-| `public_api` | `entry`: project-relative entry paths; `exports`: objects with `file` and `names` arrays to preserve intentional public exports during cleanup. |
+| `public_api` | `entry`: project-relative entry paths; `exports`: objects with `file` and `names` arrays to preserve intentional public exports during cleanup and define the optional documentation scope. |
 | `layer_rules` | Ordered `{ "layer": "…", "patterns": ["…"] }` rules. A nonempty array replaces the built-in route/feature/ui/hook/lib/core rules. |
 
 Type-coverage floors and ratchet regressions emit **warnings**, not blockers. Changed-file floors require a usable audit base. Missing/unreadable/malformed type-coverage baselines are currently ignored, not reported as incomplete. Type coverage describes checked identifier types, not executed test coverage.
@@ -144,3 +145,28 @@ Set `react.additional_effect_hooks` to a JavaScript regular expression, for exam
 `runtime_inputs.react_compiler` accepts a source-linked normalized React Compiler build report. Its path resolves relative to the lens config. See [the execution-report format](integrations.md#react-compiler-execution-reports); absent input is optional, while a configured invalid or incomplete report makes runtime evidence incomplete.
 
 For measured baseline comparisons, set both `runtime_inputs.performance_current` and `runtime_inputs.performance_baseline` to normalized snapshot paths. Run `measure quality.runtime`; the lens does not run benchmarks or update the baseline. See [comparison requirements and format](integrations.md#bundle-and-runtime-baseline-comparisons). Legacy `performance_inputs.bundle_stats` and `render_costs` still feed the architecture map and do not establish comparable baseline evidence.
+
+## Optional public API documentation
+
+Enable documentation measurement within `quality.type_health`:
+
+```json
+{
+  "public_api": { "entry": ["src/index.ts"] },
+  "documentation": {
+    "enabled": true,
+    "exclude": ["src/vendor/*"],
+    "exempt_exports": [
+      { "file": "src/app/page.tsx", "names": ["default"], "reason": "Framework route entrypoint." }
+    ]
+  }
+}
+```
+
+A nonempty `public_api.entry` or `public_api.exports` explicitly selects the surface; otherwise detected package export/main/module/types source entrypoints are used. Paths use project-relative matching (`*` matches any characters, including `/`, as in cleanup selectors). This is not a claim to discover every published subpath. Configure source entrypoints explicitly when package metadata points only to unresolved build outputs. Framework exports can be exempted by name and reason; the lens does not assume every default export is a framework entrypoint.
+
+Compiler-resolved aliases and star re-exports inherit documentation from their targets. Each entrypoint/export name is counted once; the same declaration exposed through two names or entrypoints counts twice. Only top-level exports are measured, not class/interface members. Exports whose declarations are outside selected sources, generated filenames (`*.generated.*`, `*.gen.*`), leading `@generated` comments, and configured exclusions/exemptions stay outside the denominator. Normal source-discovery exclusions also apply.
+
+`documentation.summary` reports evaluated/documented/undocumented/excluded/unavailable export counts, coverage percentage, and deprecated exports with/without guidance text. Nonempty JSDoc descriptions or descriptive param/return/remarks/example/deprecated tags count as documentation. A nonempty `@deprecated` message counts as guidance text; usefulness and migration correctness still require review.
+
+The report distinguishes `disabled`, `not_applicable`, `complete`, and `incomplete`. Coverage is `null` without an eligible denominator or when requested scope/compiler inventory is incomplete, including unmatched selectors and source diagnostics. Missing evidence is not a clean result. Available findings remain advisory and this optional report does not add a required audit check or coverage gate. Changing its configuration invalidates cached analysis.

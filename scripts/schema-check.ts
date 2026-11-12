@@ -44,6 +44,7 @@ for (const key of [
   "accessibility",
   "cleanup",
   "type_coverage",
+  "documentation",
   "package_health",
   "sarif_inputs",
   "workspaces",

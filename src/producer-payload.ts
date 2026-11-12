@@ -6,6 +6,7 @@ import { validPerformanceComparisonMetadata, validPerformanceDelta } from "./per
 import { validCompilerMetadata, validCompilerObservation } from "./react-compiler-report.js";
 import { validPerformanceTrackRecord } from "./react-performance.js";
 import { validModernWebPayload } from "./modern-web-payload.js";
+import { validDocumentationReport } from "./typescript-documentation.js";
 
 const strings = arrayOf(string);
 const toolStatus = shape({ available: boolean, ran: boolean, complete: boolean, reason: nullable(string) });
@@ -70,8 +71,9 @@ const importStatus = oneOf("not_configured", "complete", "incomplete");
 const coveredFiles = arrayOf(shape({ file: nonempty, line_hits: arrayOf(shape({ line: positiveInteger, hits: nonnegative })) }));
 const checks = new Map<string, (artifact: Artifact) => boolean>([
   ["quality.modern_web", validModernWebPayload],
-  ["quality.type_health", ({ confidence, tool_status, diagnostics }) => boolean(confidence.typescript_program_loaded) &&
-    shape({ loaded: boolean })(tool_status?.compiler_api) && tool_status?.compiler_api?.loaded === confidence.typescript_program_loaded && isUnknownArray(diagnostics)],
+  ["quality.type_health", ({ confidence, tool_status, diagnostics, documentation }) => boolean(confidence.typescript_program_loaded) &&
+    shape({ loaded: boolean })(tool_status?.compiler_api) && tool_status?.compiler_api?.loaded === confidence.typescript_program_loaded && isUnknownArray(diagnostics) &&
+    (documentation === undefined || validDocumentationReport(documentation))],
   ["quality.lint", ({ tool_status }) => status(tool_status?.typed_eslint) && strings(tool_status?.typed_eslint?.evaluated_files)],
   ["quality.react_health", validReact],
   ["correctness.all", (artifact) => execution.get(artifact.execution?.status ?? "")?.(artifact.execution) ?? false],

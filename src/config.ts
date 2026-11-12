@@ -138,6 +138,11 @@ export function loadConfig(configArg?: string | null): Config {
     cache: normalizeCache(outputDir, rawConfig.cache),
     react: normalizeReact(rawConfig.react),
     typedLint: { mode: rawConfig.typed_lint?.mode ?? "auto" },
+    documentation: {
+      enabled: rawConfig.documentation?.enabled ?? false,
+      exclude: rawConfig.documentation?.exclude ?? [],
+      exemptExports: rawConfig.documentation?.exempt_exports ?? [],
+    },
     accessibility: normalizeAccessibility(rawConfig.accessibility),
     cleanup: normalizeCleanup(rawConfig.cleanup),
     typeCoverage: normalizeTypeCoverage(configDir, rawConfig.type_coverage),

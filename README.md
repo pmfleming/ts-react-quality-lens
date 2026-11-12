@@ -66,7 +66,7 @@ All commands accept `--config PATH` (or `-c PATH`); the default is `./ts-react-q
 | `quality.hotspots` | `hotspots.json` | File/function size, cyclomatic and cognitive complexity, nesting, Halstead effort. |
 | `quality.clones` | `clones.json` | jscpd plus built-in normalized-line and AST clones; module duplication pressure and same-purpose export/component/hook candidates. |
 | `quality.escape_hatches` | `ts_escape_hatches.json` | Structural type, runtime, React, module, and suppression escape-hatch signals. |
-| `quality.type_health` | `type_health.json` | Compiler diagnostics, compiler-option posture, types/exports, and type coverage with optional floors and ratchets. |
+| `quality.type_health` | `type_health.json` | Compiler diagnostics, compiler-option posture, types/exports, advisory generic API reviews, type coverage with optional floors and ratchets, and optional public API documentation metrics. |
 | `quality.lint` | `lint_health.json` | Managed type-aware typescript-eslint rules; requires a readable tsconfig. |
 | `quality.locality_dynamic` | `locality_metrics.json` | Dependency/test locality, Git churn, defect-keyword commits, and co-change. |
 | `quality.locality_leverage` | `leverage_metrics.json` | Reuse leverage and public-surface risk. |
