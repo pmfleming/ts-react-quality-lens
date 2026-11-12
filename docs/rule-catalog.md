@@ -70,6 +70,8 @@ A safe `unknown` annotation is not an escape hatch. Type coverage separates expl
 | Managed jsx-a11y findings | `warn` |
 | Built-in missing-alt/nonsemantic-interaction fallback | `review` |
 
+React-health artifacts also expose `rule_coverage` and the actual selected preset and enabled rule IDs. An evaluated inventory entry describes the selected-file lint run, not exhaustive semantic verification. Hooks findings link to their rule documentation.
+
 React findings carry `react_category`; the summary counts correctness, optimization, configuration, and unknown findings separately. Optimization findings describe unsupported compilation or potential wasted work, not demonstrated runtime failures. They remain informational even when React checks are required. Unknown future rules require review instead of automatically becoming blockers. When the check is optional, non-informational React findings become review items. jsx-a11y findings are separate and remain warnings. The React profile does not require successful jsx-a11y production; fallback evidence must not be mistaken for full standards-based accessibility analysis.
 
 ## Package and imported evidence
@@ -78,7 +80,8 @@ React findings carry `react_category`; the summary counts correctness, optimizat
 - publint: errors `block`, warnings `warn`, suggestions `info`.
 - ATTW: resolution problems generally `block`, advisory findings `warn`.
 - SARIF: error `block`, warning `warn`, note `info`, none `review`. Required input/invocation failure `block`; optional failure `warn`.
-- React Profiler: duration over 50 ms or render count over 10 produces `warn`; otherwise `review`.
+- React Profiler: duration over 50 ms or render count over 10 produces `warn`; otherwise `review`. Development-build observations remain `review` regardless of the threshold. These thresholds are lens policy, not official React performance budgets.
+- Normalized React Performance Tracks: `review` observations only; no automatic regression verdict or duration aggregation.
 - axe: critical impact `block`, serious `warn`, other impacts `review`.
 - React Doctor: error severity `warn`, otherwise `review`.
 - Runtime input failure: `warn` and incomplete runtime status; audit adds an incomplete reason.
@@ -100,3 +103,7 @@ Complexity, duplication/same-purpose candidates, size, broad types, structural a
 [`rule-contracts.json`](../rule-contracts.json) covers eight selected React/accessibility rules. [`contracts/typed-rule-cases.json`](../contracts/typed-rule-cases.json) adds executed positive/negative/unavailable cases for all eight managed typed-lint blockers; [`contracts/blocking-families.json`](../contracts/blocking-families.json) inventories the bounded compiler, test, package and imported families. `src/rule-policy.ts` is the managed-rule authority; unregistered blockers are downgraded to explicit review. Exhaustive upstream-family applicability/case coverage is still tracked by E2. `npm run rule:check` validates registered contracts and their corpus entries; `npm test` runs original/mutated source fixtures. See [rule development](rule-development.md) for the contributor workflow and remaining coverage limits.
 
 Changing rules/dispositions should be reviewed separately from changing risk-model weights. Artifacts carry both analysis/ruleset identity and map risk-model metadata so consumers can reject incompatible comparisons.
+
+## React guidance review candidates
+
+`derived-state-effect`, `eager-state-initializer`, and `next-root-client-boundary` are advisory AST candidates with source links and keep/drop criteria. Aliased and namespace React imports are recognized; shadowed bindings are not treated as React Hooks. Next root-boundary advice requires a detected Next workspace and a compatible declared version. Compiler package declarations are recorded separately from unverified activation. See the [seven-source comparison](react-guidance-review.md) for coverage and explicit limits.

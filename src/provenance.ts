@@ -6,6 +6,7 @@ import { nonempty, shape } from "./validation.js";
 import { capabilityEvidence } from "./capability-evidence.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { REACT_GUIDANCE_VERSION } from "./react-guidance.js";
 import path from "node:path";
 import * as ts from "typescript";
 import { executablePackageVersion, toolPackageVersion } from "./integrations/tool-runner.js";
@@ -98,6 +99,8 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   const rulesets = {
     ...(config.modernWeb.enabled ? { modern_web: "provisional-scanner-v1", browser_targets: "bounded-config-v1", modern_web_mapping: MODERN_WEB_MAPPING_VERSION } : {}),
     builtin: "tsrqlens-analysis-v5",
+    react_guidance: REACT_GUIDANCE_VERSION,
+    runtime_observations: "runtime-observations-v2",
     rule_applicability: "bounded-dispatch-v1",
     evidence_projection: "native-producer-v2",
     payload_validation: "critical-producers-v1",

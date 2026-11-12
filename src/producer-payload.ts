@@ -2,6 +2,7 @@ import { isRecord, isUnknownArray } from "./collections.js";
 import { arrayOf, boolean, integer, nonempty, nonnegative, nullable, oneOf, optional, positiveInteger, shape, string } from "./validation.js";
 import { validWireExtension } from "./wire-evidence.js";
 import type { Artifact, AttwProblem } from "./types.js";
+import { validPerformanceTrackRecord } from "./react-performance.js";
 import { validModernWebPayload } from "./modern-web-payload.js";
 
 const strings = arrayOf(string);
@@ -23,6 +24,24 @@ const execution = new Map<string, (value: unknown) => boolean>([
   ["unknown", shape({ reason: nonempty })], ["not_run", shape({ command: nullable(nonempty) })], ["passed", shape({ command: nonempty })],
   ["failed", shape({ command: nonempty, exit_code: nullable(integer), stdout: string, stderr: string })],
 ]);
+const ruleCoverage = arrayOf(shape({ rule_id: nonempty, source: nullable(string),
+  category: oneOf("correctness", "optimization", "configuration", "unknown", "tool-failure"),
+  disposition: oneOf("block", "warn", "review", "info"), status: oneOf("evaluated", "incomplete", "disabled", "unknown", "not_applicable") }));
+function validReact(artifact: Artifact): boolean {
+  const tool = artifact.tool_status?.eslint_react_hooks;
+  if (!status(tool) || !status(artifact.tool_status?.jsx_a11y)) return false;
+  if (artifact.rule_coverage === undefined) return true;
+  if (!ruleCoverage(artifact.rule_coverage) || !strings(tool.enabled_rules)) return false;
+  const enabled = tool.enabled_rules;
+  return new Set(artifact.rule_coverage.map((rule) => rule.rule_id)).size === artifact.rule_coverage.length &&
+    artifact.rule_coverage.every((rule) => rule.status === "unknown" ||
+      (rule.status === "disabled" ? !enabled.includes(rule.rule_id) : enabled.includes(rule.rule_id) &&
+        (rule.status === "incomplete" ? !tool.complete : tool.complete && (rule.status !== "not_applicable" || Array.isArray(tool.evaluated_files) && tool.evaluated_files.length === 0))));
+}
+function validRuntime(artifact: Artifact): boolean {
+  return validImports(artifact) && (artifact.records ?? []).every((record) =>
+    record.source !== "react-performance-tracks" || validPerformanceTrackRecord(record));
+}
 function validImports(artifact: Artifact): boolean {
   const statuses = Object.values(artifact.tool_status ?? {});
   if (!statuses.every(status)) return false;
@@ -37,9 +56,9 @@ const checks = new Map<string, (artifact: Artifact) => boolean>([
   ["quality.type_health", ({ confidence, tool_status, diagnostics }) => boolean(confidence.typescript_program_loaded) &&
     shape({ loaded: boolean })(tool_status?.compiler_api) && tool_status?.compiler_api?.loaded === confidence.typescript_program_loaded && isUnknownArray(diagnostics)],
   ["quality.lint", ({ tool_status }) => status(tool_status?.typed_eslint) && strings(tool_status?.typed_eslint?.evaluated_files)],
-  ["quality.react_health", ({ tool_status }) => status(tool_status?.eslint_react_hooks) && status(tool_status?.jsx_a11y)],
+  ["quality.react_health", validReact],
   ["correctness.all", (artifact) => execution.get(artifact.execution?.status ?? "")?.(artifact.execution) ?? false],
-  ["quality.package_health", validPackage], ["quality.sarif", validImports], ["quality.runtime", validImports],
+  ["quality.package_health", validPackage], ["quality.sarif", validImports], ["quality.runtime", validRuntime],
   ["testing.coverage", (artifact) => importStatus(artifact.summary.status) && coveredFiles(artifact.files) && isUnknownArray(artifact.functions)],
   ["audit", (artifact) => isUnknownArray(artifact.findings) && boolean(artifact.summary.complete) &&
     strings(artifact.summary.incomplete_reasons) && strings(artifact.summary.verification_failures) && oneOf("pass", "warn", "fail", "incomplete")(artifact.summary.verdict)],

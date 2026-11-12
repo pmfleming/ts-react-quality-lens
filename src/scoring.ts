@@ -1,3 +1,5 @@
+import path from "node:path";
+import { workspaceForFile } from "./workspaces.js";
 import * as ts from "typescript";
 import { lineForIndex } from "./files.js";
 import { RISK_MODEL, riskForScore } from "./risk-model.js";
@@ -230,7 +232,10 @@ export function frameworkRiskRecords(project: ProjectAnalysis): ScoredRecord[] {
     if (/\b(?:fetch|load|loader|action|process\.env|fs\.|node:fs)\b/.test(module?.text ?? "")) {
       responsibilitySignals.push({ kind: "route_data_or_server_responsibility" });
     }
-    if (responsibilitySignals.length > 1) {
+    // App Router Server Components intentionally colocate data loading and rendering.
+    const workspace = workspaceForFile(project.workspaces, route.file);
+    const appServerRoute = workspace.framework === "next" && /^(?:src\/)?app\//.test(path.posix.relative(workspace.root, route.file)) && !clientFiles.has(route.file);
+    if (responsibilitySignals.length > 1 && !appServerRoute) {
       records.push({
         id: `framework:route-responsibility:${route.file}`,
         module_id: route.file.replace(/\.[cm]?[jt]sx?$/, ""),

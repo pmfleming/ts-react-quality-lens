@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { enabledReactRules, selectReactRules } from "../react-guidance.js";
 import { TYPED_RULES } from "../rule-policy.js";
 import { discoverSourceFiles } from "../files.js";
 import os from "node:os";
@@ -6,7 +7,7 @@ import path from "node:path";
 import { parseJson } from "../collections.js";
 import { arrayOf, shape, string } from "../validation.js";
 import { discoverWorkspaces } from "../workspaces.js";
-import type { Config, EslintAccessibilityResult, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult, ReactRuleset } from "../types.js";
+import type { Config, EslintAccessibilityResult, EslintMessage, EslintReactHooksResult, EslintTypeAwareResult } from "../types.js";
 import {
   existingRelativeRoots,
   managedPackageJsonUrl,
@@ -83,10 +84,11 @@ export function runJsxA11yLint(config: Config): EslintAccessibilityResult {
 }
 
 export function runReactHooksLint(config: Config): EslintReactHooksResult {
+  const selection = selectReactRules(config.react.ruleset);
   const result = runTemporaryEslint(
     config,
     "react-hooks",
-    reactHooksConfig(managedPackageJsonUrl(), config.react.ruleset),
+    reactHooksConfig(managedPackageJsonUrl(), selection.rules),
     "react-hooks/",
     true,
   );
@@ -94,6 +96,8 @@ export function runReactHooksLint(config: Config): EslintReactHooksResult {
     ...result,
     version: toolPackageVersion("eslint-plugin-react-hooks"),
     ruleset: config.react.ruleset,
+    selected_preset: selection.preset,
+    enabled_rules: enabledReactRules(selection.rules),
     complete: result.ran && !result.messages.some((message) => message.rule_id === "eslint/parser") && selectedFilesEvaluated(config, result.evaluated_files, /\.[jt]sx?$/),
   };
 }
@@ -188,25 +192,16 @@ export default [{
 `;
 }
 
-function reactHooksConfig(toolPackageUrl: string, ruleset: ReactRuleset): string {
-  const classicRules = {
-    "react-hooks/rules-of-hooks": "error",
-    "react-hooks/exhaustive-deps": "warn",
-  };
+function reactHooksConfig(toolPackageUrl: string, rules: Record<string, unknown>): string {
   return `import { createRequire } from "node:module";
 const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
 const reactHooks = toolRequire("eslint-plugin-react-hooks");
 const tsParser = toolRequire("@typescript-eslint/parser");
-const classicRules = ${JSON.stringify(classicRules)};
-const recommendedRules = reactHooks.configs?.flat?.["recommended-latest"]?.rules
-  ?? reactHooks.configs?.["recommended-latest"]?.rules
-  ?? reactHooks.configs?.flat?.recommended?.rules
-  ?? classicRules;
 export default [{
   files: ["**/*.{js,jsx,ts,tsx}"], ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
   languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module" } },
   plugins: { "react-hooks": reactHooks },
-  rules: ${ruleset === "recommended-v2" ? "recommendedRules" : "classicRules"}
+  rules: ${JSON.stringify(rules)}
 }];
 `;
 }

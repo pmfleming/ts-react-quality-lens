@@ -128,3 +128,34 @@ Transport: standard Content-Length framing on stdio. The server analyzes **saved
 - Code actions offer `tsrqlens.explainFinding` and, where a config edit can be generated, a JSONC-preserving suppression quick fix. The **client** applies the returned workspace edit. The server does not automatically apply it or translate upstream fixes into source edits.
 
 Both endpoints use the configured project root; neither is a general multi-root IDE implementation. LSP dispositions come from measurement artifacts, while audit applies additional policy downgrades, so diagnostic severity and audit gating are not necessarily identical.
+
+## React performance evidence
+
+The existing `runtime_inputs.react_profiler` accepts commit-summary arrays as before. `actualDuration` is render time for the Profiler subtree, including descendants; it is not the duration of React's commit phase. Generic `duration_ms`/`duration` inputs remain explicitly labeled reported durations. Durations must be finite and nonnegative; a supplied render count must be a positive integer. The wrapper's `environment` is retained on observations. Use `environment.build: "development"` to identify development measurements: these stay review-only and carry an instrumentation/Strict Mode caveat. A provenance match establishes association with source, not production representativeness.
+
+A second, explicit lens interchange format accepts normalized React Performance Tracks. This is a format for an exporter you control; it is **not** native Chrome trace JSON or an exporter supplied by the lens:
+
+```json
+{
+  "provenance": { "source_set_hash": "<matching lens source hash>" },
+  "producer": { "name": "your-trace-normalizer", "version": "1.0.0" },
+  "environment": { "build": "development", "react_version": "19.2.0", "scenario": "open search" },
+  "data": {
+    "format": "react-performance-tracks-v1",
+    "events": [
+      { "id": "search-render-1", "track": "components", "phase": "render", "name": "Search", "start_ms": 10, "duration_ms": 12 },
+      { "id": "search-effect-1", "track": "components", "phase": "effect", "name": "Search", "start_ms": 22, "duration_ms": 2 }
+    ]
+  }
+}
+```
+
+Every event needs a unique nonempty ID/name and finite nonnegative millisecond start/duration. Supported combinations:
+
+- `scheduler`: `update`, `render`, `commit`, `remaining-effects`, `cascading-update`.
+- `components`: `render`, `effect`, `mount`, `unmount`, `reconnect`, `disconnect`.
+- `server`: `request`, `component`.
+
+The environment must declare `development` or `profiling` and React 19.2+ support. Server events require `development`, following React's documented availability. Missing or mismatched source/producer provenance leaves otherwise valid observations unverified and the input incomplete. Invalid formats, phases, duplicate IDs, impossible metrics, or unsupported environments fail the input explicitly, including empty reports.
+
+Events retain their separate phases and environment; imported durations can overlap or include descendants. No totals, waterfall diagnoses, before/after gains, or production claims are inferred. `complete` means validated ingestion with matching provenance, not exhaustive runtime coverage. See [React's Performance Tracks documentation](https://react.dev/reference/dev-tools/react-performance-tracks) and [Profiler timing definitions](https://react.dev/reference/react/Profiler).

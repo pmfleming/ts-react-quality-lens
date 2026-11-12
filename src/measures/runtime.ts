@@ -1,3 +1,4 @@
+import { performanceTrackRecords } from "../react-performance.js";
 import fs from "node:fs";
 import path from "node:path";
 import { isRecord, parseJson } from "../collections.js";
@@ -6,7 +7,7 @@ import { stableHash } from "../clone-utils.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, RelatedLocation, ScoredRecord } from "../types.js";
-type RuntimeInput = { name: string; file: string | null; parse: (config: Config, value: unknown) => ScoredRecord[] };
+type RuntimeInput = { name: string; file: string | null; parse: (config: Config, value: unknown, environment: Record<string, unknown>) => ScoredRecord[] };
 type RuntimeStatus = {
   available: boolean;
   ran: boolean;
@@ -39,6 +40,7 @@ export function measureRuntime(config: Config, command: string, context: Analysi
       complete_inputs: configured.filter((item) => item.status.complete).length,
       records: records.length,
       profiler_findings: records.filter((record) => record.source === "react-profiler").length,
+      performance_track_observations: records.filter((record) => record.source === "react-performance-tracks").length,
       accessibility_findings: records.filter((record) => record.source === "axe").length,
       react_doctor_findings: records.filter((record) => record.source === "react-doctor").length,
     },
@@ -64,7 +66,11 @@ function parseRuntimeInput(config: Config, input: RuntimeInput, sourceHash: stri
       isRecord(value.producer) && typeof value.producer.name === "string" && Boolean(value.producer.name.trim()) &&
       typeof value.producer.version === "string" && Boolean(value.producer.version.trim()) &&
       isRecord(value.environment) && Object.keys(value.environment).length > 0;
-    const records = input.parse(config, isRecord(value) && "data" in value ? value.data : value);
+    const environment = isRecord(value) && isRecord(value.environment) ? value.environment : {};
+    const records = input.parse(config, isRecord(value) && "data" in value ? value.data : value, environment)
+      .map((record) => ({ ...record, observation_environment: environment,
+        ...(record.source === "react-profiler" && environment.build === "development"
+          ? { disposition: "review" as const, production_representative: false, measurement_caveat: "Development timings include instrumentation and may include Strict Mode work; verify with a profiling build and representative workload." } : {}) }));
     return {
       name: input.name,
       status: { available: true, ran: true, complete: linked, reason: linked ? null : "Imported observations lack matching source/producer/environment provenance.", path: input.file, records: records.length },
@@ -79,25 +85,31 @@ function parseRuntimeInput(config: Config, input: RuntimeInput, sourceHash: stri
     };
   }
 }
-function profilerRecords(config: Config, value: unknown): ScoredRecord[] {
+function profilerRecords(config: Config, value: unknown, environment: Record<string, unknown>): ScoredRecord[] {
+  if (isRecord(value) && "format" in value) {
+    if (value.format !== "react-performance-tracks-v1") throw new Error("Unsupported React profiler input format.");
+    return performanceTrackRecords(value, environment);
+  }
   const commits = Array.isArray(value) ? value : requiredArray(value, "commits");
   return commits.map((commit, index) => {
     const record = profilerRecord(config, commit, index);
-    if (!record) throw new Error(`Invalid profiler commit at index ${index}: a finite duration is required.`);
+    if (!record) throw new Error(`Invalid profiler commit at index ${index}: a nonnegative finite duration and positive integer render count are required.`);
     return record;
   });
 }
 function profilerRecord(config: Config, value: unknown, index: number): ScoredRecord | null {
   if (!isRecord(value)) return null;
   const duration = numberValue(value.duration_ms, value.actualDuration, value.duration);
-  if (duration === null) return null;
+  if (duration === null || duration < 0) return null;
   const component = stringValue(value.component, value.componentName, value.name) ?? `commit-${index + 1}`;
   const file = typeof value.file === "string" ? normalizePath(config, value.file) : null;
-  const renderCount = numberValue(value.render_count, value.renderCount) ?? 1;
+  const renderCount = value.render_count === undefined && value.renderCount === undefined ? 1 : numberValue(value.render_count, value.renderCount);
+  if (renderCount === null || !Number.isInteger(renderCount) || renderCount < 1) return null;
+  const measurementKind = value.duration_ms === undefined && typeof value.actualDuration === "number" ? "render_duration" : "reported_duration";
   const score = Math.min(100, Math.round(duration * 2 + Math.max(0, renderCount - 1) * 5));
   return {
     id: `runtime:profiler:${stableHash(`${component}:${index}:${duration}`)}`,
-    rule_id: "react-profiler/expensive-commit",
+    rule_id: "react-profiler/render-cost",
     kind: "react_render_cost",
     evidence_kind: "metric",
     disposition: duration > 50 || renderCount > 10 ? "warn" : "review",
@@ -108,12 +120,14 @@ function profilerRecord(config: Config, value: unknown, index: number): ScoredRe
     score,
     risk: score >= 70 ? "high" : score >= 35 ? "medium" : "low",
     source: "react-profiler",
-    message: `${component} committed in ${duration}ms across ${renderCount} observed render${renderCount === 1 ? "" : "s"}.`,
+    message: `${component}: ${duration}ms ${measurementKind === "render_duration" ? "render time" : "reported duration"} across ${renderCount} observed render${renderCount === 1 ? "" : "s"}.`,
+    measurement_kind: measurementKind,
+    guidance_url: "https://react.dev/reference/react/Profiler",
     component,
     duration_ms: duration,
     render_count: renderCount,
     phase: typeof value.phase === "string" ? value.phase : null,
-    signals: [{ kind: "commit_duration_ms", value: duration }, { kind: "render_count", value: renderCount }],
+    signals: [{ kind: measurementKind === "render_duration" ? "render_duration_ms" : "reported_duration_ms", value: duration }, { kind: "render_count", value: renderCount }],
   };
 }
 function axeRecords(_config: Config, value: unknown): ScoredRecord[] {
@@ -262,8 +276,8 @@ function normalizePath(config: Config, file: string): string {
   return relative && !relative.startsWith("../") ? relative : file.replace(/\\/g, "/");
 }
 function numberValue(...values: unknown[]): number | null {
-  const value = values.find((item) => typeof item === "number" && Number.isFinite(item));
-  return typeof value === "number" ? value : null;
+  const value = values.find((item) => item !== undefined);
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 function stringValue(...values: unknown[]): string | null {
   const value = values.find((item) => typeof item === "string" && item.length > 0);

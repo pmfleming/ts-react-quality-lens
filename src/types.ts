@@ -681,6 +681,7 @@ export type EslintMessage = {
 };
 export type EslintReactHooksResult = ToolResult & {
   messages: EslintMessage[]; version: string | null; ruleset: ReactRuleset; complete: boolean;
+  selected_preset?: string; enabled_rules?: string[];
 };
 export type EslintAccessibilityResult = ToolResult & {
   messages: EslintMessage[]; version: string | null; complete: boolean;

@@ -107,6 +107,58 @@
       "type": "object",
       "additionalProperties": true
     },
+    "guidance_version": { "type": "string" },
+    "rule_coverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule_id",
+          "category",
+          "disposition",
+          "status",
+          "source"
+        ],
+        "properties": {
+          "rule_id": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "correctness",
+              "optimization",
+              "configuration",
+              "unknown",
+              "tool-failure"
+            ]
+          },
+          "disposition": {
+            "enum": [
+              "block",
+              "warn",
+              "review",
+              "info"
+            ]
+          },
+          "status": {
+            "enum": [
+              "evaluated",
+              "incomplete",
+              "disabled",
+              "unknown",
+              "not_applicable"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "react_support": {
       "type": "array",
       "items": {
@@ -117,6 +169,54 @@
           "root": { "type": "string" },
           "declared_range": { "type": ["string", "null"] },
           "range_source": { "type": "string" },
+          "compiler": {
+            "type": "object",
+            "required": [
+              "activation",
+              "package_declarations",
+              "runtime_requirement",
+              "guidance",
+              "source"
+            ],
+            "properties": {
+              "activation": {
+                "const": "unverified"
+              },
+              "package_declarations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "range",
+                    "source"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "range": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "runtime_requirement": {
+                "type": "string"
+              },
+              "guidance": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
           "capabilities": {
             "type": "array",
             "items": {

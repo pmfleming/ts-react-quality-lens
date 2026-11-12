@@ -33,6 +33,16 @@ export function reactSupport(config: Config, workspaces: WorkspaceRecord[]) {
       declared_range: range,
       range_source: config.react.version ? "config.react.version" : declaration?.source ?? "unknown",
       capabilities,
+      compiler: {
+        activation: "unverified",
+        package_declarations: ["babel-plugin-react-compiler", "react-compiler-runtime"].flatMap((name) =>
+          (["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const).flatMap((section) =>
+            typeof manifest?.[section]?.[name] === "string" ? [{ name, range: manifest[section][name], source: section }] : [])),
+        runtime_requirement: featureSupport(range, "19.0.0") === "supported" ? "React 19 provides the compiler runtime."
+          : "For React 17/18, verify the compiler target and react-compiler-runtime installation; mixed or unknown ranges require review.",
+        guidance: "Package declarations do not establish compiler activation or component coverage. Verify build configuration and compilation output before changing manual memoization; profile the result.",
+        source: "https://react.dev/learn/react-compiler",
+      },
       guidance: FEATURES.filter((_feature, index) => capabilities[index]?.support === "supported")
         .map((feature) => ({ capability: feature.id, message: feature.guidance, source: feature.source })),
     };

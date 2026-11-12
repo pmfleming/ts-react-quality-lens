@@ -5,6 +5,8 @@ import { eslintFindingRecord } from "../integrations/eslint-findings.js";
 import { artifactBase, sourceSetHash } from "../provenance.js";
 import { riskForScore } from "../risk-model.js";
 import { reactSupport } from "../react-support.js";
+import { reactRuleCoverage, reactRuleDocumentation, REACT_GUIDANCE_VERSION } from "../react-guidance.js";
+import { reactReviewRecords } from "../react-review.js";
 import { reactRulePolicy } from "../react-rules.js";
 import { frameworkRiskRecords } from "../scoring.js";
 import { writeArtifact } from "../writer.js";
@@ -19,6 +21,7 @@ export function measureReactHealth(config: Config, command: string, context: Ana
     ...hooksLint.messages.map(hookLintRecord),
     ...a11yLint.messages.map(a11yLintRecord),
     ...frameworkRiskRecords(project),
+    ...reactReviewRecords(config, project),
   ];
   const artifact = {
     ...artifactBase(config, "quality.react_health", command, analysisConfidence(config, project, {
@@ -35,6 +38,7 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       components: project.modules.reduce((count, module) => count + module.components.length, 0),
       records: records.length,
       hook_lint_findings: hooksLint.messages.length,
+      guidance_review_candidates: records.filter((record) => record.source === "react-guidance-review").length,
       correctness_findings: records.filter((record) => record.react_category === "correctness").length,
       optimization_findings: records.filter((record) => record.react_category === "optimization").length,
       configuration_findings: records.filter((record) => record.react_category === "configuration").length,
@@ -45,6 +49,8 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       high_risk_components: records.filter((record) => record.risk === "high").length,
     },
     framework: project.frameworkDetails,
+    guidance_version: REACT_GUIDANCE_VERSION,
+    rule_coverage: reactRuleCoverage(hooksLint),
     react_support: reactSupport(config, project.workspaces),
     tool_status: {
       eslint_react_hooks: {
@@ -54,6 +60,9 @@ export function measureReactHealth(config: Config, command: string, context: Ana
         reason: hooksLint.reason,
         version: hooksLint.version,
         ruleset: hooksLint.ruleset,
+        selected_preset: hooksLint.selected_preset ?? null,
+        enabled_rules: hooksLint.enabled_rules ?? [],
+        evaluated_files: hooksLint.evaluated_files ?? [],
       },
       jsx_a11y: {
         available: a11yLint.available,
@@ -71,8 +80,8 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       comparison: "not_comparable", reason: "Regex candidates and managed accessibility rules do not establish equivalent semantic predicates." }],
     rule_applicability: fileRuleApplicability(BLOCKING_REACT_RULES, project.sourceFiles.map((file) => file.relativePath),
       hooksLint.evaluated_files ?? [], (file) => /\.[jt]sx?$/.test(file)).map((entry) =>
-        config.react.ruleset === "classic-v1" && entry.contract_id === "react-hooks/set-state-in-render"
-          ? { ...entry, evaluated: 0, abstained: 0, skipped: project.sourceFiles.length, status: "not_applicable" as const, reasons: ["Rule is disabled in the classic profile."] } : entry),
+        (hooksLint.enabled_rules ? !hooksLint.enabled_rules.includes(entry.contract_id) : config.react.ruleset === "classic-v1" && entry.contract_id === "react-hooks/set-state-in-render")
+          ? { ...entry, evaluated: 0, abstained: 0, skipped: project.sourceFiles.length, status: "not_applicable" as const, reasons: ["Rule is disabled in the selected managed preset."] } : entry),
     records,
   };
   return writeArtifact(config, "react_health.json", artifact);
@@ -118,6 +127,7 @@ function hookLintRecord(message: EslintMessage): ScoredRecord {
       id: eslintFindingId(message, "eslint-plugin-react-hooks"), kind, disposition: policy.disposition, source: "eslint-plugin-react-hooks",
     }),
     react_category: policy.category,
+    guidance_url: reactRuleDocumentation(message.rule_id),
   };
 }
 
