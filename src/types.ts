@@ -306,6 +306,7 @@ export type TypedModuleRecord = {
   declarations: TypedDeclaration[];
   surface_type_references?: string[];
   safety_evidence?: SafetyEvidence;
+  api_design?: ScoredRecord[];
   sourceFile?: ts.SourceFile;
 };
 

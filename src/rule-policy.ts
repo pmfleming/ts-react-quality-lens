@@ -1,9 +1,15 @@
 import type { ScoredRecord } from "./types.js";
 
-export const TYPED_RULESET = "tsrqlens-typescript-recommended-v2";
+export const TYPED_RULESET = "tsrqlens-typescript-recommended-v3";
+
+export const ADVISORY_TYPED_RULES = {
+  "@typescript-eslint/no-unnecessary-type-parameters": "warn",
+  "@typescript-eslint/prefer-readonly": "warn",
+} as const;
 
 /** One authority for enabled managed TS rules and their blocking inventory. */
 export const TYPED_RULES = {
+  ...ADVISORY_TYPED_RULES,
   "@typescript-eslint/no-unsafe-assignment": "error",
   "@typescript-eslint/no-unsafe-argument": "error",
   "@typescript-eslint/no-unsafe-call": "error",

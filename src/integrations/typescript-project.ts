@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as ts from "typescript";
 import { collectSafetyEvidence } from "../typescript-safety.js";
+import { apiDesignRecords } from "../typescript-api-design.js";
 import { dedupeBy, isRecord } from "../collections.js";
 import { trackCompilerInputs } from "./compiler-inputs.js";
 import { relativeModuleId, toPosix } from "../files.js";
@@ -305,6 +306,7 @@ function typedModuleRecord(
     declarations,
     surface_type_references: moduleSurfaceTypeReferences(checker, sourceFile),
     safety_evidence: collectSafetyEvidence(checker, sourceFile, program),
+    api_design: apiDesignRecords(checker, sourceFile, toPosix(path.relative(config.projectRoot, sourceFile.fileName))),
   };
   Object.defineProperty(record, "sourceFile", { value: sourceFile, enumerable: false });
   return record;

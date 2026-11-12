@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { fileRuleApplicability } from "../rule-applicability.js";
-import { BLOCKING_TYPED_RULES, TYPED_RULES, TYPED_RULESET } from "../rule-policy.js";
+import { ADVISORY_TYPED_RULES, BLOCKING_TYPED_RULES, TYPED_RULES, TYPED_RULESET } from "../rule-policy.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { changedFilesSince, defaultBase } from "../audit/change-set.js";
 import { stableHash } from "../clone-utils.js";
@@ -34,6 +34,7 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
   const coverage = project.tsProject.type_coverage;
   const records = [
     ...project.modules.flatMap(typeHealthRecords),
+    ...project.modules.flatMap((module) => module.typed?.api_design ?? []),
     ...typeSafetyPostureRecords(config, project),
     ...typeCoverageRecords(config, coverage),
     ...diagnostics.map(compilerDiagnosticFinding),
@@ -60,6 +61,10 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
     },
     diagnostics,
     type_coverage: coverage ?? null,
+    api_design_analysis: {
+      scope: "Return-only generic candidates in callable signatures with explicit return annotations; parameter and constraint references are resolved by symbol. Inferred returns are outside this check.",
+      files: project.modules.map((module) => ({ file: module.file, status: module.typed?.api_design ? "evaluated" : "unavailable" })),
+    },
   });
 }
 
@@ -132,9 +137,10 @@ function compilerDiagnosticFinding(diagnostic: DiagnosticRecord): ScoredRecord {
 function typedLintRecord(message: EslintMessage): ScoredRecord {
   const parserFailure = message.rule_id === "eslint/parser";
   const registered = message.rule_id in TYPED_RULES;
-  const disposition = parserFailure ? "info" : !registered ? "review"
+  const advisory = message.rule_id in ADVISORY_TYPED_RULES;
+  const disposition = parserFailure ? "info" : !registered || advisory ? "review"
     : BLOCKING_TYPED_RULES.includes(message.rule_id) && message.severity === "error" ? "block" : "warn";
-  return eslintFindingRecord(message, {
+  const record = eslintFindingRecord(message, {
     id: `typed-lint:${message.rule_id}:${message.file}:${message.line ?? 0}:${message.column ?? 0}`,
     kind: message.rule_id.replace(/^@typescript-eslint\//, "typed_").replace(/-/g, "_"),
     disposition,
@@ -142,6 +148,8 @@ function typedLintRecord(message: EslintMessage): ScoredRecord {
     signal: message.rule_id,
     score: disposition === "block" ? 90 : disposition === "info" ? 0 : 50,
   });
+  return advisory ? { ...record, semantic_decision: "unresolved", finding_confidence: "medium",
+    guidance_scope: "Design candidate for review; not proof of a defect or deep immutability." } : record;
 }
 
 function typeCoverageRecords(config: Config, coverage: ProjectAnalysis["tsProject"]["type_coverage"]): ScoredRecord[] {
