@@ -1,6 +1,6 @@
 # Audit reference
 
-`audit` runs quality/correctness measurements, reads their current records and clone groups, applies policy and suppressions, and writes `output_dir/audit.json`. It does not refresh `map.json` or `context.json`.
+`audit` runs quality/correctness measurements, reads their current records and clone groups, applies policy and suppressions, and saves the `audit.json` resource in `output_dir/lens.db`. It does not refresh `map.json` or `context.json`.
 
 ```sh
 node ./dist/bin/ts-react-quality-lens.js audit --config ./ts-react-quality-lens.config.json --base origin/main --gate new-only --format markdown
@@ -20,7 +20,7 @@ node ./dist/bin/ts-react-quality-lens.js audit --config ./ts-react-quality-lens.
 | `--format json` | Print the complete audit artifact. |
 | `--format markdown` | Print a PR-ready Markdown summary. |
 
-All formats still write the full JSON artifact. Relative baseline flags resolve from the shell working directory; `audit.baseline` in config resolves from the config directory.
+All formats still save the full artifact in local Turso. Use `export audit.json` to retrieve it later. Audit members publish in one transaction; readers validate their referenced payloads within one database snapshot. Relative baseline flags resolve from the shell working directory; `audit.baseline` in config resolves from the config directory.
 
 ## Change scope and attribution
 

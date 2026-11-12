@@ -1,6 +1,6 @@
 # ts-react-quality-lens
 
-A CLI and measurement engine for TypeScript, JavaScript, JSX, TSX, and React projects. It writes JSON artifacts for dashboards, CI checks, editors, and agents. The task catalog is compatible with `project-management-board`; this repository does not provide a dashboard or application UI.
+A CLI and measurement engine for TypeScript, JavaScript, JSX, TSX, and React projects. It stores working evidence in an embedded local Turso database and exposes JSON artifacts for dashboards, CI checks, editors, and agents. The task catalog is compatible with `project-management-board`; this repository does not provide a dashboard or application UI.
 
 Current package and artifact schema: **0.3.0**. Architecture risk model: **v3**.
 
@@ -15,7 +15,7 @@ node ./dist/bin/ts-react-quality-lens.js catalog --config ./examples/basic/ts-re
 node ./dist/bin/ts-react-quality-lens.js measure all --config ./examples/basic/ts-react-quality-lens.config.json
 ```
 
-`catalog` prints task metadata. `measure` writes artifacts to the configured `output_dir` and prints task summaries. The example's artifacts go to `examples/basic/target/analysis`.
+`catalog` prints task metadata. `measure` saves artifacts in `output_dir/lens.db` and prints task summaries. The example's database is `examples/basic/target/analysis/lens.db`. Export an artifact with `export hotspots.json --config ./examples/basic/ts-react-quality-lens.config.json`.
 
 To analyze another project, create a config in that project, then pass its path to the built CLI:
 
@@ -52,12 +52,24 @@ All commands accept `--config PATH` (or `-c PATH`); the default is `./ts-react-q
 | `init` | Write a starter configuration; `--force` allows overwrite. |
 | `catalog` | Print task IDs, descriptions, artifact names, and commands; no catalog file is written. |
 | `measure [task-id\|all]` | Run one task or all tasks (default), write artifacts, print summaries. |
-| `audit` | Run measurements and a policy gate; write `audit.json`. |
-| `context` | Write and print `context.json` with modules, entrypoints, workspaces, framework facts, and cache status. |
+| `audit` | Run measurements and a policy gate; save `audit.json` in Turso. |
+| `export <name>` | Print a saved artifact as JSON, for example `export audit.json`. |
+| `context` | Save and print `context.json` with modules, entrypoints, workspaces, framework facts, and cache status. |
 | `mcp` | Start the agent endpoint over newline-delimited JSON-RPC stdio. |
 | `lsp` | Start the editor endpoint over Content-Length-framed JSON-RPC stdio. |
 
 `--help` prints usage. Audit options include `--base`, `--changed-since`, `--gate`, `--baseline`, `--save-baseline`, and `--format`. See [audit behavior](docs/audit.md) for scope, precedence, and exit codes.
+
+## Local working storage
+
+The runtime uses the pinned `@tursodatabase/database` embedded engine and its synchronous binding. No server, account, credentials, cloud sync, or network connection is required for storage. The native package currently ships Linux x64/arm64, macOS arm64, and Windows x64 binaries.
+
+- `output_dir/lens.db` holds current artifacts, publication generations, and finding indexes by ID and by rule/file. MCP explanations use the ID index to select candidate artifacts before validating their evidence.
+- Audits measure into an in-memory Turso database and publish all members in one short transaction. Readers see committed evidence; failed commits roll back. Artifact references still bind exact payloads and run IDs, so later standalone measurements invalidate an older audit when they replace its inputs.
+- `output_dir/.cache/lens.db` holds the reusable analysis snapshot and its validation metadata. Cache and evidence have independent lifetimes; disabling the cache does not disable saved evidence. Connections close after synchronous operations. Replaced generations and finding rows are removed rather than accumulating history.
+- Turso's experimental multiprocess WAL support coordinates CLI processes and editor workers, with a five-second lock timeout. Keep its WAL/shared-memory sidecars with a live database; do not open it concurrently through a different SQLite engine. This dependency is pinned because this engine feature is still experimental.
+
+This is a breaking storage change. Old artifact/cache JSON files are ignored; re-run measurements to populate Turso. Names such as `hotspots.json` are resource IDs, not files. Use `export hotspots.json > hotspots.json`, audit output formats, or MCP resources for portable evidence. Configuration, explicit baseline exports, SARIF, coverage, and external-tool interchange formats remain JSON. Stop all lens processes before removing a database and its sidecars to reset working storage.
 
 ## Measurement catalog
 
@@ -143,7 +155,7 @@ See the [self-refactoring report](docs/self-refactor.md) for measured before/aft
 
 Artifacts identify the analysis API and native build tool separately under `provenance.compilers`. React health reports each workspace's declared React support range and applicable API guidance, with separate correctness and optimization categories. Typed lint defaults to project-service discovery for conventional projects and preserves explicit custom tsconfigs. See [integrations](docs/integrations.md) and [configuration](docs/configuration.md) for scope and overrides.
 
-The enabled-by-default disk cache stores a reusable project-analysis snapshot at `output_dir/.cache/analysis-v2.json` (internal cache format 6). It fingerprints source/test/compiler inputs, compiler file-discovery and resolution queries (including missing dependencies), and analysis identity; it does not persist external-tool results or a live TypeScript Program. Projects with no source files or unloaded configured TypeScript projects are not cached; external-tool completion is not part of that cache-admission check. Tool results, source fingerprints, and configuration identity are memoized within one analysis generation. A new context starts a generation; callers reusing a context after input changes must call `refresh()`. Configuration-setting changes require a newly loaded config/context. Running a project test command refreshes the context automatically, while its execution artifacts retain the input identity captured before the command. This is project-snapshot reuse, not changed-file-only incremental checking.
+The enabled-by-default disk cache stores a reusable project-analysis snapshot in local Turso at `output_dir/.cache/lens.db` (internal cache format 7). Cache key and compiler-query metadata are read before the snapshot payload, so misses avoid parsing the full previous analysis. It fingerprints source/test/compiler inputs, compiler file-discovery and resolution queries (including missing dependencies), and analysis identity; it does not persist external-tool results or a live TypeScript Program. Projects with no source files or unloaded configured TypeScript projects are not cached; external-tool completion is not part of that cache-admission check. Tool results, source fingerprints, and configuration identity are memoized within one analysis generation. A new context starts a generation; callers reusing a context after input changes must call `refresh()`. Configuration-setting changes require a newly loaded config/context. Running a project test command refreshes the context automatically, while its execution artifacts retain the input identity captured before the command. This is project-snapshot reuse, not changed-file-only incremental checking.
 
 Further reading: [rule development](docs/rule-development.md), [implementation status and remaining work](docs/typescript-quality-roadmap.md). The [GitHub checker review](docs/github-quality-checker-review.md), [Fallow comparison](docs/fallow-comparison-opportunities.md), and [original HTML plan](plan.html) are historical research, not current API references.
 

@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { loadConfig } from "../src/config.js";
 import { runCli } from "../src/cli.js";
+import { readArtifact } from "../src/writer.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { runAudit } from "../src/audit.js";
 import { createAnalysisContext } from "../src/analysis-context.js";
@@ -57,16 +58,15 @@ test("measure all writes MVP artifacts", () => {
     "react_health.json",
     "map.json",
   ]) {
-    const artifactPath = path.join(config.outputDir, artifact);
-    assert.ok(fs.existsSync(artifactPath), `${artifact} should exist`);
-    const value = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
+    const value = readArtifact(config, artifact);
+    assert.ok(value, `${artifact} should exist`);
     assert.ok(
       validateArtifact(value),
       `${artifact} should satisfy artifact schema: ${validateArtifact.errors?.map((error: { message?: string }) => error.message).join(", ")}`,
     );
   }
 
-  const hotspots = JSON.parse(fs.readFileSync(path.join(config.outputDir, "hotspots.json"), "utf8")) as Artifact;
+  const hotspots = readArtifact(config, "hotspots.json") as Artifact;
   assert.match(hotspots.analysis_identity?.id ?? "", /^sha256:[a-f0-9]{64}$/);
   assert.equal(typeof hotspots.analysis_identity?.config_closure_hash, "string");
   assert.ok(Number(hotspots.summary.source_lines) > 0);
@@ -79,7 +79,7 @@ test("measure all writes MVP artifacts", () => {
     record.signals?.some((signal) => signal.kind === "halstead_effort")
   ));
 
-  const map = JSON.parse(fs.readFileSync(path.join(config.outputDir, "map.json"), "utf8")) as Artifact & {
+  const map = readArtifact(config, "map.json") as Artifact & {
     meta?: { risk_model_id?: string; risk_model_version?: number };
     nodes: Array<{
       risk_model_id?: string;
@@ -100,20 +100,20 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(Object.entries(map.summary.artifact_status ?? {}).every(([name, status]) => name === "performance" || status === "available"));
   assert.equal(map.summary.unknown_metric_nodes, 0);
 
-  const typeHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "type_health.json"), "utf8")) as Artifact;
+  const typeHealth = readArtifact(config, "type_health.json") as Artifact;
   assert.equal(typeHealth.confidence.typescript_compiler_api_available, true);
   assert.equal(typeHealth.confidence.typescript_program_loaded, true);
   assert.ok(typeHealth.records?.some((record: ScoredRecord) => record.source === "typescript-compiler-api"));
   assert.equal(typeof typeHealth.summary.type_coverage_percent, "number");
   assert.ok(Array.isArray((typeHealth.type_coverage as { files?: unknown[] } | undefined)?.files));
 
-  const lintHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "lint_health.json"), "utf8")) as ToolArtifact;
+  const lintHealth = readArtifact(config, "lint_health.json") as ToolArtifact;
   const typedEslint = requiredToolStatus(lintHealth, "typed_eslint");
   assert.equal(typedEslint.available, true);
   assert.equal(typedEslint.ran, true);
   assert.ok(lintHealth.records?.every((record) => record.source === "typescript-eslint"));
 
-  const dependencyHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "dependency_health.json"), "utf8")) as ToolArtifact & {
+  const dependencyHealth = readArtifact(config, "dependency_health.json") as ToolArtifact & {
     graph: { edges: Array<{ from: string; source?: unknown; line?: unknown }> };
   };
   const dependencyCruiser = requiredToolStatus(dependencyHealth, "dependency_cruiser");
@@ -123,7 +123,7 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(dependencyEdges.every((edge) => !edge.from.includes(".test")));
   assert.ok(dependencyEdges.some((edge) => edge.source === "dependency-cruiser" && edge.line !== null));
 
-  const clones = JSON.parse(fs.readFileSync(path.join(config.outputDir, "clones.json"), "utf8")) as ToolArtifact &
+  const clones = readArtifact(config, "clones.json") as ToolArtifact &
     SummaryArtifact<{ jscpd_clone_groups: number; duplication_records: number }>;
   const jscpd = requiredToolStatus(clones, "jscpd");
   assert.equal(jscpd.available, true);
@@ -134,7 +134,7 @@ test("measure all writes MVP artifacts", () => {
   const cloneGroups = clones.groups as Array<{ instances: Array<{ file: string }> }>;
   assert.ok(cloneGroups.flatMap((group) => group.instances).every((instance) => !instance.file.startsWith("..")));
 
-  const reactHealth = JSON.parse(fs.readFileSync(path.join(config.outputDir, "react_health.json"), "utf8")) as ToolArtifact &
+  const reactHealth = readArtifact(config, "react_health.json") as ToolArtifact &
     SummaryArtifact<{ hook_lint_findings: number }>;
   const reactHooks = requiredToolStatus(reactHealth, "eslint_react_hooks");
   const jsxA11y = requiredToolStatus(reactHealth, "jsx_a11y");
@@ -147,11 +147,11 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(reactHealth.summary.hook_lint_findings > 0);
   assert.ok(reactHealth.records?.some((record: ScoredRecord) => record.source === "framework-adapter"));
 
-  const correctness = JSON.parse(fs.readFileSync(path.join(config.outputDir, "correctness_review.json"), "utf8"));
+  const correctness = readArtifact(config, "correctness_review.json")!;
   assert.equal(correctness.summary.execution_status, "passed");
-  assert.ok(correctness.tests.some((testRecord: { source_mapping?: string[] }) => testRecord.source_mapping?.includes("src/format.ts")));
+  assert.ok(correctness.tests?.some((testRecord: { source_mapping?: string[] }) => testRecord.source_mapping?.includes("src/format.ts")));
 
-  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as ToolArtifact;
+  const cleanup = readArtifact(config, "cleanup.json") as ToolArtifact;
   const knip = requiredToolStatus(cleanup, "knip");
   assert.equal(knip.available, true);
   assert.equal(knip.ran, true);
@@ -167,7 +167,7 @@ test("measure all writes MVP artifacts", () => {
   assert.ok(cleanup.unconfirmed?.some((record) => record.semantic_decision === "not-comparable"));
   assert.ok(cleanup.records?.some((record) => Array.isArray(record.actions) && record.actions.length > 0));
 
-  assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "analysis-v2.json")));
+  assert.ok(fs.existsSync(path.join(config.outputDir, ".cache", "lens.db")));
 });
 
 test("config accepts JSONC comments and rejects unknown keys through schema-backed validation", () => {
@@ -227,7 +227,7 @@ test("unknown is not treated as an escape hatch and TypeScript directives are di
 
   const config = loadConfig(configPath);
   runMeasure(config, "quality.escape_hatches", "test unknown semantics");
-  const artifact = JSON.parse(fs.readFileSync(path.join(config.outputDir, "ts_escape_hatches.json"), "utf8")) as Artifact;
+  const artifact = readArtifact(config, "ts_escape_hatches.json") as Artifact;
   assert.ok(!artifact.records?.some((record) => record.kind === "unknown_without_narrowing"));
   assert.equal(artifact.records?.find((record) => record.kind === "ts_expect_error")?.disposition, "info");
   assert.equal(artifact.records?.find((record) => record.kind === "ts_ignore")?.disposition, "warn");
@@ -720,7 +720,7 @@ test("cleanup honors configured public API exports", () => {
   );
   const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
   runMeasure(config, "quality.cleanup", "test public api cleanup");
-  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  const cleanup = readArtifact(config, "cleanup.json") as Artifact;
   assert.ok(!cleanup.records?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
   assert.ok(!cleanup.disagreements?.some((record) => record.id === "cleanup:unused-export:src/lib:publicHelper"));
   assert.ok(!cleanup.disagreements?.some((record) => record.id === "cleanup:unused-export:src/lib:testHelper"));
@@ -783,7 +783,7 @@ test("cleanup aligns script binaries, declaration-surface types, and canonical r
 
   const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
   runMeasure(config, "quality.cleanup", "test cleanup semantics");
-  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  const cleanup = readArtifact(config, "cleanup.json") as Artifact;
   assert.ok(!cleanup.records?.some((record) => record.name === "aliased-compiler"));
   assert.ok(!cleanup.records?.some((record) => record.name === "configured-plugin"));
   assert.ok(!cleanup.records?.some((record) => record.name === "platform-package"));
@@ -817,7 +817,7 @@ test("cleanup distinguishes Knip exclusions from semantic disagreements", () => 
 
   const config = loadConfig(path.join(tempDir, "ts-react-quality-lens.config.json"));
   runMeasure(config, "quality.cleanup", "test cleanup exclusion");
-  const cleanup = JSON.parse(fs.readFileSync(path.join(config.outputDir, "cleanup.json"), "utf8")) as Artifact;
+  const cleanup = readArtifact(config, "cleanup.json") as Artifact;
   const excluded = cleanup.unconfirmed?.find((record) => record.id === "cleanup:unused-dependency:ignored-package");
   assert.equal(excluded?.semantic_decision, "excluded-by-tool");
   assert.equal(cleanup.disagreements?.length, 0);
@@ -836,7 +836,7 @@ test("golden fixture exercises edge-case artifact signals", () => {
   fs.rmSync(config.outputDir, { recursive: true, force: true });
   runMeasure(config, "all", "test golden fixture");
 
-  const dependency = JSON.parse(fs.readFileSync(path.join(config.outputDir, "dependency_health.json"), "utf8")) as Artifact & {
+  const dependency = readArtifact(config, "dependency_health.json") as Artifact & {
     graph: { edges: Array<{ from: string; to: string; kind: string }> };
     summary: { layer_violations?: number; unsupported_patterns?: number };
   };
@@ -849,21 +849,21 @@ test("golden fixture exercises edge-case artifact signals", () => {
   assert.equal(cycle?.fix_group_id, cycle?.id);
   assert.ok(dependency.graph.edges.some((edge) => edge.from === "src/app/page" && edge.to === "src/lib/math" && edge.kind === "relative"));
 
-  const clones = JSON.parse(fs.readFileSync(path.join(config.outputDir, "clones.json"), "utf8")) as Artifact &
+  const clones = readArtifact(config, "clones.json") as Artifact &
     SummaryArtifact<{ ast_clone_groups: number }>;
   assert.ok(clones.summary.ast_clone_groups > 0);
   assert.ok((clones.groups as Array<{ engine: string }>).some((group) => group.engine === "ast"));
 
-  const react = JSON.parse(fs.readFileSync(path.join(config.outputDir, "react_health.json"), "utf8")) as Artifact &
+  const react = readArtifact(config, "react_health.json") as Artifact &
     SummaryArtifact<{ a11y_findings: number }>;
   assert.ok(react.summary.a11y_findings > 0);
   assert.ok(react.records?.some((record) => record.rule_id === "jsx-a11y/alt-text" && record.source === "eslint-plugin-jsx-a11y"));
   assert.ok(react.records?.some((record) => record.id === "framework:transitive-client-server-boundary:src/app/page.tsx"));
 
-  const leverage = JSON.parse(fs.readFileSync(path.join(config.outputDir, "leverage_metrics.json"), "utf8")) as Artifact;
+  const leverage = readArtifact(config, "leverage_metrics.json") as Artifact;
   assert.ok(leverage.records?.some((record) => Number(record.dead_export_surface ?? 0) > 0));
 
-  const map = JSON.parse(fs.readFileSync(path.join(config.outputDir, "map.json"), "utf8")) as Artifact & {
+  const map = readArtifact(config, "map.json") as Artifact & {
     meta?: { performance_inputs?: Record<string, unknown> };
   };
   assert.ok(map.meta?.performance_inputs);

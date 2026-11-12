@@ -6,6 +6,7 @@ import { runAudit } from "../src/audit.js";
 import { loadConfig } from "../src/config.js";
 import { deterministicEvidence } from "../src/deterministic-evidence.js";
 import { runMeasure } from "../src/measure-runner.js";
+import { artifactNames, withStore } from "../src/store.js";
 import { readArtifact } from "../src/writer.js";
 
 const [rootArg, outputArg, profile, scope = "app"] = process.argv.slice(2);
@@ -32,7 +33,7 @@ if (profile === "audit") {
     runMeasure(config, task, "acceptance trust campaign", { context });
   }
 }
-const raw = Object.fromEntries(fs.readdirSync(config.outputDir).filter((name) => name.endsWith(".json")).sort().map((name) => {
+const raw = Object.fromEntries(withStore(config.outputDir, artifactNames).map((name) => {
   const artifact = readArtifact(config, name);
   if (!artifact) throw new Error(`Invalid published artifact ${name}`);
   return [name, artifact];

@@ -7,6 +7,7 @@ import { projectContext } from "./context.js";
 import { packageRootFrom } from "./package-root.js";
 import { catalogForConfig, TASKS } from "./tasks.js";
 import { readArtifact } from "./writer.js";
+import { findingArtifacts } from "./store.js";
 import { artifactFindings } from "./findings.js";
 import type { Config, ScoredRecord } from "./types.js";
 
@@ -145,7 +146,8 @@ function artifactResources(): Array<[string, string]> {
 
 function explainFinding(config: Config, findingId: string): unknown {
   let finding: ScoredRecord | null = null;
-  for (const [name] of artifactResources()) {
+  const candidates = new Set(findingArtifacts(config, findingId));
+  for (const [name] of artifactResources().filter(([name]) => candidates.has(name))) {
     finding = artifactFindings(readArtifact(config, name)).find((record) => record.id === findingId) ?? null;
     if (finding) break;
   }

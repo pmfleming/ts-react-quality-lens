@@ -1,4 +1,6 @@
 import { auditSarif } from "./sarif-export.js";
+import { readArtifact } from "./writer.js";
+import { databaseFile } from "./store.js";
 import { loadConfig } from "./config.js";
 import fs from "node:fs";
 import { catalogForConfig } from "./tasks.js";
@@ -52,6 +54,13 @@ const VALUE_FLAGS: ValueFlag[] = [
 type CommandHandler = (config: Config, args: ParsedArgs) => void;
 
 const COMMAND_HANDLERS: Record<string, CommandHandler> = {
+  export: (config, args) => {
+    const name = args.positionals[0];
+    if (!name) throw new Error("export requires an artifact resource name (for example audit.json)");
+    const value = readArtifact(config, name);
+    if (!value) throw new Error(`Artifact ${name} has not been measured`);
+    console.log(JSON.stringify(value, null, 2));
+  },
   catalog: runCatalogCommand,
   init: runInitCommand,
   audit: runAuditCommand,
@@ -95,7 +104,7 @@ function printAudit(config: Config, format: ParsedArgs["format"], artifact: Retu
   else if (format === "json") console.log(JSON.stringify(artifact, null, 2));
   else if (format === "markdown") console.log(auditMarkdown(artifact));
   else console.log(JSON.stringify({ project_name: config.projectName, output_dir: config.outputDir,
-    full_evidence: "audit.json in output_dir; use --format json, sarif or markdown for findings and evidence", audit: artifact.summary }, null, 2));
+    database: databaseFile(config.outputDir), full_evidence: "Use export audit.json or audit --format json, sarif or markdown", audit: artifact.summary }, null, 2));
 }
 
 function runContextCommand(config: Config): void {
@@ -217,7 +226,8 @@ Commands:
   catalog       Print board-compatible task metadata.
   init          Write a starter schema-backed config.
   measure       Write one task artifact or all artifacts.
-  audit         Run changed-code quality audit and write audit.json.
+  audit         Run changed-code quality audit and save it to local Turso.
+  export <name> Export a saved artifact as JSON (for example audit.json).
   context       Write and print compact agent-ready project context.
   mcp           Start an MCP server; test execution requires explicit tool permission.
   lsp           Start an LSP diagnostics and code-action server over stdio.

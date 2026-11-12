@@ -7,6 +7,7 @@ import { createAnalysisContext } from "../src/analysis-context.js";
 import { loadConfig } from "../src/config.js";
 import { runMeasure } from "../src/measure-runner.js";
 import { inputSnapshot } from "../src/input-snapshot.js";
+import { withStore } from "../src/store.js";
 import { readArtifact } from "../src/writer.js";
 import { validNativeEvidence } from "../src/artifact-evidence.js";
 import type { Artifact } from "../src/types.js";
@@ -45,7 +46,7 @@ test("native wire references and payload projections reject tampering while pres
       const changed = structuredClone(artifact);
       mutate(changed);
       assert.equal(validNativeEvidence(changed, config), false);
-      fs.writeFileSync(path.join(config.outputDir, "ts_escape_hatches.json"), JSON.stringify(changed));
+      withStore(config.outputDir, (db) => db.prepare("UPDATE artifacts SET payload = ? WHERE name = ?").run(JSON.stringify(changed), "ts_escape_hatches.json"));
       assert.equal(readArtifact(config, "ts_escape_hatches.json"), null);
     }
     config.sarifInputs = [{ path: path.join(root, "input.sarif"), name: "scanner", required: true }];

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
+import type { Database } from "@tursodatabase/database/compat";
+import { artifactText } from "./store.js";
 import path from "node:path";
 import { parseJson } from "./collections.js";
 import { arrayOf, nullable, shape, string } from "./validation.js";
@@ -16,13 +17,12 @@ function describe(bytes: string, file: string): ArtifactReference {
   return { file, sha256: digest(bytes), semantic_sha256: digest(JSON.stringify(deterministicEvidence(value))),
     run_id: run(value) ? value.provenance.run_id : null };
 }
-export function artifactReferences(directory: string, names: string[]): ArtifactReference[] {
-  return names.map((file) => describe(fs.readFileSync(path.join(directory, file), "utf8"), file));
+export function artifactReferences(db: Database, names: string[]): ArtifactReference[] {
+  return names.map((file) => describe(requiredText(db, file), file));
 }
 
 /** Audit references bind the entire consumed generation, not just whichever file is opened first. */
-export function validateArtifactReferences(directory: string, references: unknown): void {
-  if (references === undefined) return; // legacy artifacts do not claim generation integrity
+export function validateArtifactReferences(db: Database, references: unknown): void {
   if (!reference(references)) throw new Error("Invalid audit artifact references");
   const seen = new Set<string>();
   for (const item of references) {
@@ -30,11 +30,15 @@ export function validateArtifactReferences(directory: string, references: unknow
       throw new Error("Invalid audit artifact reference");
     }
     seen.add(item.file);
-    const target = path.join(directory, item.file);
-    if (!fs.existsSync(target) || !fs.lstatSync(target).isFile()) throw new Error(`Missing audit generation member: ${item.file}`);
-    const bytes = fs.readFileSync(target, "utf8");
+    const bytes = requiredText(db, item.file);
     if (digest(bytes) !== item.sha256) throw new Error(`Mixed audit generation: ${item.file}`);
     const actual = describe(bytes, item.file);
     if (actual.run_id !== item.run_id || actual.semantic_sha256 !== item.semantic_sha256) throw new Error(`Invalid audit generation evidence: ${item.file}`);
   }
+}
+
+function requiredText(db: Database, name: string): string {
+  const text = artifactText(db, name);
+  if (text === null) throw new Error(`Missing audit generation member: ${name}`);
+  return text;
 }

@@ -20,7 +20,7 @@ test("measurements return the same enriched evidence they publish", () => {
     const artifact = runMeasure(config, "quality.escape_hatches", "test")[0];
     assert.ok(artifact?.records?.some((record) => record.rule_id && record.actions?.length));
     assert.deepEqual(readArtifact(config, "ts_escape_hatches.json"), JSON.parse(JSON.stringify(artifact)));
-    assert.throws(() => writeArtifact(config, "../outside.json", artifact), /filenames/);
+    assert.throws(() => writeArtifact(config, "../outside.json", artifact), /resource names/);
     assert.ok(!fs.existsSync(path.join(root, "outside.json")));
     const circular: { self?: unknown } = {}; circular.self = circular;
     assert.throws(() => writeArtifact(config, "invalid.json", circular), /circular/i);

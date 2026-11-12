@@ -38,20 +38,20 @@ try {
   node([bin, "catalog", "--config", config], root);
   node([bin, "measure", "quality.hotspots", "--config", config], root);
   node([bin, "measure", "quality.modern_web", "--config", config], root);
-  const modernDisabled = parseJson(fs.readFileSync(path.join(root, "out/modern_web.json"), "utf8"));
+  const modernDisabled = parseJson(node([bin, "export", "modern_web.json", "--config", config], root));
   assert.ok(isRecord(modernDisabled) && isRecord(modernDisabled.summary) && modernDisabled.summary.status === "disabled");
   const webConfig = path.join(root, "web-lens.json");
   fs.writeFileSync(webConfig, JSON.stringify({ modern_web: { enabled: true }, output_dir: "out-web", test_command: null }));
   node([bin, "measure", "quality.modern_web", "--config", webConfig], root);
-  const modernOptional = parseJson(fs.readFileSync(path.join(root, "out-web/modern_web.json"), "utf8"));
+  const modernOptional = parseJson(node([bin, "export", "modern_web.json", "--config", webConfig], root));
   assert.ok(isRecord(modernOptional) && isRecord(modernOptional.summary) && modernOptional.summary.status === "unavailable",
     "optional scanner must not be installed automatically for a consumer");
   node([bin, "measure", "correctness.all", "--config", config], root);
   node([bin, "measure", "quality.clones", "--config", config], root);
-  const clones = parseJson(fs.readFileSync(path.join(root, "out/clones.json"), "utf8"));
+  const clones = parseJson(node([bin, "export", "clones.json", "--config", config], root));
   assert.ok(isRecord(clones) && isRecord(clones.tool_status) && isRecord(clones.tool_status.jscpd) && clones.tool_status.jscpd.ran === true,
     `installed native clone engine did not execute: ${JSON.stringify(clones)}`);
-  const artifact = parseJson(fs.readFileSync(path.join(root, "out/correctness_review.json"), "utf8"));
+  const artifact = parseJson(node([bin, "export", "correctness_review.json", "--config", config], root));
   assert.ok(isRecord(artifact) && isRecord(artifact.execution) && artifact.execution.status === "passed");
   assert.equal(fs.readFileSync(path.join(root, "executed.txt"), "utf8"), "yes");
   console.log(JSON.stringify({ package_smoke: "passed", files: files.size, installed_consumer: true, project_test_runner: "passed", native_clone_engine: "passed" }, null, 2));
