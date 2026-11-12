@@ -50,7 +50,7 @@ These downgrades apply in the audit, not to the standalone artifacts or LSP diag
 | Compiler posture (`type_safety_posture`) | `info` under baseline, `warn` otherwise |
 | Type-coverage floors/ratchet regressions | `warn` |
 
-Managed lint ruleset: `tsrqlens-typescript-recommended-v3`. `ban-ts-comment` rejects `@ts-ignore`/`@ts-nocheck` and requires at least three description characters for `@ts-expect-error`; `@ts-check` is allowed. Parser failure or unavailable type information is not clean typed-lint evidence. The additional correctness rules warn rather than block; unknown thrown/rejected values and caught rethrows are allowed because upstream code may throw arbitrary values. Rule applicability covers every enabled managed rule.
+Managed lint ruleset: `tsrqlens-typescript-recommended-v4`. `ban-ts-comment` rejects `@ts-ignore`/`@ts-nocheck` and requires at least three description characters for `@ts-expect-error`; `@ts-check` is allowed. Parser failure or unavailable type information is not clean typed-lint evidence. The additional correctness rules warn rather than block; unknown thrown/rejected values and caught rethrows are allowed because upstream code may throw arbitrary values. Rule applicability covers every enabled managed rule.
 
 All profiles inspect `strict` posture. The `strict` profile additionally expects `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `forceConsistentCasingInFileNames`, `noUncheckedSideEffectImports`, `verbatimModuleSyntax`, and `erasableSyntaxOnly`. This does not rewrite tsconfig or switch to a different typed-lint ruleset.
 
@@ -134,3 +134,5 @@ Managed `no-unnecessary-type-parameters` and `prefer-readonly` diagnostics have 
 ## Optional documentation evidence
 
 With `documentation.enabled`, `quality.type_health` includes public export documentation metrics and advisory `undocumented-public-export` / `missing-deprecation-guidance` findings. These have disposition `review`, unresolved design semantics, and `documentation_quality_verified: false`. Percentages use only eligible, resolved exports and are withheld for incomplete scope or an empty denominator. Findings point to declaration locations and retain the public entrypoint. See [configuration](configuration.md#optional-public-api-documentation) for re-export handling, generated/framework exceptions, scope and limitations. This feature does not enforce Google formatting, naming, or a ban on default exports.
+
+The Functions Handbook review adds `no-unsafe-function-type` warnings and advisory `unified-signatures`. The latter preserves differently named parameters and differently documented overloads. See [Microsoft guidance comparison](microsoft-typescript-review.md).

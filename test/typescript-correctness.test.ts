@@ -8,6 +8,7 @@ import { measureLint } from "../src/measures/type-quality.js";
 import { TYPED_RULESET } from "../src/rule-policy.js";
 
 const cases = [
+  ["no-unsafe-function-type", "export function accept(callback: Function) { return callback; }", "export function accept(callback: () => void) { return callback; }"],
   ["only-throw-error", "export function fail() { throw 'failure'; }", "export function fail(e: unknown) { try { throw new Error('failure'); } catch (caught) { throw caught; } }"],
   ["prefer-promise-reject-errors", "export const failed = Promise.reject('failure');", "export const failed = Promise.reject(new Error('failure'));"],
   ["no-for-in-array", "export function keys(values: string[]) { for (const key in values) console.log(key); }", "export function keys(values: string[]) { for (const value of values) console.log(value); }"],

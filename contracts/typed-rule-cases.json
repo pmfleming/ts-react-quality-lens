@@ -2,7 +2,7 @@
   "schema_version": 1,
   "prerequisites": ["Readable tsconfig covering the file", "Managed ESLint/parser/plugin available", "Successful type-aware parsing"],
   "scope": "TypeScript source files included by the selected project or project-service configuration",
-  "versions": "Actual TypeScript/parser/plugin versions recorded in analysis identity; tsrqlens-typescript-recommended-v3",
+  "versions": "Actual TypeScript/parser/plugin versions recorded in analysis identity; tsrqlens-typescript-recommended-v4",
   "applicability": "Rule enabled in TYPED_RULES and file successfully parsed with type information",
   "limitations": ["Upstream diagnostics, not proof of runtime failure", "Excluded/uncovered files are not evaluated negatives", "Optional typed-lint findings are policy-downgraded to review"],
   "default_disposition": "block",
