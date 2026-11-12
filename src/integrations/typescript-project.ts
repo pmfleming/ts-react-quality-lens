@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as ts from "typescript";
+import { collectSafetyEvidence } from "../typescript-safety.js";
 import { dedupeBy, isRecord } from "../collections.js";
 import { trackCompilerInputs } from "./compiler-inputs.js";
 import { relativeModuleId, toPosix } from "../files.js";
@@ -158,7 +159,7 @@ function collectTypedModules(
     if (sourceFile.isDeclarationFile || !wanted.has(path.resolve(sourceFile.fileName).toLowerCase())) continue;
     modules.set(
       relativeModuleId(config.projectRoot, sourceFile.fileName),
-      typedModuleRecord(checker, config, sourceFile),
+      typedModuleRecord(checker, config, sourceFile, program),
     );
   }
   return modules;
@@ -293,6 +294,7 @@ function typedModuleRecord(
   checker: ts.TypeChecker,
   config: Config,
   sourceFile: ts.SourceFile,
+  program: ts.Program,
 ): TypedModuleRecord {
   const exports = moduleExports(checker, sourceFile);
   const declarations: TypedDeclaration[] = [];
@@ -302,6 +304,7 @@ function typedModuleRecord(
     exports,
     declarations,
     surface_type_references: moduleSurfaceTypeReferences(checker, sourceFile),
+    safety_evidence: collectSafetyEvidence(checker, sourceFile, program),
   };
   Object.defineProperty(record, "sourceFile", { value: sourceFile, enumerable: false });
   return record;

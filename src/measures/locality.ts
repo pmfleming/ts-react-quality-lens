@@ -105,5 +105,6 @@ function leverageRecord(module: ModuleRecord, inboundReach: number): ScoredRecor
 
 const WEAK_SURFACE_KINDS = new Set([
   "explicit_any", "type_assertion", "double_assertion", "non_null_assertion",
+  "exported_mutable_binding",
   "ts_ignore", "ts_nocheck", "eslint_suppression",
 ]);

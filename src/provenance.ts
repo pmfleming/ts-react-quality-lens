@@ -99,7 +99,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   const configHash = configClosureHash(config);
   const rulesets = {
     ...(config.modernWeb.enabled ? { modern_web: "provisional-scanner-v1", browser_targets: "bounded-config-v1", modern_web_mapping: MODERN_WEB_MAPPING_VERSION } : {}),
-    builtin: "tsrqlens-analysis-v5",
+    builtin: "tsrqlens-analysis-v6",
     react_guidance: REACT_GUIDANCE_VERSION,
     runtime_observations: "runtime-observations-v4",
     rule_applicability: "bounded-dispatch-v1",

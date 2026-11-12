@@ -118,3 +118,9 @@ Changing rules/dispositions should be reviewed separately from changing risk-mod
 Normalized React Compiler reports preserve per-function outcomes and declared-scope coverage. Successful compilation and timing events are informational; skips, compiler diagnostics, and pipeline failures require review. Percentages require complete source-linked inventories; successful compilation never proves a runtime improvement.
 
 Performance baseline records report comparable per-route initial/deferred bundle-byte deltas and repeated-scenario median/p95 duration deltas. All remain review-only; a positive delta is an observed increase, not a statistically established regression. Unpaired scope and incompatible conditions are explicit. Configured invalid reports use the existing incomplete-runtime policy. See [integration formats](integrations.md).
+
+## Dynamic code and mutable bindings
+
+`quality.escape_hatches` resolves direct `eval`/`Function` calls and `new Function` constructors against standard-library declarations, including property and literal-element access. Shadowed and imported names are excluded. Aliases, indirect calls and computed keys are outside this bounded analysis. `dynamic_code_analysis.files` reports evaluated/unavailable per selected file; without compiler evidence, no dynamic-code findings are emitted. Findings remain review evidence, not proof that code executes or is exploitable.
+
+Top-level `let` and `var` bindings (including destructuring) are inventoried separately as `exported_mutable_binding` or `module_level_mutable_state`. Compiler-resolved export aliases count as exports. Without type information visibility is `unverified`. These records describe reassignable bindings, not observed writes or deep object mutation; `const` objects are outside their scope. Cached analysis preserves the resolved evidence.

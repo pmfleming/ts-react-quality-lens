@@ -1,4 +1,5 @@
 import type * as ts from "typescript";
+import type { SafetyEvidence } from "./typescript-safety.js";
 import type { CompilerInputQuery } from "./integrations/compiler-inputs.js";
 import type { ModernWebConfig, ModernWebSettings } from "./modern-web-types.js";
 
@@ -304,6 +305,7 @@ export type TypedModuleRecord = {
   exports: TypedExport[];
   declarations: TypedDeclaration[];
   surface_type_references?: string[];
+  safety_evidence?: SafetyEvidence;
   sourceFile?: ts.SourceFile;
 };
 

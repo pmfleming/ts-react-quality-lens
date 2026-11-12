@@ -20,7 +20,12 @@ export function measureEscapeHatches(config: Config, command: string, context: A
     records: records.length,
     files_with_escape_hatches: new Set(records.map((record) => record.file)).size,
     by_kind: Object.fromEntries(countBy(records, (record) => record.kind)),
-  }, records);
+  }, records, {
+    dynamic_code_analysis: {
+      scope: "Direct calls and constructors resolving to standard-library eval/Function; aliases and computed keys are not followed.",
+      files: project.modules.map((module) => ({ file: module.file, status: module.typed?.safety_evidence ? "evaluated" : "unavailable" })),
+    },
+  });
 }
 
 export function measureTypeHealth(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {

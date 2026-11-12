@@ -69,6 +69,7 @@ export function escapeRecords(module: ModuleRecord): ScoredRecord[] {
   const records = [...suppressionRecords(module)];
   if (!sourceFile) return records;
   const astSourceFile = sourceFile;
+  const dynamicCalls = new Map((module.typed?.safety_evidence?.dynamic_code ?? []).map((call) => [call.start, call]));
 
   function add(kind: string, severity: Severity, node: ts.Node, evidence = node.getText(astSourceFile)): void {
     records.push({
@@ -89,9 +90,22 @@ export function escapeRecords(module: ModuleRecord): ScoredRecord[] {
         !(ts.isTypeReferenceNode(node.type) && ts.isIdentifier(node.type.typeName) && node.type.typeName.text === "const")) {
       add(nestedAssertion(node) ? "double_assertion" : "type_assertion", nestedAssertion(node) ? "high" : "medium", node);
     }
-    if (isTopLevelMutableStatement(astSourceFile, node)) add("module_level_mutable_state", "medium", node);
+    if (ts.isVariableStatement(node) && node.parent === astSourceFile && !(node.declarationList.flags & ts.NodeFlags.Const)) {
+      for (const declaration of node.declarationList.declarations) {
+        for (const name of bindingNames(declaration.name)) {
+          const exported = module.typed?.safety_evidence?.exported_bindings.includes(name.text);
+          add(exported ? "exported_mutable_binding" : "module_level_mutable_state", "medium", name, declaration.getText(astSourceFile));
+          Object.assign(records[records.length - 1]!, { name: name.text, binding_kind: node.declarationList.flags & ts.NodeFlags.Let ? "let" : "var",
+            visibility: exported ? "exported" : module.typed?.safety_evidence ? "module-local" : "unverified",
+            mutation_observed: false });
+        }
+      }
+    }
     if (isDangerousHtml(node)) add("dangerous_html", "high", node);
-    if (isEvalLikeCall(node)) add("eval_like_api", "high", node);
+    if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && dynamicCalls.get(node.getStart(astSourceFile))?.end === node.end) {
+      add("eval_like_api", "high", node);
+      Object.assign(records[records.length - 1]!, { binding_verified: true, api: dynamicCalls.get(node.getStart(astSourceFile))!.api });
+    }
     if (isDirectDomMutation(node)) add("direct_dom_mutation", "medium", node);
     if (isBrowserGlobalAccess(node)) add("browser_global", "low", node);
     ts.forEachChild(node, visit);
@@ -356,20 +370,12 @@ function nestedAssertion(node: ts.AsExpression | ts.TypeAssertion): boolean {
   return ts.isAsExpression(node.expression) || ts.isTypeAssertionExpression(node.expression);
 }
 
-function isTopLevelMutableStatement(sourceFile: ts.SourceFile, node: ts.Node): boolean {
-  return (
-    ts.isVariableStatement(node) &&
-    node.parent === sourceFile &&
-    (node.declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === ts.NodeFlags.Let
-  );
+function bindingNames(name: ts.BindingName): ts.Identifier[] {
+  return ts.isIdentifier(name) ? [name] : name.elements.flatMap((element) => ts.isBindingElement(element) ? bindingNames(element.name) : []);
 }
 
 function isDangerousHtml(node: ts.Node): boolean {
   return ts.isIdentifier(node) && node.text === "dangerouslySetInnerHTML";
-}
-
-function isEvalLikeCall(node: ts.Node): boolean {
-  return ts.isCallExpression(node) && ["eval", "Function"].includes(callExpressionName(node) ?? "");
 }
 
 function isDirectDomMutation(node: ts.Node): boolean {
