@@ -45,11 +45,12 @@ These downgrades apply in the audit, not to the standalone artifacts or LSP diag
 | `@typescript-eslint/no-floating-promises`, `no-misused-promises` | `block` |
 | `@typescript-eslint/ban-ts-comment` | `block` |
 | `@typescript-eslint/no-unnecessary-type-assertion`, `no-unsafe-type-assertion` | `warn` |
+| `@typescript-eslint/only-throw-error`, `prefer-promise-reject-errors`, `no-for-in-array`, `no-misused-spread`, `no-wrapper-object-types`, `no-empty-object-type` | `warn` |
 | Typed-lint parser failure | `info` record plus incomplete typed-lint status |
 | Compiler posture (`type_safety_posture`) | `info` under baseline, `warn` otherwise |
 | Type-coverage floors/ratchet regressions | `warn` |
 
-Managed lint ruleset: `tsrqlens-typescript-recommended-v1`. `ban-ts-comment` rejects `@ts-ignore`/`@ts-nocheck` and requires at least three description characters for `@ts-expect-error`; `@ts-check` is allowed. Parser failure or unavailable type information is not clean typed-lint evidence.
+Managed lint ruleset: `tsrqlens-typescript-recommended-v2`. `ban-ts-comment` rejects `@ts-ignore`/`@ts-nocheck` and requires at least three description characters for `@ts-expect-error`; `@ts-check` is allowed. Parser failure or unavailable type information is not clean typed-lint evidence. The additional correctness rules warn rather than block; unknown thrown/rejected values and caught rethrows are allowed because upstream code may throw arbitrary values. Rule applicability covers every enabled managed rule.
 
 All profiles inspect `strict` posture. The `strict` profile additionally expects `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `forceConsistentCasingInFileNames`, `noUncheckedSideEffectImports`, `verbatimModuleSyntax`, and `erasableSyntaxOnly`. This does not rewrite tsconfig or switch to a different typed-lint ruleset.
 

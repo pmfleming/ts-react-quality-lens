@@ -1,3 +1,4 @@
+import { TYPED_RULESET } from "./rule-policy.js";
 import os from "node:os";
 import { packageRootFrom } from "./package-root.js";
 import { parseJson } from "./collections.js";
@@ -119,7 +120,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     import_resolution: "path-aliases-v2",
     file_discovery: "project-relative-test-paths-v2",
     architecture: "risk-model-v3",
-    typed_lint: "tsrqlens-typescript-recommended-v1",
+    typed_lint: TYPED_RULESET,
     typed_lint_projects: "project-service-auto-v1",
     react: config.react.ruleset,
     react_support: "declared-range-capabilities-v1",

@@ -1,5 +1,7 @@
 import type { ScoredRecord } from "./types.js";
 
+export const TYPED_RULESET = "tsrqlens-typescript-recommended-v2";
+
 /** One authority for enabled managed TS rules and their blocking inventory. */
 export const TYPED_RULES = {
   "@typescript-eslint/no-unsafe-assignment": "error",
@@ -11,6 +13,12 @@ export const TYPED_RULES = {
   "@typescript-eslint/no-misused-promises": "error",
   "@typescript-eslint/no-unnecessary-type-assertion": "warn",
   "@typescript-eslint/no-unsafe-type-assertion": "warn",
+  "@typescript-eslint/only-throw-error": ["warn", { allowThrowingAny: false, allowThrowingUnknown: true, allowRethrowing: true }],
+  "@typescript-eslint/prefer-promise-reject-errors": ["warn", { allowThrowingUnknown: true }],
+  "@typescript-eslint/no-for-in-array": "warn",
+  "@typescript-eslint/no-misused-spread": "warn",
+  "@typescript-eslint/no-wrapper-object-types": "warn",
+  "@typescript-eslint/no-empty-object-type": "warn",
   "@typescript-eslint/ban-ts-comment": ["error", {
     "ts-check": false, "ts-expect-error": "allow-with-description", "ts-ignore": true,
     "ts-nocheck": true, minimumDescriptionLength: 3,

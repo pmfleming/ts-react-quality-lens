@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { fileRuleApplicability } from "../rule-applicability.js";
-import { BLOCKING_TYPED_RULES, TYPED_RULES } from "../rule-policy.js";
+import { BLOCKING_TYPED_RULES, TYPED_RULES, TYPED_RULESET } from "../rule-policy.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { changedFilesSince, defaultBase } from "../audit/change-set.js";
 import { stableHash } from "../clone-utils.js";
@@ -86,11 +86,11 @@ export function measureLint(config: Config, command: string, context: AnalysisCo
         project_mode: lint.project_mode,
         configured_project: lint.configured_project,
         duration_ms: lint.duration_ms ?? null,
-        ruleset: "tsrqlens-typescript-recommended-v1",
+        ruleset: TYPED_RULESET,
         evaluated_files: lint.evaluated_files ?? [],
       },
     },
-    rule_applicability: fileRuleApplicability(BLOCKING_TYPED_RULES, project.sourceFiles.map((file) => file.relativePath),
+    rule_applicability: fileRuleApplicability(Object.keys(TYPED_RULES), project.sourceFiles.map((file) => file.relativePath),
       lint.evaluated_files ?? [], (file) => /\.(?:ts|tsx|mts|cts)$/.test(file)),
     records,
   };
