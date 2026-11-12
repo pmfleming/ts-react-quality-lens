@@ -144,3 +144,34 @@ test("exclusive coverage excludes nested implementations and withholds ambiguous
     assert.deepEqual(createAnalysisContext(config).project().modules[0]?.functions, project.modules[0]?.functions);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test("large flat function inventories avoid pairwise attribution scans, including absent observations", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lens-coverage-scale-"));
+  try {
+    fs.mkdirSync(path.join(root, "src"));
+    const count = 1000;
+    fs.writeFileSync(path.join(root, "src/a.ts"), Array.from({ length: count }, (_, index) => `export function f${index}() {\n  return ${index};\n}\n`).join(""));
+    const config = loadConfig(path.join(root, "lens.json"));
+    config.coverageReport = path.join(root, "coverage.json");
+    const context = createAnalysisContext(config), project = context.project();
+    let spanReads = 0;
+    for (const fn of project.modules.flatMap((module) => module.functions)) {
+      const start = fn.start;
+      Object.defineProperty(fn, "start", { get() { spanReads++; return start; }, enumerable: true });
+    }
+    const measure = () => {
+      const artifact = runMeasure(config, "testing.coverage", "scale", { context })[0];
+      assert.ok(artifact && arrayOf(shape({ coverage_percent: nullable(finite) }))(artifact.functions));
+      return artifact.functions;
+    };
+    assert.ok(measure().every((fn) => fn.coverage_percent === null));
+    assert.equal(spanReads, 0, "absent observations need no ownership comparisons");
+    fs.writeFileSync(config.coverageReport, JSON.stringify({ format: "lcov",
+      data: `SF:src/a.ts\n${Array.from({ length: count }, (_, index) => `DA:${index * 3 + 2},1`).join("\n")}\nend_of_record\n`,
+      provenance: { source_set_hash: context.sourceHash() }, producer: { name: "fixture", version: "1" } }));
+    const functions = measure();
+    assert.equal(functions.length, count);
+    assert.ok(functions.every((fn) => fn.coverage_percent === 100));
+    assert.ok(spanReads < count * 10, `flat functions must not compare all pairs: ${spanReads} span reads`);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

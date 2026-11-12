@@ -57,27 +57,62 @@ function changedCoverage(config: Config, files: CoveredFile[]) {
 
 function functionCoverage(project: ProjectAnalysis, files: CoveredFile[]) {
   const index = new Map(files.map((file) => [file.file, file.line_hits]));
-  return project.modules.flatMap((module) => module.functions.map((fn) => {
-    const hits = (index.get(module.file) ?? []).filter((hit) => hit.line >= fn.body_line && hit.line < fn.body_line + fn.lines);
-    const nested = module.functions.filter((other) => contains(fn, other));
-    const hasParent = module.functions.some((other) => contains(other, fn));
-    const siblings = module.functions.filter((other) => other !== fn && !contains(fn, other) && !contains(other, fn));
-    const excluded = hits.filter((hit) => nested.some((child) => hit.line > child.body_line && hit.line < endLine(child)));
-    const remaining = hits.filter((hit) => !excluded.includes(hit));
-    const ambiguous = remaining.filter(({ line }) =>
-      nested.some((child) => line >= child.line && line <= endLine(child)) ||
-      hasParent && (line === fn.body_line || line === endLine(fn)) ||
-      siblings.some((other) => line >= other.line && line <= endLine(other)));
-    const exclusive = remaining.filter((hit) => !ambiguous.includes(hit));
-    const coverage = ambiguous.length ? null : percent(exclusive), cc = fn.cyclomatic_complexity;
-    return { id: fn.id, file: module.file, name: fn.name, line: fn.line, executable_lines: exclusive.length, coverage_percent: coverage,
-      attribution_status: ambiguous.length ? "ambiguous" : exclusive.length ? "exclusive" : "unavailable",
-      known_exclusive_coverage_percent: percent(exclusive), ambiguous_lines: ambiguous.map((hit) => hit.line),
-      excluded_nested_lines: excluded.map((hit) => hit.line),
-      inclusive_body_executable_lines: hits.length, inclusive_body_coverage_percent: percent(hits),
-      complexity_coverage_risk: coverage === null ? null : cc * cc * Math.pow(1 - coverage / 100, 3) + cc };
-  }));
+  return project.modules.flatMap((module) => {
+    const observations = index.get(module.file) ?? [];
+    const ownership = observations.length ? functionOwnership(module.functions) : new Map<FunctionRecord, Ownership>();
+    return module.functions.map((fn) => {
+      const hits = observations.slice(lowerBound(observations, fn.body_line), lowerBound(observations, fn.body_line + fn.lines));
+      const { nested, siblings, hasParent } = ownership.get(fn) ?? { nested: [], siblings: [], hasParent: false };
+      const excluded = hits.filter((hit) => nested.some((child) => hit.line > child.body_line && hit.line < endLine(child)));
+      const excludedSet = new Set(excluded);
+      const remaining = hits.filter((hit) => !excludedSet.has(hit));
+      const ambiguous = remaining.filter(({ line }) =>
+        nested.some((child) => line >= child.line && line <= endLine(child)) ||
+        hasParent && (line === fn.body_line || line === endLine(fn)) ||
+        siblings.some((other) => line >= other.line && line <= endLine(other)));
+      const ambiguousSet = new Set(ambiguous);
+      const exclusive = remaining.filter((hit) => !ambiguousSet.has(hit));
+      const knownCoverage = percent(exclusive), coverage = ambiguous.length ? null : knownCoverage, cc = fn.cyclomatic_complexity;
+      return { id: fn.id, file: module.file, name: fn.name, line: fn.line, executable_lines: exclusive.length, coverage_percent: coverage,
+        attribution_status: ambiguous.length ? "ambiguous" : exclusive.length ? "exclusive" : "unavailable",
+        known_exclusive_coverage_percent: knownCoverage, ambiguous_lines: ambiguous.map((hit) => hit.line),
+        excluded_nested_lines: excluded.map((hit) => hit.line),
+        inclusive_body_executable_lines: hits.length, inclusive_body_coverage_percent: percent(hits),
+        complexity_coverage_risk: coverage === null ? null : cc * cc * Math.pow(1 - coverage / 100, 3) + cc };
+    });
+  });
 }
+
+type Ownership = { nested: FunctionRecord[]; siblings: FunctionRecord[]; hasParent: boolean };
+
+/** Only overlapping declaration lines can affect each other's attribution. */
+function functionOwnership(functions: FunctionRecord[]): Map<FunctionRecord, Ownership> {
+  const result = new Map<FunctionRecord, Ownership>();
+  const active = new Map<FunctionRecord, Ownership>();
+  for (const fn of [...functions].sort((a, b) => a.line - b.line || a.start - b.start)) {
+    const owner: Ownership = { nested: [], siblings: [], hasParent: false };
+    result.set(fn, owner);
+    for (const [other, prior] of active) {
+      if (endLine(other) < fn.line) { active.delete(other); continue; }
+      if (contains(other, fn)) { prior.nested.push(fn); owner.hasParent = true; }
+      else if (contains(fn, other)) { owner.nested.push(other); prior.hasParent = true; }
+      else { prior.siblings.push(fn); owner.siblings.push(other); }
+    }
+    active.set(fn, owner);
+  }
+  return result;
+}
+
+function lowerBound(hits: CoveredFile["line_hits"], line: number): number {
+  let low = 0, high = hits.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if ((hits[middle]?.line ?? Infinity) < line) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
 function contains(parent: FunctionRecord, child: FunctionRecord): boolean {
   return parent.start < child.start && child.end <= parent.end;
 }
