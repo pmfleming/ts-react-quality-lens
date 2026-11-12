@@ -145,7 +145,7 @@ function walk(dir: string, config: Config, files: string[], includeTests = false
   }
 }
 
-function isExcluded(fullPath: string, name: string, config: Config): boolean {
+export function isExcluded(fullPath: string, name: string, config: Pick<Config, "projectRoot" | "exclude">): boolean {
   const rel = toPosix(path.relative(config.projectRoot, fullPath));
   return config.exclude.some((pattern) => {
     if (pattern.includes("*")) {

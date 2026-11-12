@@ -15,6 +15,7 @@ export function inputSnapshot(config: Config, project: ProjectAnalysis): () => s
     queries: compilerInputQueryResults(project.tsProject.input_queries ?? []),
     imported: ["quality.runtime", "quality.sarif", "testing.coverage", "quality.type_health", "map.architecture"]
       .map((task) => taskInputHash(config, task, "imported-input-closure")),
+    ...(config.modernWeb.enabled ? { modern_web: taskInputHash(config, "quality.modern_web", "web-input-closure") } : {}),
   });
   const initial = fingerprint();
   return () => {
