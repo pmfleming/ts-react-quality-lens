@@ -48,36 +48,12 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
 
     function reviewFunction(name: string, fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression): void {
       if (!/^(?:[A-Z]|use[A-Z])/.test(name) || !fn.body || !ts.isBlock(fn.body)) return;
-      const setters = new Set<ts.Symbol>();
-      const stateSetters = new Map<ts.Symbol, ts.Symbol>();
-      const reactive = new Set<ts.Symbol>();
-      function capture(node: ts.Node) {
-        if (ts.isIdentifier(node)) { const symbol = checker.getSymbolAtLocation(node); if (symbol) reactive.add(symbol); }
-        ts.forEachChild(node, capture);
-      }
-      fn.parameters.forEach((parameter) => capture(parameter.name));
-      for (const statement of fn.body.statements) {
-        if (!ts.isVariableStatement(statement)) continue;
-        for (const declaration of statement.declarationList.declarations) {
-          const call = declaration.initializer;
-          if (!call || !ts.isCallExpression(call) || !hook(call.expression, "useState")) continue;
-          if (ts.isArrayBindingPattern(declaration.name)) {
-            const [state, setter] = declaration.name.elements;
-            if (state && ts.isBindingElement(state)) capture(state.name);
-            if (setter && ts.isBindingElement(setter) && ts.isIdentifier(setter.name)) {
-              const symbol = checker.getSymbolAtLocation(setter.name); if (symbol) setters.add(symbol);
-              const stateSymbol = state && ts.isBindingElement(state) && ts.isIdentifier(state.name) ? checker.getSymbolAtLocation(state.name) : undefined;
-              if (symbol && stateSymbol) stateSetters.set(symbol, stateSymbol);
-            }
-          }
-          const initial = call.arguments[0];
-          if (initial && ts.isCallExpression(initial)) emit(initial, "eager-state-initializer",
-            "The state initializer calls a function during each render. Review its cost and whether a lazy initializer preserves behavior.",
-            [PERFORMANCE_GUIDE, "https://react.dev/reference/react/useState#avoiding-recreating-the-initial-state"],
-            "Keep when repeated initialization is costly and the calculation can run as a pure initializer.",
-            "Drop when the calculation is cheap, deliberately repeated, or changing when it runs would alter behavior. Measure before optimizing.");
-        }
-      }
+      const { setters, stateSetters, reactive, initializers } = stateBindings(fn.parameters, fn.body, checker, hook);
+      for (const initial of initializers) emit(initial, "eager-state-initializer",
+        "The state initializer calls a function during each render. Review its cost and whether a lazy initializer preserves behavior.",
+        [PERFORMANCE_GUIDE, "https://react.dev/reference/react/useState#avoiding-recreating-the-initial-state"],
+        "Keep when repeated initialization is costly and the calculation can run as a pure initializer.",
+        "Drop when the calculation is cheap, deliberately repeated, or changing when it runs would alter behavior. Measure before optimizing.");
       for (const candidate of effectCandidates(fn.body, checker, (expression) => hook(expression, "useEffect"), stateSetters)) {
         emit(candidate.node, candidate.rule, candidate.message, [EFFECT_GUIDE, STATE_GUIDE], candidate.keep, candidate.drop);
       }
@@ -156,4 +132,37 @@ function reactHooks(source: ts.SourceFile, checker: ts.TypeChecker) {
 function hasSymbol(symbols: Set<ts.Symbol>, node: ts.Node, checker: ts.TypeChecker): boolean {
   const symbol = checker.getSymbolAtLocation(node);
   return symbol !== undefined && symbols.has(symbol);
+}
+
+/** Collect only top-level hook declarations in this component's lexical scope. */
+function stateBindings(parameters: ts.NodeArray<ts.ParameterDeclaration>, body: ts.Block, checker: ts.TypeChecker,
+  hook: (expression: ts.Expression, name: string) => boolean) {
+  const setters = new Set<ts.Symbol>(), stateSetters = new Map<ts.Symbol, ts.Symbol>(), reactive = new Set<ts.Symbol>();
+  const initializers: ts.CallExpression[] = [];
+  for (const parameter of parameters) captureBindings(parameter.name, checker, reactive);
+  const declarations = body.statements.flatMap((statement) => ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : []);
+  for (const declaration of declarations) {
+    const call = declaration.initializer;
+    if (!call || !ts.isCallExpression(call) || !hook(call.expression, "useState")) continue;
+    if (ts.isArrayBindingPattern(declaration.name)) {
+      const [state, setter] = declaration.name.elements;
+      if (state && ts.isBindingElement(state)) captureBindings(state.name, checker, reactive);
+      const setterSymbol = bindingSymbol(setter, checker), stateSymbol = bindingSymbol(state, checker);
+      if (setterSymbol) setters.add(setterSymbol);
+      if (setterSymbol && stateSymbol) stateSetters.set(setterSymbol, stateSymbol);
+    }
+    const initial = call.arguments[0];
+    if (initial && ts.isCallExpression(initial)) initializers.push(initial);
+  }
+  return { setters, stateSetters, reactive, initializers };
+}
+function captureBindings(node: ts.Node, checker: ts.TypeChecker, symbols: Set<ts.Symbol>): void {
+  if (ts.isIdentifier(node)) {
+    const symbol = checker.getSymbolAtLocation(node);
+    if (symbol) symbols.add(symbol);
+  }
+  ts.forEachChild(node, (child) => captureBindings(child, checker, symbols));
+}
+function bindingSymbol(element: ts.ArrayBindingElement | undefined, checker: ts.TypeChecker): ts.Symbol | undefined {
+  return element && ts.isBindingElement(element) && ts.isIdentifier(element.name) ? checker.getSymbolAtLocation(element.name) : undefined;
 }

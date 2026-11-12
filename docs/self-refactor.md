@@ -55,3 +55,24 @@ The existing 52-test suite is retained, with regression assertions added for dis
 Validation passed: `npm run ci` (52 tests, no skips or failures, eight rule contracts, 22 corpus cases, performance smoke in 14.013 seconds against a 60-second limit, and package smoke), `npm run self:measure`, schema validation of all 16 self-analysis artifacts, and `git diff --check`. Self-analysis reports zero compiler diagnostics, dependency cycles, or cleanup findings, and complete package checks.
 
 The self-analysis still reports the existing unsafe worker-data assertion in `src/lsp-worker.ts`. Six clone groups and 97 high-risk hotspot records remain.
+
+## Follow-up: measurement integrity and remaining hotspots (2026-11-12)
+
+Five follow-up improvements now validate directed cycle witnesses, separate exclusive function coverage from ambiguous/nested lines, preserve local binding relationships in structural clones, validate editor worker messages, and isolate compiler policies and React state binding collection. Import-only and simple projection boilerplate remains visible without contributing to implementation duplication pressure. The worker-data assertion described above has been removed. Raw V8 collection now includes subprocesses and workers; these traces do not establish source-mapped TypeScript coverage percentages.
+
+For the final hotspot refactor, the baseline is commit `2035259`, after the first four improvements. Both snapshots use the same complete function inventory, exclusive-body metric formulas, source discovery, and scoring settings. This comparison therefore isolates the final refactor from the measurement corrections. All added policy callbacks and helpers are included.
+
+| Affected module | Aggregate cognitive before → after | Maximum cognitive before → after | Maximum cyclomatic before → after | Aggregate Halstead effort before → after |
+| --- | --- | --- | --- | --- |
+| `src/compiler-targets.ts` | 52 → 27 | 51 → 19 | 32 → 15 | 79,008 → 40,667 |
+| `src/react-review.ts` | 147 → 128 | 50 → 29 | 25 → 24 | 326,875 → 310,567 |
+
+Compiler rules retain their messages, ordering, environment scope, and abstention for unavailable configurations. React review retains top-level hook scope, local binding identities, destructuring behavior, and eager initializer candidates. Existing compiler and React positive/negative controls pass without adding refactor-specific tests.
+
+Across the project, aggregate cognitive complexity changes from 4,298 to 4,254, and the maximum from 51 to 42. Aggregate Halstead effort changes from 11,219,107 to 11,164,458. Maximum cyclomatic complexity changes from 32 to 31. The tradeoff is explicit: function count rises from 1,876 to 1,890, aggregate cyclomatic complexity rises from 5,501 to 5,503 (each function contributes a base of one), and physical source lines rise from 14,445 to 14,478. This is a reduction in concentrated decision complexity and lexical effort, not a claim of fewer total lines or paths.
+
+The local reproduction snapshots are `target/self-review/next-five-before` and `target/self-review/next-five-after`; `target/self-review/next-five-comparison.json` contains affected-module aggregates. Raw coverage traces are collected by `npm run test:coverage` under `target/coverage/v8`. Generated evidence is ignored by Git.
+
+Validation: all 153 tests passed with raw subprocess/worker coverage enabled; schema and rule contracts, formatting, performance smoke, and the installed-package smoke checks passed. Focused regressions cover directed-edge witnesses, shared-line and nested coverage attribution, clone precision and boilerplate classification, and malformed worker messages and lifecycle failures.
+
+Final self-review reports zero compiler diagnostics, lint findings, dependency cycles, or cleanup findings. It retains one implementation clone candidate and one informational import-boilerplate group. These clone counts reflect the corrected normalization/classification rules and are not evidence that equivalent amounts of source code were removed.
