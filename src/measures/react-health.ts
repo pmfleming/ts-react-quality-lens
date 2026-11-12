@@ -22,7 +22,7 @@ export function measureReactHealth(config: Config, command: string, context: Ana
     ...hooksLint.messages.map(hookLintRecord),
     ...a11yLint.messages.map(a11yLintRecord),
     ...frameworkRiskRecords(project),
-    ...reactReviewRecords(config, project),
+    ...reactReviewRecords(config, project, context.syntaxProgram(), context.workspaceManifest),
   ];
   const artifact = {
     ...artifactBase(config, "quality.react_health", command, analysisConfidence(config, project, {

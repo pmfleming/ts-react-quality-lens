@@ -1,8 +1,9 @@
+import { syntaxProgram } from "./syntax-program.js";
 import { analysisIdentity, sourceSetHash } from "./provenance.js";
 import { createConfidence } from "./config.js";
 import { discoverSourceFiles, discoverTestFiles, readSourceFile } from "./files.js";
 import { analyzeModule } from "./extract.js";
-import { entrypointRolesForFile, projectEntrypoints, workspacePackageEntrypoints } from "./entrypoints.js";
+import { entrypointRolesForFile, projectEntrypoints, workspaceManifestReader, workspacePackageEntrypoints } from "./entrypoints.js";
 import { readAnalysisCache, writeAnalysisCache } from "./cache.js";
 import { disabledAccessibilityLint, runReactSyntaxLint, runTypedLint } from "./integrations/eslint-adapter.js";
 import { runDependencyCruiser, runJscpd, runKnip } from "./integrations/external-tools.js";
@@ -87,9 +88,12 @@ export function createAnalysisContext(config: Config): AnalysisContext {
     return () => (state ??= { value: load() }).value;
   }
   const project = memoize(() => analyzeProject(config));
+  const manifests = memoize(() => workspaceManifestReader(config.projectRoot));
   const syntaxLint = memoize(() => runReactSyntaxLint(config));
   return {
     project,
+    syntaxProgram: memoize(() => syntaxProgram(project().modules)),
+    workspaceManifest: (root) => manifests()(root),
     sourceHash: memoize(() => sourceSetHash(project())),
     identity: memoize(() => analysisIdentity(config)),
     refresh: () => { for (const reset of clear) reset(); },

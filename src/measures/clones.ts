@@ -28,7 +28,7 @@ export function measureClones(config: Config, command: string, context: Analysis
   const jscpdGroups = classifyCloneGroups(project, jscpd.ran ? jscpd.duplicates.map((duplicate, index) => jscpdCloneGroup(config, duplicate, index)) : []);
   const rawHeuristicGroups = classifyCloneGroups(project, jscpd.ran ? [] : heuristicCloneGroups(project));
   const heuristicGroups = dedupeCloneRegions(rawHeuristicGroups);
-  const astGroups = classifyCloneGroups(project, structuralCloneGroups(project));
+  const astGroups = classifyCloneGroups(project, structuralCloneGroups(project, context.syntaxProgram()));
   const groups = dedupeCloneRegions([...jscpdGroups, ...heuristicGroups, ...astGroups]).sort((left, right) => right.score - left.score);
   const duplicationPressure = duplicationPressureRecords(project, groups);
   const samePurpose = samePurposeRecords(project);

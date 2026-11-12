@@ -3,10 +3,10 @@ import { effectCandidates } from "./react-effect-review.js";
 import path from "node:path";
 import * as ts from "typescript";
 import { stableHash } from "./clone-utils.js";
-import { readPackageJson } from "./entrypoints.js";
+import { workspaceManifestReader } from "./entrypoints.js";
 import { featureSupport } from "./react-support.js";
 import { workspaceForFile } from "./workspaces.js";
-import type { Config, ProjectAnalysis, ScoredRecord } from "./types.js";
+import type { Config, PackageJson, ProjectAnalysis, ScoredRecord } from "./types.js";
 
 const EFFECT_GUIDE = "https://react.dev/learn/you-might-not-need-an-effect";
 const STATE_GUIDE = "https://react.dev/learn/choosing-the-state-structure";
@@ -14,8 +14,8 @@ const PERFORMANCE_GUIDE = "https://vercel.com/blog/introducing-react-best-practi
 const NEXT_GUIDE = "https://nextjs.org/docs/app/guides/production-checklist";
 
 /** Bounded syntactic review, with local binding identity; no inferred purity or measured cost. */
-export function reactReviewRecords(config: Config, project: ProjectAnalysis): ScoredRecord[] {
-  const program = syntaxProgram(project.modules);
+export function reactReviewRecords(config: Config, project: ProjectAnalysis, program = syntaxProgram(project.modules),
+  workspaceManifest: (root: string) => PackageJson | null = workspaceManifestReader(config.projectRoot)): ScoredRecord[] {
   const checker = program.getTypeChecker();
   return project.modules.flatMap((module) => {
     const source = program.getSourceFile(module.absolutePath);
@@ -89,7 +89,7 @@ export function reactReviewRecords(config: Config, project: ProjectAnalysis): Sc
     }
     const workspace = workspaceForFile(project.workspaces, module.file);
     const relative = path.posix.relative(workspace.root, module.file);
-    const manifest = readPackageJson(path.join(config.projectRoot, workspace.root, "package.json"));
+    const manifest = workspaceManifest(workspace.root);
     const next = manifest?.peerDependencies?.next ?? manifest?.dependencies?.next ?? manifest?.devDependencies?.next ?? null;
     const directive = source.statements.find((statement, index) => source.statements.slice(0, index + 1).every((item) =>
       ts.isExpressionStatement(item) && ts.isStringLiteral(item.expression)) && ts.isExpressionStatement(statement) &&

@@ -439,6 +439,8 @@ export type ProjectAnalysis = {
 };
 
 export type AnalysisContext = {
+  syntaxProgram: () => ts.Program;
+  workspaceManifest: (root: string) => PackageJson | null;
   sourceHash: () => string;
   identity: () => AnalysisIdentity;
   refresh: () => void;

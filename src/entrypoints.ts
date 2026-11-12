@@ -13,6 +13,15 @@ export function readPackageJson(packageJsonPath: string): PackageJson | null {
   }
 }
 
+/** Cache present and missing workspace manifests for one analysis generation. */
+export function workspaceManifestReader(projectRoot: string) {
+  const manifests = new Map<string, PackageJson | null>();
+  return (root: string) => {
+    if (!manifests.has(root)) manifests.set(root, readPackageJson(path.join(projectRoot, root, "package.json")));
+    return manifests.get(root) ?? null;
+  };
+}
+
 export function projectEntrypoints(config: Config, packageJson = readPackageJson(path.join(config.projectRoot, "package.json"))): EntryPointReference[] {
   const entries = [
     ...packageEntryReferences(config, packageJson, config.projectRoot),

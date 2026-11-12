@@ -8,8 +8,8 @@ import type { CloneBlock, CloneGroup, ProjectAnalysis } from "./types.js";
 type FunctionNode = ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
 type StructuralBlock = CloneBlock & { projection: boolean };
 
-export function structuralCloneGroups(project: ProjectAnalysis): CloneGroup[] {
-  const program = syntaxProgram(project.modules), checker = program.getTypeChecker();
+export function structuralCloneGroups(project: ProjectAnalysis, program = syntaxProgram(project.modules)): CloneGroup[] {
+  const checker = program.getTypeChecker();
   const blocks: StructuralBlock[] = [];
   for (const module of project.modules) {
     const source = program.getSourceFile(module.absolutePath);
