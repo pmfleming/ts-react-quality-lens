@@ -52,7 +52,7 @@ These downgrades apply in the audit, not to the standalone artifacts or LSP diag
 
 Managed lint ruleset: `tsrqlens-typescript-recommended-v4`. `ban-ts-comment` rejects `@ts-ignore`/`@ts-nocheck` and requires at least three description characters for `@ts-expect-error`; `@ts-check` is allowed. Parser failure or unavailable type information is not clean typed-lint evidence. The additional correctness rules warn rather than block; unknown thrown/rejected values and caught rethrows are allowed because upstream code may throw arbitrary values. Rule applicability covers every enabled managed rule.
 
-All profiles inspect `strict` posture. The `strict` profile additionally expects `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `forceConsistentCasingInFileNames`, `noUncheckedSideEffectImports`, `verbatimModuleSyntax`, and `erasableSyntaxOnly`. This does not rewrite tsconfig or switch to a different typed-lint ruleset.
+All profiles inspect effective strict-family checks per discovered tsconfig, honoring explicit overrides and compiler defaults. Solution configs without root files are skipped; unavailable configs do not produce disabled-option findings. The `strict` profile additionally expects `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `forceConsistentCasingInFileNames`, `noUncheckedSideEffectImports`. This does not rewrite tsconfig or switch to a different typed-lint ruleset.
 
 A safe `unknown` annotation is not an escape hatch. Type coverage separates explicit/inferred `any`, error/unresolved types, and `unknown`; coverage is not a substitute for unsafe-operation diagnostics.
 

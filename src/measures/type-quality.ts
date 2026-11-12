@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { typeSafetyPostureRecords } from "../compiler-options.js";
 import { documentationEvidence } from "../typescript-documentation.js";
 import { fileRuleApplicability } from "../rule-applicability.js";
 import { ADVISORY_TYPED_RULES, BLOCKING_TYPED_RULES, TYPED_RULES, TYPED_RULESET } from "../rule-policy.js";
@@ -8,7 +9,6 @@ import { stableHash } from "../clone-utils.js";
 import { countBy, isRecord, parseJson } from "../collections.js";
 import { eslintFindingRecord } from "../integrations/eslint-findings.js";
 import { artifactBase, compilerProvenance, sourceSetHash } from "../provenance.js";
-import { riskForScore } from "../risk-model.js";
 import { escapeRecords, typeHealthRecords } from "../scoring.js";
 import { writeArtifact } from "../writer.js";
 import { writeQualityArtifact } from "./quality-artifact.js";
@@ -54,6 +54,7 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
       : null,
   }, records, {
     compiler_options: project.tsProject.compiler_options ?? null,
+    compiler_projects: project.tsProject.project_configs ?? [],
     tool_status: {
       compiler_api: {
         ...compilerProvenance().analysis,
@@ -249,38 +250,4 @@ function typeCoverageFinding(
     reason,
     signals: [{ kind: reason, value: actual }],
   };
-}
-
-function typeSafetyPostureRecords(config: Config, project: ProjectAnalysis): ScoredRecord[] {
-  const options = project.tsProject.compiler_options ?? {};
-  const strict = [
-    "strict",
-    "noUncheckedIndexedAccess",
-    "exactOptionalPropertyTypes",
-    "noImplicitOverride",
-    "noImplicitReturns",
-    "noFallthroughCasesInSwitch",
-    "forceConsistentCasingInFileNames",
-    "noUncheckedSideEffectImports",
-    "verbatimModuleSyntax",
-    "erasableSyntaxOnly",
-  ];
-  const expected = config.policy.profile === "strict" ? strict : ["strict"];
-  const missing = expected.filter((key) => options[key] !== true);
-  if (!missing.length) return [];
-  const score = Math.min(69, missing.length * 12);
-  return [{
-    id: "project:type-safety-posture",
-    rule_id: `ts-react-quality-lens/tsconfig-${config.policy.profile}`,
-    kind: "type_safety_posture",
-    evidence_kind: "diagnostic",
-    disposition: config.policy.profile === "baseline" ? "info" : "warn",
-    finding_confidence: "high",
-    scope: "project",
-    message: `Compiler options do not meet the ${config.policy.profile} profile: ${missing.join(", ")}.`,
-    score,
-    risk: riskForScore(score),
-    source: "typescript-compiler-options",
-    signals: missing.map((key) => ({ kind: "compiler_option_disabled", value: key })),
-  }];
 }

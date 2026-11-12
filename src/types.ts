@@ -343,9 +343,14 @@ type TypeScriptProjectConfig = {
   workspace_id: string;
   loaded: boolean;
   reason: string | null;
+  compiler_options?: Record<string, JsonValue | undefined>;
+  root_file_count?: number;
+  project_reference_count?: number;
 };
 
 export type TypeScriptProject = {
+  root_file_count?: number;
+  project_reference_count?: number;
   input_files?: string[];
   input_queries?: CompilerInputQuery[];
   available: boolean;

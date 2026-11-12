@@ -102,6 +102,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     builtin: "tsrqlens-analysis-v6",
     typescript_api_design: "bounded-signatures-v1",
     typescript_documentation: "public-export-presence-v1",
+    compiler_posture: "effective-per-project-v1",
     react_guidance: REACT_GUIDANCE_VERSION,
     runtime_observations: "runtime-observations-v4",
     rule_applicability: "bounded-dispatch-v1",

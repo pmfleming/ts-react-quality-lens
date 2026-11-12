@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as ts from "typescript";
+import { compilerOptionSummary } from "../compiler-options.js";
 import { collectSafetyEvidence } from "../typescript-safety.js";
 import { apiDesignRecords } from "../typescript-api-design.js";
 import { collectExportDocumentation } from "../typescript-documentation.js";
@@ -66,6 +67,9 @@ export function loadTypeScriptProjects(
       workspace_id: item.workspaceId,
       loaded: project.loaded,
       reason: project.reason,
+      ...(project.compiler_options ? { compiler_options: project.compiler_options } : {}),
+      ...(project.root_file_count !== undefined ? { root_file_count: project.root_file_count } : {}),
+      ...(project.project_reference_count !== undefined ? { project_reference_count: project.project_reference_count } : {}),
     })),
   };
 }
@@ -138,6 +142,8 @@ function createTypedProject(
     loaded: true,
     reason: null,
     compiler_options: compilerOptionSummary(parsed.options),
+    root_file_count: parsed.fileNames.length,
+    project_reference_count: parsed.projectReferences?.length ?? 0,
     input_files: [...new Set([
       ...program.getSourceFiles().map((file) => path.resolve(file.fileName)),
       ...[...inputs.files].map((file) => path.resolve(file)),
@@ -416,30 +422,6 @@ function safeTypeString(checker: ts.TypeChecker, symbol: ts.Symbol, node?: ts.No
   } catch {
     return null;
   }
-}
-
-function compilerOptionSummary(options: ts.CompilerOptions) {
-  return {
-    strict: Boolean(options.strict),
-    noImplicitAny: Boolean(options.noImplicitAny || options.strict),
-    strictNullChecks: Boolean(options.strictNullChecks || options.strict),
-    noUncheckedIndexedAccess: Boolean(options.noUncheckedIndexedAccess),
-    exactOptionalPropertyTypes: Boolean(options.exactOptionalPropertyTypes),
-    noImplicitOverride: Boolean(options.noImplicitOverride),
-    noImplicitReturns: Boolean(options.noImplicitReturns),
-    noFallthroughCasesInSwitch: Boolean(options.noFallthroughCasesInSwitch),
-    forceConsistentCasingInFileNames: Boolean(options.forceConsistentCasingInFileNames),
-    noPropertyAccessFromIndexSignature: Boolean(options.noPropertyAccessFromIndexSignature),
-    noUncheckedSideEffectImports: Boolean(options.noUncheckedSideEffectImports),
-    useUnknownInCatchVariables: Boolean(options.useUnknownInCatchVariables || options.strict),
-    verbatimModuleSyntax: Boolean(options.verbatimModuleSyntax),
-    erasableSyntaxOnly: Boolean(options.erasableSyntaxOnly),
-    declaration: Boolean(options.declaration),
-    isolatedDeclarations: Boolean(options.isolatedDeclarations),
-    jsx: options.jsx,
-    moduleResolution: options.moduleResolution,
-    target: options.target,
-  };
 }
 
 function flattenMessage(message: string | ts.DiagnosticMessageChain): string {
