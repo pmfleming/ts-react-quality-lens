@@ -25,6 +25,8 @@ function producerStatus(artifact: Artifact): CapabilityStatus {
   const { task_id: task, summary, confidence } = artifact;
   const fallback = confidence.complete === true ? "completed" : "partial";
   switch (task) {
+    case "quality.modern_web": return summary.status === "disabled" ? "disabled" : summary.status === "unavailable" ? "unavailable"
+      : summary.status === "failed" ? "failed_execution" : "partial";
     case "quality.type_health": return confidence.typescript_program_loaded === true ? fallback : "unavailable";
     case "quality.lint": return artifact.tool_status?.typed_eslint?.ran === true ? fallback : "unavailable";
     case "correctness.all": return ["passed", "failed"].includes(artifact.execution?.status ?? "") ? "completed" : "unavailable";
@@ -63,9 +65,16 @@ export function attachArtifactEvidence(config: Config, artifact: Artifact): Arti
 }
 
 function toolCapabilities(config: Config, artifact: Artifact): CapabilityEvidence[] {
+  if (artifact.task_id === "quality.modern_web") {
+    const tool = artifact.tool_status?.modern_web;
+    const status = tool?.status === "disabled" ? "disabled" : tool?.status === "unavailable" ? "unavailable"
+      : tool?.status === "failed" ? "failed_execution" : tool?.complete === true ? "completed" : "partial";
+    return [capability("quality.modern_web/modern_web", status, typeof tool?.reason === "string" ? tool.reason : undefined)];
+  }
   return Object.entries(artifact.tool_status ?? {}).filter(([, value]) => isRecord(value)).map(([name, value]) =>
     toolCapability(`${artifact.task_id}/${name}`, name === "compiler_api" ? { ...value, ran: value.loaded, complete: value.loaded } : value, (name === "jsx_a11y" && !config.accessibility.enabled) ||
-      (name === "knip" && !config.cleanup.knip) || (artifact.task_id === "quality.package_health" && !config.packageHealth.enabled)));
+      (name === "knip" && !config.cleanup.knip) || (name === "modern_web" && !config.modernWeb.enabled) ||
+      (artifact.task_id === "quality.package_health" && !config.packageHealth.enabled)));
 }
 
 type WireRun = Extract<WireEvidence, { kind: "run" }>;

@@ -42,8 +42,9 @@ export function runModernWeb(config: Config, inputs: WebInputSet): ModernWebExec
     return { ...initial, ...report, status: "succeeded", available: true, ran: true, complete: true, version: tool.version,
       duration_ms: Date.now() - started, coverage: "unknown" };
   } catch (error) {
+    const reason = (error instanceof Error ? error.message : String(error)).split(snapshot ?? "<no-snapshot>").join("<snapshot>").slice(0, 2000);
     return { ...initial, status: "failed", available: true, ran: true, version: tool.version,
-      duration_ms: Date.now() - started, reason: (error instanceof Error ? error.message : String(error)).slice(0,2000) };
+      duration_ms: Date.now() - started, reason };
   } finally {
     if (snapshot) fs.rmSync(snapshot, { recursive: true, force: true });
   }

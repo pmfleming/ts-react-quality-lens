@@ -2,6 +2,7 @@ import { isRecord, isUnknownArray } from "./collections.js";
 import { arrayOf, boolean, integer, nonempty, nonnegative, nullable, oneOf, optional, positiveInteger, shape, string } from "./validation.js";
 import { validWireExtension } from "./wire-evidence.js";
 import type { Artifact, AttwProblem } from "./types.js";
+import { validModernWebPayload } from "./modern-web-payload.js";
 
 const strings = arrayOf(string);
 const toolStatus = shape({ available: boolean, ran: boolean, complete: boolean, reason: nullable(string) });
@@ -32,6 +33,7 @@ function validImports(artifact: Artifact): boolean {
 const importStatus = oneOf("not_configured", "complete", "incomplete");
 const coveredFiles = arrayOf(shape({ file: nonempty, line_hits: arrayOf(shape({ line: positiveInteger, hits: nonnegative })) }));
 const checks = new Map<string, (artifact: Artifact) => boolean>([
+  ["quality.modern_web", validModernWebPayload],
   ["quality.type_health", ({ confidence, tool_status, diagnostics }) => boolean(confidence.typescript_program_loaded) &&
     shape({ loaded: boolean })(tool_status?.compiler_api) && tool_status?.compiler_api?.loaded === confidence.typescript_program_loaded && isUnknownArray(diagnostics)],
   ["quality.lint", ({ tool_status }) => status(tool_status?.typed_eslint) && strings(tool_status?.typed_eslint?.evaluated_files)],

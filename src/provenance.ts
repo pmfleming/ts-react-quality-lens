@@ -12,9 +12,9 @@ import { executablePackageVersion, toolPackageVersion } from "./integrations/too
 import { LENS_NAME, SCHEMA_VERSION } from "./tasks.js";
 import { discoverWorkspaces } from "./workspaces.js";
 import { gitHistoryFingerprint } from "./history.js";
-import { discoverWebInputs } from "./web-inputs.js";
+import { discoverWebInputs, type WebInputSet } from "./web-inputs.js";
 import { resolveModernWebTool } from "./integrations/modern-web-tool.js";
-import { browserTargetsFingerprint } from "./browser-targets.js";
+import { browserDataVersions, browserTargetsFingerprint } from "./browser-targets.js";
 import { MODERN_WEB_MAPPING_VERSION } from "./modern-web-compatibility.js";
 import type { AnalysisIdentity, Confidence, Config, ProjectAnalysis } from "./types.js";
 
@@ -83,6 +83,7 @@ export function artifactBase(
 
 export function analysisIdentity(config: Config): AnalysisIdentity {
   const integrationVersions = {
+    ...(config.modernWeb.enabled ? { modern_web_guidance: resolveModernWebTool(config)?.version ?? null, ...browserDataVersions() } : {}),
     typescript_native: toolPackageVersion("@typescript/native"),
     typescript_eslint: toolPackageVersion("@typescript-eslint/eslint-plugin"),
     react_hooks: toolPackageVersion("eslint-plugin-react-hooks"),
@@ -95,6 +96,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   };
   const configHash = configClosureHash(config);
   const rulesets = {
+    ...(config.modernWeb.enabled ? { modern_web: "provisional-scanner-v1", browser_targets: "bounded-config-v1", modern_web_mapping: MODERN_WEB_MAPPING_VERSION } : {}),
     builtin: "tsrqlens-analysis-v5",
     rule_applicability: "bounded-dispatch-v1",
     evidence_projection: "native-producer-v2",
@@ -153,6 +155,7 @@ function configClosureHash(config: Config): string {
     collectCompilerConfigInputs(file, parsed, files, config.projectRoot);
   }
   hash.update(JSON.stringify(effectiveSettings(config)));
+  if (config.modernWeb.enabled) hash.update(JSON.stringify(discoverWebInputs(config).configuration));
   for (const [label, file] of [...files].sort(([left], [right]) => left.localeCompare(right))) {
     hash.update(label);
     hash.update("\0");
@@ -182,9 +185,9 @@ export function sourceSetHash(
   return contentHash([...files.values(), ...dependencies]);
 }
 
-export function taskInputHash(config: Config, taskId: string, sourceHash: string, identity = analysisIdentity(config)): string {
+export function taskInputHash(config: Config, taskId: string, sourceHash: string, identity = analysisIdentity(config), webInputs?: WebInputSet): string {
   if (taskId === "quality.modern_web") {
-    const inputs = discoverWebInputs(config);
+    const inputs = webInputs ?? discoverWebInputs(config);
     return contentHash([], [identity.id, taskId, inputs.fingerprint, MODERN_WEB_MAPPING_VERSION,
       config.modernWeb.enabled ? browserTargetsFingerprint(config, inputs) : "disabled",
       config.modernWeb.enabled ? resolveModernWebTool(config)?.fingerprint ?? "unavailable" : "disabled"]);

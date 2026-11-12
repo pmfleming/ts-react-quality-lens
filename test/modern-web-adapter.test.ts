@@ -67,6 +67,7 @@ test("adapter enforces process limits and reports unavailable or failed executio
   assert.equal(runModernWeb(c, inputs).status, "failed");
   install("setInterval(() => {}, 1000);");
   assert.equal(runModernWeb(c, inputs).status, "failed");
+  c.modernWeb.timeoutMs = 5000;
   install("process.stdout.write('x'.repeat(10000));");
   assert.equal(runModernWeb(c, inputs).status, "failed");
   install("console.log(JSON.stringify({targetDir:process.argv[3],totalFindings:0,guides:[]}));");

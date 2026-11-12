@@ -5,6 +5,10 @@ export const SCHEMA_VERSION = "0.3.0";
 
 export const TASKS = [
   {
+    id: "quality.modern_web", category: "quality", title: "Modern web review evidence", artifact: "modern_web.json",
+    description: "Optionally scans selected JS/TS, HTML and CSS for provisional modernization candidates with browser-target-qualified advice.",
+  },
+  {
     id: "testing.coverage", category: "testing", title: "Execution coverage", artifact: "execution_coverage.json",
     description: "Imports source-linked LCOV, Istanbul or original-JavaScript V8 evidence; reports changed-line and function observations.",
   },

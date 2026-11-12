@@ -25,6 +25,7 @@
         "quality.cleanup",
         "quality.sarif",
         "quality.runtime",
+        "quality.modern_web",
         "quality.package_health",
         "correctness.catalog",
         "correctness.all",
@@ -176,7 +177,393 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "task_id": {
+            "const": "quality.modern_web"
+          }
+        },
+        "required": [
+          "task_id"
+        ]
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "inputs",
+          "browser_data_versions",
+          "browser_targets",
+          "tool_status",
+          "records",
+          "limitations"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "required": [
+              "fingerprint",
+              "files",
+              "skipped",
+              "configuration_files"
+            ],
+            "properties": {
+              "fingerprint": {
+                "type": "string"
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "file",
+                    "kind"
+                  ],
+                  "properties": {
+                    "file": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "script",
+                        "html",
+                        "css",
+                        "manifest"
+                      ]
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "skipped": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "file",
+                    "reason"
+                  ],
+                  "properties": {
+                    "file": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "configuration_files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "browser_data_versions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "browser_targets": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/modernWebBrowserTargets"
+            }
+          },
+          "tool_status": {
+            "type": "object",
+            "required": [
+              "modern_web"
+            ],
+            "properties": {
+              "modern_web": {
+                "type": "object",
+                "required": [
+                  "status",
+                  "available",
+                  "ran",
+                  "complete",
+                  "reason",
+                  "version",
+                  "coverage",
+                  "limitations"
+                ],
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "disabled",
+                      "unavailable",
+                      "failed",
+                      "succeeded"
+                    ]
+                  },
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "ran": {
+                    "type": "boolean"
+                  },
+                  "complete": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "coverage": {
+                    "enum": [
+                      "not_run",
+                      "unknown"
+                    ]
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/modernWebCandidate"
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  ],
   "$defs": {
+    "modernWebBrowserTargets": {
+      "type": "object",
+      "required": [
+        "status",
+        "workspace",
+        "source",
+        "environment",
+        "queries",
+        "resolved",
+        "reason",
+        "config_files"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "resolved",
+            "unknown"
+          ]
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environment": {
+          "type": "string"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "config_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "modernWebCompatibility": {
+      "type": "object",
+      "required": [
+        "status",
+        "feature_ids",
+        "unsupported_targets",
+        "unknown_targets",
+        "reason",
+        "remediation",
+        "guard"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "supported",
+            "fallback_required",
+            "incompatible",
+            "unknown"
+          ]
+        },
+        "feature_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unsupported_targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unknown_targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string"
+        },
+        "remediation": {
+          "enum": [
+            "review_replacement",
+            "review_fallback",
+            "withheld"
+          ]
+        },
+        "guard": {
+          "enum": [
+            "observed",
+            "not_observed",
+            "not_assessed"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "modernWebCandidate": {
+      "type": "object",
+      "required": [
+        "source",
+        "disposition",
+        "evidence_kind",
+        "semantic_decision",
+        "contextual_verification",
+        "guide_id",
+        "guide_url",
+        "upstream_message",
+        "verification",
+        "browser_targets",
+        "compatibility"
+      ],
+      "properties": {
+        "source": {
+          "const": "modern-web-guidance"
+        },
+        "disposition": {
+          "const": "review"
+        },
+        "evidence_kind": {
+          "const": "heuristic"
+        },
+        "semantic_decision": {
+          "const": "unresolved"
+        },
+        "contextual_verification": {
+          "const": "pending"
+        },
+        "guide_id": {
+          "type": "string"
+        },
+        "guide_url": {
+          "type": "string"
+        },
+        "upstream_message": {
+          "type": "string"
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "keepWhen",
+                "dropWhen"
+              ],
+              "properties": {
+                "keepWhen": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "dropWhen": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          ]
+        },
+        "browser_targets": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/modernWebBrowserTargets"
+            }
+          ]
+        },
+        "compatibility": {
+          "$ref": "#/$defs/modernWebCompatibility"
+        }
+      },
+      "additionalProperties": true
+    },
     "jsonValue": {
       "anyOf": [
         { "type": "string" },

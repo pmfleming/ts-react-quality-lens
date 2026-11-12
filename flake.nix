@@ -24,7 +24,7 @@
             version = "0.3.0";
             src = ./.;
             nodejs = pkgs.nodejs;
-            npmDepsHash = "sha256-5mJ6eOg62LBIzPv8+nZ6WanfEqZts54i0c6TMhkublQ=";
+            npmDepsHash = "sha256-FDU7KUlB7TLYbgwAb0V8i+N+JQDu/UBwu7lmbyQ1tVU=";
             # jscpd v5 ships platform ELF binaries, not a JavaScript implementation.
             nativeBuildInputs = [ pkgs.autoPatchelfHook ];
             buildInputs = [ pkgs.stdenv.cc.cc.lib ];

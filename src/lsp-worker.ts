@@ -3,6 +3,7 @@ import { isSuppressed } from "./actions.js";
 import { createAnalysisContext } from "./analysis-context.js";
 import { artifactFindings } from "./findings.js";
 import { runMeasure } from "./measure-runner.js";
+import { savedModernWebFindings } from "./measures/modern-web.js";
 import type { Config } from "./types.js";
 
 const tasks = [
@@ -12,7 +13,7 @@ const tasks = [
 
 const config = workerData as Config;
 const context = createAnalysisContext(config);
-const findings = tasks.flatMap((taskId) => runMeasure(config, taskId, `lsp ${taskId}`, {
+const findings = [...tasks.flatMap((taskId) => runMeasure(config, taskId, `lsp ${taskId}`, {
   context, allowTestExecution: false,
-}).flatMap(artifactFindings)).filter((finding) => !isSuppressed(finding));
+}).flatMap(artifactFindings)), ...savedModernWebFindings(config)].filter((finding) => !isSuppressed(finding));
 parentPort?.postMessage(findings);

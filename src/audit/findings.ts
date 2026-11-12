@@ -29,6 +29,7 @@ const AUDIT_TASK_IDS = [
   "quality.package_health",
   "quality.sarif",
   "quality.runtime",
+  "quality.modern_web",
   "testing.coverage",
 ];
 
@@ -127,6 +128,8 @@ function policyDisposition(config: Config, finding: ScoredRecord): FindingDispos
 
 export function staleSuppressionFindings(config: Config, findings: AuditFinding[]): AuditFinding[] {
   return config.suppressions.flatMap((suppression, index) => {
+    // An optional scanner with unknown per-file coverage cannot prove that its suppression is stale.
+    if (suppression.id?.startsWith("modern-web:") || suppression.kind === "web_modernization_candidate") return [];
     if (findings.some((finding) => suppressionMatches(suppression, finding))) return [];
     const id = suppression.id ?? `${suppression.kind ?? "finding"}:${suppression.file ?? index + 1}`;
     return [{

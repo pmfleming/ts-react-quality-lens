@@ -31,11 +31,14 @@ test("CSS edits, additions, removals and browser config invalidate only relevant
   const guard = inputSnapshot(c, project);
   const hash = () => taskInputHash(c, "quality.modern_web", "ignored-source-hash");
   let previous = hash();
+  const captured = discoverWebInputs(c);
   write("vendor/ignored.css", "a {}\n");
   assert.equal(hash(), previous);
   assert.equal(guard(), null);
   write("src/view.css", "a { color: blue; }\n");
   assert.notEqual(hash(), previous);
+  assert.equal(taskInputHash(c, "quality.modern_web", "ignored", undefined, captured), previous,
+    "a captured scanner snapshot retains its original content identity even if files change before execution");
   assert.match(guard() ?? "", /changed/);
   assert.equal(createAnalysisContext(c).project().cache.status, "hit");
   previous = hash();
@@ -58,4 +61,11 @@ test("disabled discovery and out-of-scope roots do not read arbitrary web assets
   fs.symlinkSync(path.join(root, "src"), path.join(root, "linked"), "junction");
   const linked = discoverWebInputs(config({ modern_web: { enabled: true, roots: ["linked/index.ts"] } }));
   assert.ok(linked.skipped.some((item) => item.reason === "symlink"));
+}));
+
+test("audit staging continues to exclude the configured publication directory", () => webFixture(({ root, write, config }) => {
+  write("analysis/generated.css", ".generated {}\n");
+  const c = config({ output_dir: "analysis", modern_web: { enabled: true } });
+  c.outputDir = path.join(root, "analysis/.audit-run-fixture");
+  assert.ok(!discoverWebInputs(c).files.some((file) => file.relativePath.startsWith("analysis/")));
 }));

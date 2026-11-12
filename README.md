@@ -76,6 +76,7 @@ All commands accept `--config PATH` (or `-c PATH`); the default is `./ts-react-q
 | `quality.package_health` | `package_health.json` | Declaration emit, npm packing, publint, and Are The Types Wrong; disabled unless enabled by configuration/policy. |
 | `quality.sarif` | `sarif_findings.json` | Imported SARIF 2.1.0 findings and invocation status; does not run security scanners. |
 | `quality.runtime` | `runtime_health.json` | Imported React Profiler summaries, axe violations, and React Doctor diagnostics; does not launch the application. |
+| `quality.modern_web` | `modern_web.json` | Optional Chrome modernization scanner candidates for JS/TS, HTML and CSS, with contextual verification criteria and browser-target-qualified advice. |
 | `correctness.catalog` | `correctness_review.json`, `test_catalog.json` | Test discovery and compiler-resolved source associations; no tests executed. |
 | `correctness.all` | `correctness_review.json`, `test_catalog.json` | Same catalog plus suite-level execution of the configured test command. |
 | `map.architecture` | `map.json` | Module/workspace graph and risk-model-v3 category scores. |
@@ -109,6 +110,8 @@ Check `confidence`, `tool_status`, and task-specific completion fields before in
 Workspace discovery supports npm/Yarn package patterns, pnpm workspace patterns, and TypeScript project references. Ownership and cross-workspace edges are exposed. Workspace framework/profile overrides are metadata, not independent per-workspace audit policies; audit uses the root policy.
 
 The bundled dependencies include ESLint/plugins, Knip, jscpd, dependency-cruiser, publint, and ATTW. Integrations can still be unavailable or fail and have built-in fallbacks where implemented. See [integrations and protocol behavior](docs/integrations.md).
+
+Modern web evidence is disabled by default. Install the optional `modern-web-guidance@1.0.0` peer in the analyzed project, enable `modern_web`, and run `measure quality.modern_web`. Scanner execution needs Node 22+; other lens tasks retain the Node 20.19 minimum. Candidates remain review-only, including when browser support is established. See [configuration](docs/configuration.md#modern-web-evidence) and [scanner limitations](docs/integrations.md#modern-web-guidance).
 
 ## Development
 

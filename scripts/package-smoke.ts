@@ -37,6 +37,15 @@ try {
   fs.writeFileSync(config, JSON.stringify({ source_roots: ["src"], output_dir: "out", test_command: "node --test test/behavior.test.mjs" }));
   node([bin, "catalog", "--config", config], root);
   node([bin, "measure", "quality.hotspots", "--config", config], root);
+  node([bin, "measure", "quality.modern_web", "--config", config], root);
+  const modernDisabled = parseJson(fs.readFileSync(path.join(root, "out/modern_web.json"), "utf8"));
+  assert.ok(isRecord(modernDisabled) && isRecord(modernDisabled.summary) && modernDisabled.summary.status === "disabled");
+  const webConfig = path.join(root, "web-lens.json");
+  fs.writeFileSync(webConfig, JSON.stringify({ modern_web: { enabled: true }, output_dir: "out-web", test_command: null }));
+  node([bin, "measure", "quality.modern_web", "--config", webConfig], root);
+  const modernOptional = parseJson(fs.readFileSync(path.join(root, "out-web/modern_web.json"), "utf8"));
+  assert.ok(isRecord(modernOptional) && isRecord(modernOptional.summary) && modernOptional.summary.status === "unavailable",
+    "optional scanner must not be installed automatically for a consumer");
   node([bin, "measure", "correctness.all", "--config", config], root);
   node([bin, "measure", "quality.clones", "--config", config], root);
   const clones = parseJson(fs.readFileSync(path.join(root, "out/clones.json"), "utf8"));

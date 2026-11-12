@@ -43,7 +43,8 @@ export function discoverWebInputs(config: Config): WebInputSet {
     if (visited.has(file)) return;
     visited.add(file);
     if (!within(config.projectRoot, file)) return skip(file, "outside_project");
-    if (within(config.outputDir, file) || isExcluded(file, path.basename(file), selection)) return;
+    const publishedOutput = path.resolve(config.configDir, config.raw.output_dir ?? "target/analysis");
+    if (within(config.outputDir, file) || within(publishedOutput, file) || isExcluded(file, path.basename(file), selection)) return;
     if (isTestPath(relative(file)) || /(?:^|\/)(?:docs?|examples?|demos?)(?:\/|$)/.test(relative(file))) return;
     try {
       const stat = fs.lstatSync(file);

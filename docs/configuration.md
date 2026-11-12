@@ -71,6 +71,32 @@ Example optional configuration fragment:
 }
 ```
 
+## Modern web evidence
+
+`modern_web` is optional and disabled by default. `roots` resolve relative to the lens configuration file and default to the project root. The scan includes JS/TS variants, `.html`, `.htm`, `.css` (including CSS Modules), and relevant ancestor package manifests. It uses separate discovery from the TypeScript module graph. Project exclusions and `modern_web.exclude` apply together. Tests, documentation/examples/demo directories, generated/build output, symlinks, and configured output directories are excluded. Unsupported SCSS/Sass/Less and framework template formats are reported as skipped; they are not compiled. Inputs outside the project are rejected from selection.
+
+```json
+{
+  "modern_web": {
+    "enabled": true,
+    "roots": ["src", "public", "index.html"],
+    "exclude": ["vendor"],
+    "timeout_ms": 120000,
+    "max_output_bytes": 8388608,
+    "browsers": {
+      "targets": ["chrome 130", "firefox 120", "safari 17"],
+      "environment": "production"
+    }
+  }
+}
+```
+
+Omit `browsers.targets` to discover the nearest repository `.browserslistrc`, `browserslist` file, or `package.json` Browserslist field for each selected file. Child packages may have different targets. Explicit targets override discovery. Named environments fall back to a declared `defaults` section; missing/empty queries, conflicts, malformed configuration and unknown browsers produce an unknown result. Discovery stops at the project root and ignores ambient `BROWSERSLIST` settings. Shared `extends` configs and custom usage statistics are outside the supported scope; supply explicit queries for those projects.
+
+Timeout defaults to 120 seconds (maximum 600); output defaults to 8 MiB (maximum 64 MiB). The web inventory limits individual files to 1 MiB and selects at most 10,000 files, recording skipped paths. The upstream scanner has additional filters and does not report every skipped or unparsed file.
+
+Browser resolution and support data are pinned dependencies. Artifacts record their versions, resolved targets, configuration origins, mapping version, and input fingerprints. HTML/CSS edits, additions/removals, browser configuration changes, and scanner/data changes invalidate saved modernization evidence. CSS-only edits do not enter the compiler project cache or TypeScript metrics.
+
 ## Workspaces
 
 `workspaces.enabled` defaults to true. Discovery uses, in order:

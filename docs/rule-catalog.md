@@ -83,6 +83,12 @@ React findings carry `react_category`; the summary counts correctness, optimizat
 - React Doctor: error severity `warn`, otherwise `review`.
 - Runtime input failure: `warn` and incomplete runtime status; audit adds an incomplete reason.
 
+## Modern web candidates
+
+`quality.modern_web` is opt-in. Chrome's scanner findings always remain `review`, regardless of profile or browser support. The scanner's successful invocation does not prove full file/rule coverage. Missing or failed scanner execution is recorded in the artifact and does not add a required-check failure. There is no `modern-web` required-check option or automatic promotion to a warning/blocker.
+
+Replacement advice is qualified by pinned browser support data and explicit/discovered targets. Unknown rules or targets retain the candidate and withhold replacement advice. Contextual `keepWhen`/`dropWhen` verification is still required for supported replacements. See [integration scope and limitations](integrations.md#modern-web-guidance).
+
 ## Built-in signals
 
 Warnings include structural `ts_ignore`/`ts_nocheck`, `layer_violation`, `import_cycle`, and `stale_suppression`. `ts_expect_error` and Storybook evidence are informational.
