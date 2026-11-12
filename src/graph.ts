@@ -95,10 +95,10 @@ class TarjanCycleFinder {
   }
 
   run(): string[][] {
-    for (const node of this.graph.keys()) {
+    for (const node of [...this.graph.keys()].sort()) {
       if (!this.indexes.has(node)) this.strongConnect(node);
     }
-    return dedupeBy(this.cycles, (cycle) => canonicalCycle(cycle));
+    return this.cycles.sort((left, right) => canonicalCycle(left).localeCompare(canonicalCycle(right)));
   }
 
   private strongConnect(node: string): void {
@@ -126,7 +126,7 @@ class TarjanCycleFinder {
     let current: string | undefined;
     do {
       current = this.stack.pop();
-      if (!current) break;
+      if (current === undefined) break;
       this.onStack.delete(current);
       component.push(current);
     } while (current !== node);
@@ -135,11 +135,29 @@ class TarjanCycleFinder {
     const hasSelfLoop = component.length === 1 && onlyNode !== undefined &&
       (this.graph.get(onlyNode) ?? []).includes(onlyNode);
     if (component.length > 1 || hasSelfLoop) {
-      const ordered = [...component].sort((left, right) => left.localeCompare(right));
-      const firstNode = ordered[0];
-      if (firstNode !== undefined) this.cycles.push([...ordered, firstNode]);
+      this.cycles.push(cycleWitness(this.graph, component));
     }
   }
+}
+
+/** One real directed cycle per cyclic component; this does not enumerate all cycles. */
+function cycleWitness(graph: Map<string, string[]>, component: string[]): string[] {
+  const members = new Set(component);
+  const start = [...members].sort()[0];
+  if (start === undefined) return [];
+  const parents = new Map<string, string | null>([[start, null]]);
+  for (const current of parents.keys()) {
+    for (const next of [...new Set(graph.get(current))].sort()) {
+      if (!members.has(next)) continue;
+      if (next === start && (current !== start || members.size === 1)) {
+        const path = [start];
+        for (let node: string | null = current; node !== null; node = parents.get(node) ?? null) path.push(node);
+        return path.reverse();
+      }
+      if (!parents.has(next)) parents.set(next, current);
+    }
+  }
+  throw new Error("Cyclic component has no directed cycle witness");
 }
 
 export function dependencyCruiserEdges(project: { imports: ImportRecord[] }, modules: DependencyCruiserModule[]) {

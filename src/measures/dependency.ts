@@ -68,6 +68,7 @@ export function measureDependencyHealth(config: Config, command: string, context
       external_edges: externalEdges.length,
       cycles: uniqueCycleCount(cycles, depcruiseCycles),
       heuristic_cycles: cycles.length,
+      internal_cycle_scope: "one-directed-witness-per-cyclic-component",
       dependency_cruiser_cycles: depcruiseCycles.length,
       deep_relative_imports: deepRelativeImports.length,
       barrel_modules: barrelModules.length,

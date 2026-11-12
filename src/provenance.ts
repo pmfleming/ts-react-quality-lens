@@ -128,6 +128,7 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
     import_resolution: "path-aliases-v2",
     file_discovery: "project-relative-test-paths-v2",
     architecture: "risk-model-v3",
+    dependency_cycles: "directed-component-witness-v2",
     typed_lint: TYPED_RULESET,
     typed_lint_projects: "project-service-auto-v1",
     react: config.react.ruleset,
