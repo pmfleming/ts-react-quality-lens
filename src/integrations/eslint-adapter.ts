@@ -45,7 +45,7 @@ export function runTypedLint(config: Config): EslintTypeAwareResult {
       duration_ms: 0,
     };
   }
-  const result = runTemporaryEslint(config, "typed", typedLintConfig(config, projectMode), undefined, true);
+  const result = runTemporaryEslint(config, "typed", typedLintConfig(config, projectMode));
   const parserFailures = result.messages.filter((message) => message.rule_id === "eslint/parser");
   return {
     ...result,
@@ -56,70 +56,53 @@ export function runTypedLint(config: Config): EslintTypeAwareResult {
   };
 }
 
-export function runJsxA11yLint(config: Config): EslintAccessibilityResult {
+type SyntaxMode = "react-hooks" | "jsx-a11y" | "combined";
+type LintResult = ReturnType<typeof runTemporaryEslint>;
+
+export function runReactSyntaxLint(config: Config): { hooks: EslintReactHooksResult; accessibility: EslintAccessibilityResult } {
+  const selection = selectReactRules(config.react.ruleset);
+  const run = (mode: SyntaxMode) => runTemporaryEslint(config, mode, syntaxLintConfig(config, selection.rules, mode));
+  const combined = run(config.accessibility.enabled ? "combined" : "react-hooks");
+  // Configuration/plugin failures must not hide an independently runnable family.
+  const isolate = config.accessibility.enabled && combined.available && !combined.ran;
+  const hooks = lintFamily(isolate ? run("react-hooks") : combined, "react-hooks/");
+  const accessibility = lintFamily(isolate ? run("jsx-a11y") : combined, "jsx-a11y/");
   const version = toolPackageVersion("eslint-plugin-jsx-a11y");
-  if (!config.accessibility.enabled) {
-    return {
-      available: version !== null,
-      ran: false,
-      reason: "managed accessibility lint is disabled",
-      duration_ms: 0,
-      messages: [],
-      version,
-      complete: false,
-    };
-  }
-  const result = runTemporaryEslint(
-    config,
-    "jsx-a11y",
-    jsxA11yConfig(managedPackageJsonUrl(), config),
-    "jsx-a11y/",
-    true,
-  );
   return {
-    ...result,
-    version,
-    complete: result.ran && !result.messages.some((message) => message.rule_id === "eslint/parser"),
+    hooks: { ...hooks, version: toolPackageVersion("eslint-plugin-react-hooks"), ruleset: config.react.ruleset,
+      selected_preset: selection.preset, enabled_rules: enabledReactRules(selection.rules),
+      complete: hooks.ran && !hooks.messages.some((message) => message.rule_id === "eslint/parser") && selectedFilesEvaluated(config, hooks.evaluated_files, /\.[jt]sx?$/) },
+    accessibility: config.accessibility.enabled
+      ? { ...accessibility, version, complete: accessibility.ran && !accessibility.messages.some((message) => message.rule_id === "eslint/parser") }
+      : disabledAccessibilityLint(),
   };
 }
 
-export function runReactHooksLint(config: Config): EslintReactHooksResult {
-  const selection = selectReactRules(config.react.ruleset);
-  const result = runTemporaryEslint(
-    config,
-    "react-hooks",
-    reactHooksConfig(managedPackageJsonUrl(), selection.rules, config.react.additionalEffectHooks),
-    "react-hooks/",
-    true,
-  );
-  return {
-    ...result,
-    version: toolPackageVersion("eslint-plugin-react-hooks"),
-    ruleset: config.react.ruleset,
-    selected_preset: selection.preset,
-    enabled_rules: enabledReactRules(selection.rules),
-    complete: result.ran && !result.messages.some((message) => message.rule_id === "eslint/parser") && selectedFilesEvaluated(config, result.evaluated_files, /\.[jt]sx?$/),
-  };
+export function disabledAccessibilityLint(): EslintAccessibilityResult {
+  const version = toolPackageVersion("eslint-plugin-jsx-a11y");
+  return { available: version !== null, ran: false, reason: "managed accessibility lint is disabled", duration_ms: 0, messages: [], version, complete: false };
+}
+
+function lintFamily(result: LintResult, prefix: string): LintResult {
+  return { ...result, messages: result.messages.filter((message) => message.rule_id.startsWith(prefix) || message.rule_id === "eslint/parser") };
 }
 
 function runTemporaryEslint(
   config: Config,
   name: string,
   configText: string,
-  rulePrefix: string | undefined,
-  preferManaged: boolean,
 ) {
   const toolingDir = fs.mkdtempSync(path.join(os.tmpdir(), `ts-react-quality-lens-eslint-${name}-${process.pid}-`));
   const configPath = path.join(toolingDir, `eslint-${name}.config.mjs`);
   try {
     fs.writeFileSync(configPath, configText, "utf8");
-    return runEslint(config, configPath, rulePrefix, preferManaged);
+    return runEslint(config, configPath);
   } finally {
     fs.rmSync(toolingDir, { recursive: true, force: true });
   }
 }
 
-function runEslint(config: Config, configPath: string, rulePrefix: string | undefined, preferManaged: boolean) {
+function runEslint(config: Config, configPath: string) {
   const args = [
     "--config",
     configPath,
@@ -128,15 +111,15 @@ function runEslint(config: Config, configPath: string, rulePrefix: string | unde
     "--no-error-on-unmatched-pattern",
     ...existingRelativeRoots(config),
   ];
-  const parse = (stdout: string) => normalizeEslintReport(parseJson(stdout), config, rulePrefix);
+  const parse = (stdout: string) => normalizeEslintReport(parseJson(stdout), config);
   return runToolAdapter<{ messages: EslintMessage[]; evaluated_files: string[] }>(
     config,
     "eslint",
-    preferManaged ? "managed eslint executable was not found" : "eslint executable was not found",
+    "managed eslint executable was not found",
     { messages: [], evaluated_files: [] },
     (executable) => parse(runLocalTool(executable, args, toolRunOptions(config))),
     (error) => recoverToolJson(error, "[", parse),
-    preferManaged,
+    true,
   );
 }
 
@@ -171,51 +154,37 @@ export default [{
 `;
 }
 
-function jsxA11yConfig(toolPackageUrl: string, config: Config): string {
+function syntaxLintConfig(config: Config, rules: Record<string, unknown>, mode: SyntaxMode): string {
+  const hooks = mode !== "jsx-a11y", accessibility = mode !== "react-hooks";
   const settings = {
-    components: config.accessibility.components,
-    ...(config.accessibility.polymorphicPropName
-      ? { polymorphicPropName: config.accessibility.polymorphicPropName }
-      : {}),
+    ...(hooks ? { "react-hooks": config.react.additionalEffectHooks ? { additionalEffectHooks: config.react.additionalEffectHooks } : {} } : {}),
+    ...(accessibility ? { "jsx-a11y": { components: config.accessibility.components,
+      ...(config.accessibility.polymorphicPropName ? { polymorphicPropName: config.accessibility.polymorphicPropName } : {}) } } : {}),
   };
   return `import { createRequire } from "node:module";
-const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
-const jsxA11y = toolRequire("eslint-plugin-jsx-a11y");
+const toolRequire = createRequire(${JSON.stringify(managedPackageJsonUrl())});
 const tsParser = toolRequire("@typescript-eslint/parser");
+${hooks ? 'const reactHooks = toolRequire("eslint-plugin-react-hooks");' : ""}
+${accessibility ? 'const jsxA11y = toolRequire("eslint-plugin-jsx-a11y");' : ""}
 export default [{
   files: ["**/*.{js,jsx,ts,tsx}"], ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
   languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module" } },
-  plugins: { "jsx-a11y": jsxA11y },
-  settings: { "jsx-a11y": ${JSON.stringify(settings)} },
-  rules: jsxA11y.configs.recommended.rules
-}];
-`;
-}
-
-function reactHooksConfig(toolPackageUrl: string, rules: Record<string, unknown>, additionalEffectHooks: string | null): string {
-  return `import { createRequire } from "node:module";
-const toolRequire = createRequire(${JSON.stringify(toolPackageUrl)});
-const reactHooks = toolRequire("eslint-plugin-react-hooks");
-const tsParser = toolRequire("@typescript-eslint/parser");
-export default [{
-  files: ["**/*.{js,jsx,ts,tsx}"], ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
-  languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module" } },
-  plugins: { "react-hooks": reactHooks },
-  settings: { "react-hooks": ${JSON.stringify(additionalEffectHooks ? { additionalEffectHooks } : {})} },
-  rules: ${JSON.stringify(rules)}
+  plugins: { ${hooks ? '"react-hooks": reactHooks,' : ""} ${accessibility ? '"jsx-a11y": jsxA11y,' : ""} },
+  settings: ${JSON.stringify(settings)},
+  rules: { ...${JSON.stringify(hooks ? rules : {})}, ...${accessibility ? "jsxA11y.configs.recommended.rules" : "{}"} }
 }];
 `;
 }
 
 const eslintReport = arrayOf(shape({ filePath: string, messages: arrayOf(shape({ message: string })) }));
-function normalizeEslintReport(value: unknown, config: Config, rulePrefix?: string) {
+function normalizeEslintReport(value: unknown, config: Config) {
   if (!eslintReport(value)) throw new Error("Invalid ESLint report");
   const selected = new Set(discoverSourceFiles(config).map((file) => relativePath(config.projectRoot, file)));
   const messages = value.flatMap((result) => result.messages.flatMap((message): EslintMessage[] => {
     if (![1, 2].includes(Number(message.severity))) throw new Error("Invalid ESLint diagnostic");
     const ruleId = typeof message.ruleId === "string" ? message.ruleId : null;
     const fatal = message.fatal === true;
-    if (rulePrefix ? !ruleId?.startsWith(rulePrefix) && !fatal : !ruleId && !fatal) return [];
+    if (!ruleId && !fatal) return [];
     return [{
       file: relativePath(config.projectRoot, result.filePath),
       line: numberOrNull(message.line),

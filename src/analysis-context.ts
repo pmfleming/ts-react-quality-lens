@@ -4,7 +4,7 @@ import { discoverSourceFiles, discoverTestFiles, readSourceFile } from "./files.
 import { analyzeModule } from "./extract.js";
 import { entrypointRolesForFile, projectEntrypoints, workspacePackageEntrypoints } from "./entrypoints.js";
 import { readAnalysisCache, writeAnalysisCache } from "./cache.js";
-import { runJsxA11yLint, runReactHooksLint, runTypedLint } from "./integrations/eslint-adapter.js";
+import { disabledAccessibilityLint, runReactSyntaxLint, runTypedLint } from "./integrations/eslint-adapter.js";
 import { runDependencyCruiser, runJscpd, runKnip } from "./integrations/external-tools.js";
 import { loadTypeScriptProjects } from "./integrations/typescript-project.js";
 import { runPackageHealth } from "./integrations/package-tools.js";
@@ -87,6 +87,7 @@ export function createAnalysisContext(config: Config): AnalysisContext {
     return () => (state ??= { value: load() }).value;
   }
   const project = memoize(() => analyzeProject(config));
+  const syntaxLint = memoize(() => runReactSyntaxLint(config));
   return {
     project,
     sourceHash: memoize(() => sourceSetHash(project())),
@@ -96,8 +97,8 @@ export function createAnalysisContext(config: Config): AnalysisContext {
     dependencyCruiser: memoize(() => runDependencyCruiser(config)),
     knip: memoize(() => runKnip(config)),
     packageHealth: memoize(() => runPackageHealth(config)),
-    reactHooksLint: memoize(() => runReactHooksLint(config)),
-    jsxA11yLint: memoize(() => runJsxA11yLint(config)),
+    reactHooksLint: () => syntaxLint().hooks,
+    jsxA11yLint: () => config.accessibility.enabled ? syntaxLint().accessibility : disabledAccessibilityLint(),
     typedLint: memoize(() => runTypedLint(config)),
   };
 }
