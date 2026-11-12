@@ -10,7 +10,7 @@ import { changedFilesSince, defaultBase } from "../audit/change-set.js";
 import { stableHash } from "../clone-utils.js";
 import { countBy, isRecord, parseJson } from "../collections.js";
 import { eslintFindingRecord } from "../integrations/eslint-findings.js";
-import { artifactBase, compilerProvenance, sourceSetHash } from "../provenance.js";
+import { artifactBase, compilerProvenance } from "../provenance.js";
 import { escapeRecords, typeHealthRecords } from "../scoring.js";
 import { writeArtifact } from "../writer.js";
 import { writeQualityArtifact } from "./quality-artifact.js";
@@ -19,7 +19,7 @@ import type { AnalysisContext, Config, DiagnosticRecord, EslintMessage, ProjectA
 export function measureEscapeHatches(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
   const records = project.modules.flatMap(escapeRecords);
-  return writeQualityArtifact(config, "ts_escape_hatches.json", "quality.escape_hatches", command, project, {
+  return writeQualityArtifact(config, "ts_escape_hatches.json", "quality.escape_hatches", command, context, {
     records: records.length,
     files_with_escape_hatches: new Set(records.map((record) => record.file)).size,
     by_kind: Object.fromEntries(countBy(records, (record) => record.kind)),
@@ -47,7 +47,7 @@ export function measureTypeHealth(config: Config, command: string, context: Anal
     ...typeCoverageRecords(config, coverage),
     ...diagnostics.map(compilerDiagnosticFinding),
   ];
-  return writeQualityArtifact(config, "type_health.json", "quality.type_health", command, project, {
+  return writeQualityArtifact(config, "type_health.json", "quality.type_health", command, context, {
     records: records.length,
     high_risk_records: records.filter((record) => record.risk === "high").length,
     wide_types: records.filter((record) => record.signals?.some((signal) => signal.kind === "wide_surface")).length,
@@ -95,7 +95,7 @@ export function measureLint(config: Config, command: string, context: AnalysisCo
       typed_eslint_complete: lint.complete,
       typed_eslint_reason: lint.reason,
       required_inputs: ["source_roots_exist", "package_json_found", "typed_eslint_complete"],
-    }), sourceSetHash(project)),
+    }), context.sourceHash(), context.identity()),
     summary: {
       records: records.length,
       blocking_findings: records.filter((record) => record.disposition === "block").length,

@@ -3,7 +3,7 @@ import { fileRuleApplicability } from "../rule-applicability.js";
 import { BLOCKING_REACT_RULES } from "../rule-policy.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { eslintFindingRecord } from "../integrations/eslint-findings.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { riskForScore } from "../risk-model.js";
 import { reactSupport } from "../react-support.js";
 import { reactRuleCoverage, reactRuleDocumentation, REACT_GUIDANCE_VERSION } from "../react-guidance.js";
@@ -34,7 +34,7 @@ export function measureReactHealth(config: Config, command: string, context: Ana
       jsx_a11y_complete: a11yLint.complete,
       required_inputs: ["source_roots_exist", "package_json_found", "eslint_react_hooks_complete",
         ...(config.accessibility.enabled ? ["jsx_a11y_complete"] : [])],
-    }), sourceSetHash(project)),
+    }), context.sourceHash(), context.identity()),
     summary: {
       components: project.modules.reduce((count, module) => count + module.components.length, 0),
       records: records.length,

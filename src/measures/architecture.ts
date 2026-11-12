@@ -1,6 +1,6 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { groupMapNodes, mapNode } from "../graph.js";
-import { analysisIdentity, artifactBase, sourceSetHash, taskInputHash } from "../provenance.js";
+import { analysisIdentity, artifactBase, taskInputHash } from "../provenance.js";
 import { readArtifact, writeArtifact } from "../writer.js";
 import { isRecord, parseJson } from "../collections.js";
 import { directTestSources } from "../test-mapping.js";
@@ -33,7 +33,7 @@ export const ARCHITECTURE_INPUTS = [
 
 export function measureArchitectureMap(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
   const project = context.project();
-  const currentSourceHash = sourceSetHash(project);
+  const currentSourceHash = context.sourceHash();
   const artifacts: Record<string, MapInputArtifact | null> = {
     ...Object.fromEntries(ARCHITECTURE_INPUTS.map((input) => [input.name, readArtifact(config, input.artifact)])),
     performance: readPerformanceInputs(config),
@@ -42,7 +42,7 @@ export function measureArchitectureMap(config: Config, command: string, context:
   for (const test of artifacts.correctness?.tests ?? []) {
     for (const file of directTestSources(test)) correctnessFiles.add(file);
   }
-  const artifactStatus = artifactFreshness(config, artifacts, currentSourceHash);
+  const artifactStatus = artifactFreshness(config, artifacts, currentSourceHash, context.identity());
   const nodes = project.modules.map((module) => mapNode(module, artifacts, artifactStatus, correctnessFiles));
   const edges = project.imports.map((edge) => ({
     id: `import:${edge.from}:${edge.to}:${edge.line}`,
@@ -71,6 +71,7 @@ export function measureArchitectureMap(config: Config, command: string, context:
         stale_input: staleInputs,
       }),
       currentSourceHash,
+      context.identity(),
     ),
     summary: {
       nodes: nodes.length,
@@ -108,8 +109,8 @@ export function artifactFreshness(
   config: Config,
   artifacts: Record<string, MapInputArtifact | null>,
   currentSourceHash: string,
+  identity = analysisIdentity(config),
 ): ArtifactFreshnessLookup {
-  const identity = analysisIdentity(config);
   return Object.fromEntries(
     Object.entries(artifacts).map(([name, value]) => {
       const fresh = value?.task_id && value.analysis_identity?.id === identity.id &&

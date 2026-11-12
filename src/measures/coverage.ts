@@ -3,7 +3,7 @@ import { analysisConfidence } from "../analysis-context.js";
 import { changeSetSince, stripSourceExtension } from "../audit/change-set.js";
 import { parseJson } from "../collections.js";
 import { parseExecutionCoverage, type CoveredFile } from "../coverage.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { nonempty, shape, string } from "../validation.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Artifact, Config, FunctionRecord, ProjectAnalysis } from "../types.js";
@@ -12,13 +12,13 @@ type CoverageReport = { files: CoveredFile[]; status: "not_configured" | "incomp
 const linkedReport = shape({ provenance: shape({ source_set_hash: string }), producer: shape({ name: nonempty, version: nonempty }) });
 
 export function measureExecutionCoverage(config: Config, command: string, context: AnalysisContext): Artifact {
-  const project = context.project(), sourceHash = sourceSetHash(project);
+  const project = context.project(), sourceHash = context.sourceHash();
   const { files, status, reason } = readCoverageReport(config, project, sourceHash);
   const observed = files.flatMap((file) => file.line_hits);
   const artifact: Artifact = {
     ...artifactBase(config, "testing.coverage", command, analysisConfidence(config, project, {
       coverage_complete: status === "complete", required_inputs: config.coverageReport ? ["coverage_complete"] : [],
-    }), sourceHash),
+    }), sourceHash, context.identity()),
     summary: { status, reason, observed_files: files.length, observed_executable_lines: observed.length, line_coverage_percent: percent(observed),
       ...changedCoverage(config, files) },
     files, functions: functionCoverage(project, files), records: [],

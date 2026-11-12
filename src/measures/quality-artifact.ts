@@ -1,20 +1,21 @@
 import { analysisConfidence } from "../analysis-context.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
-import type { Artifact, Config, ProjectAnalysis, ScoredRecord } from "../types.js";
+import type { AnalysisContext, Artifact, Config, ScoredRecord } from "../types.js";
 
 export function writeQualityArtifact(
   config: Config,
   fileName: string,
   taskId: string,
   command: string,
-  project: ProjectAnalysis,
+  context: AnalysisContext,
   summary: Record<string, unknown>,
   records: ScoredRecord[],
   extra: Record<string, unknown> = {},
 ): Artifact {
+  const project = context.project();
   const artifact = {
-    ...artifactBase(config, taskId, command, analysisConfidence(config, project), sourceSetHash(project)),
+    ...artifactBase(config, taskId, command, analysisConfidence(config, project), context.sourceHash(), context.identity()),
     summary,
     ...extra,
     records,

@@ -1,3 +1,4 @@
+import { analysisIdentity, sourceSetHash } from "./provenance.js";
 import { createConfidence } from "./config.js";
 import { discoverSourceFiles, discoverTestFiles, readSourceFile } from "./files.js";
 import { analyzeModule } from "./extract.js";
@@ -79,8 +80,18 @@ function workspaceAnalysisRecords(
 }
 
 export function createAnalysisContext(config: Config): AnalysisContext {
+  const clear: Array<() => void> = [];
+  function memoize<T>(load: () => T): () => T {
+    let state: { value: T } | null = null;
+    clear.push(() => { state = null; });
+    return () => (state ??= { value: load() }).value;
+  }
+  const project = memoize(() => analyzeProject(config));
   return {
-    project: memoize(() => analyzeProject(config)),
+    project,
+    sourceHash: memoize(() => sourceSetHash(project())),
+    identity: memoize(() => analysisIdentity(config)),
+    refresh: () => { for (const reset of clear) reset(); },
     jscpd: memoize(() => runJscpd(config)),
     dependencyCruiser: memoize(() => runDependencyCruiser(config)),
     knip: memoize(() => runKnip(config)),
@@ -88,16 +99,6 @@ export function createAnalysisContext(config: Config): AnalysisContext {
     reactHooksLint: memoize(() => runReactHooksLint(config)),
     jsxA11yLint: memoize(() => runJsxA11yLint(config)),
     typedLint: memoize(() => runTypedLint(config)),
-  };
-}
-
-function memoize<T>(load: () => T): () => T {
-  let state: { value: T } | null = null;
-  return () => {
-    if (state) return state.value;
-    const value = load();
-    state = { value };
-    return value;
   };
 }
 

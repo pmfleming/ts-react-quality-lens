@@ -56,8 +56,8 @@ export function artifactBase(
   command: string,
   confidence: Confidence,
   sourceSetHash: string | null = null,
+  identity: AnalysisIdentity = analysisIdentity(config),
 ) {
-  const identity = analysisIdentity(config);
   return {
     schema_version: SCHEMA_VERSION,
     task_id: taskId,

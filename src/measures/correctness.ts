@@ -1,6 +1,6 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { runTestCommand, testRecord } from "../correctness.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import { createTestMapper } from "../test-mapping.js";
 import type { AnalysisContext, Config, ScoredRecord, TestExecution } from "../types.js";
@@ -14,7 +14,12 @@ export function measureCorrectnessCatalog(
   const project = context.project();
   const mapper = createTestMapper(config, project.modules);
   const tests = project.testFiles.map((file) => testRecord(config, file, project.modules, mapper));
-  const execution: TestExecution = runTests ? runTestCommand(config) : { status: "not_run", command: config.testCommand };
+  const sourceHash = context.sourceHash(), identity = context.identity();
+  let execution: TestExecution = { status: "not_run", command: config.testCommand };
+  if (runTests) {
+    try { execution = runTestCommand(config); }
+    finally { if (config.testCommand) context.refresh(); }
+  }
   const summary = {
     tests: tests.length,
     colocated_tests: tests.filter((test) => test.locality === "colocated").length,
@@ -30,7 +35,8 @@ export function measureCorrectnessCatalog(
       runTests ? "correctness.all" : "correctness.catalog",
       command,
       analysisConfidence(config, project, { test_command_configured: Boolean(config.testCommand) }),
-      sourceSetHash(project),
+      sourceHash,
+      identity,
     ),
     summary: { ...summary, blocking_findings: records.filter((record) => record.disposition === "block").length },
     execution,
@@ -38,7 +44,7 @@ export function measureCorrectnessCatalog(
     tests,
   };
   const catalog = {
-    ...artifactBase(config, "correctness.catalog", command, analysisConfidence(config, project), sourceSetHash(project)),
+    ...artifactBase(config, "correctness.catalog", command, analysisConfidence(config, project), sourceHash, identity),
     summary,
     tests: tests.map((test) => ({
       id: test.id,

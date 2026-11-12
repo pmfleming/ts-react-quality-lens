@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dedupeBy, isRecord, parseJson } from "../collections.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { stableHash } from "../clone-utils.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, FindingDisposition, RelatedLocation, ScoredRecord } from "../types.js";
 
@@ -37,7 +37,7 @@ export function measureSarif(config: Config, command: string, context: AnalysisC
       : {}),
   });
   const artifact = {
-    ...artifactBase(config, "quality.sarif", command, confidence, sourceSetHash(project)),
+    ...artifactBase(config, "quality.sarif", command, confidence, context.sourceHash(), context.identity()),
     summary: {
       status: parsed.length === 0 ? "not_configured" : parsed.every((input) => input.status.complete) ? "complete" : "incomplete",
       inputs: parsed.length,

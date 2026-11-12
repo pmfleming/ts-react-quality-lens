@@ -49,7 +49,7 @@ export function measureLocality(config: Config, command: string, context: Analys
       ],
     };
   });
-  return writeQualityArtifact(config, "locality_metrics.json", "quality.locality_dynamic", command, project, {
+  return writeQualityArtifact(config, "locality_metrics.json", "quality.locality_dynamic", command, context, {
     records: records.length,
     high_risk_records: records.filter((record) => record.risk === "high").length,
   }, records);
@@ -61,7 +61,7 @@ export function measureLeverage(config: Config, command: string, context: Analys
     (edge) => `${edge.from}:${edge.to}`);
   const inbound = groupBy(consumers, (edge) => edge.to);
   const records = project.modules.map((module) => leverageRecord(module, inbound.get(module.id)?.length ?? 0));
-  return writeQualityArtifact(config, "leverage_metrics.json", "quality.locality_leverage", command, project, {
+  return writeQualityArtifact(config, "leverage_metrics.json", "quality.locality_leverage", command, context, {
     records: records.length,
     shared_hubs: records.filter((record) => record.classification === "shared_hub").length,
   }, records);

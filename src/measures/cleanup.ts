@@ -7,7 +7,7 @@ import { analyzeModule } from "../extract.js";
 import { matchesPathPattern as globMatch } from "../files.js";
 import { isEntrypointFile, packageEntryFiles, readPackageJson } from "../entrypoints.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import { workspacePackageName } from "../workspaces.js";
 import type { AnalysisContext, Config, KnipResult, ModuleRecord, PackageJson, ProjectAnalysis, ScoredRecord } from "../types.js";
@@ -71,7 +71,7 @@ export function measureCleanup(config: Config, command: string, context: Analysi
       knip_available: knip.available,
       knip_ran: knip.ran,
       knip_complete: knip.complete,
-    }), sourceSetHash(project)),
+    }), context.sourceHash(), context.identity()),
     summary: {
       records: records.length,
       unused_files: records.filter((record) => record.kind === "unused_file").length,

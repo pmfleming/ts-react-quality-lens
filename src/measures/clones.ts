@@ -1,7 +1,7 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { cloneGroup, jscpdCloneGroup, normalizeCloneLine, stableHash } from "../clone-utils.js";
 import { compareRisk, groupBy } from "../collections.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { riskForScore } from "../risk-model.js";
 import { writeArtifact } from "../writer.js";
 import { structuralCloneGroups } from "../structural-clones.js";
@@ -42,7 +42,8 @@ export function measureClones(config: Config, command: string, context: Analysis
         jscpd_available: jscpd.available,
         jscpd_ran: jscpd.ran,
       }),
-      sourceSetHash(project),
+      context.sourceHash(),
+      context.identity(),
     ),
     summary: {
       clone_groups: groups.length,

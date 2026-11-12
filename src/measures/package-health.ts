@@ -1,6 +1,6 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { stableHash } from "../clone-utils.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, AttwProblem, Config, PackageToolStatus, PublintMessage, ScoredRecord } from "../types.js";
 
@@ -26,7 +26,7 @@ export function measurePackageHealth(config: Config, command: string, context: A
       })
     : analysisConfidence(config, project, { package_health_enabled: false });
   const artifact = {
-    ...artifactBase(config, "quality.package_health", command, confidence, sourceSetHash(project)),
+    ...artifactBase(config, "quality.package_health", command, confidence, context.sourceHash(), context.identity()),
     summary: {
       status: result.enabled ? complete ? "complete" : "incomplete" : "disabled",
       complete,

@@ -1,6 +1,6 @@
 import { createAnalysisContext } from "./analysis-context.js";
 import { MEASURE_ORDER, MEASURE_TASKS } from "./measures/registry.js";
-import { analysisIdentity, sourceSetHash, taskInputHash } from "./provenance.js";
+import { taskInputHash } from "./provenance.js";
 import { findTask, TASKS } from "./tasks.js";
 import { readArtifact } from "./writer.js";
 import type { AnalysisContext, Artifact, Config } from "./types.js";
@@ -58,8 +58,8 @@ function currentTestExecution(config: Config, context: AnalysisContext): boolean
   if (review?.task_id !== "correctness.all" || !["passed", "failed"].includes(review.execution?.status ?? "")) return false;
   const catalog = readArtifact(config, "test_catalog.json");
   if (!catalog) return false;
-  const identity = analysisIdentity(config);
-  const sourceHash = sourceSetHash(context.project());
+  const identity = context.identity();
+  const sourceHash = context.sourceHash();
   return review.analysis_identity?.id === identity.id && catalog.analysis_identity?.id === identity.id &&
     review.provenance.input_set_hash === taskInputHash(config, "correctness.all", sourceHash, identity) &&
     catalog.provenance.input_set_hash === taskInputHash(config, "correctness.catalog", sourceHash, identity);

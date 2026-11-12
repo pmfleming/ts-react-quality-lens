@@ -1,6 +1,6 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { compareRisk } from "../collections.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { fileHotspotRecord, functionHotspotRecord } from "../scoring.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Artifact, Config, ScoredRecord } from "../types.js";
@@ -15,7 +15,7 @@ export function measureHotspots(config: Config, command: string, context: Analys
   }
   records.sort(compareRisk);
   const artifact: Artifact = {
-    ...artifactBase(config, "quality.hotspots", command, analysisConfidence(config, project), sourceSetHash(project)),
+    ...artifactBase(config, "quality.hotspots", command, analysisConfidence(config, project), context.sourceHash(), context.identity()),
     summary: {
       source_files: project.sourceFiles.length,
       records: records.length,

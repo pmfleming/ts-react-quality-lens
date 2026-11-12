@@ -6,7 +6,7 @@ import path from "node:path";
 import { isRecord, parseJson } from "../collections.js";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { stableHash } from "../clone-utils.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, RelatedLocation, ScoredRecord } from "../types.js";
 type RuntimeInput = { name: string; file: string | null; parse: (config: Config, value: unknown, environment: Record<string, unknown>, sourceVerified: boolean, envelope: unknown) => ScoredRecord[] | ImportedEvidence };
@@ -19,7 +19,7 @@ type RuntimeStatus = {
   records: number;
 };
 export function measureRuntime(config: Config, command: string, context: AnalysisContext = createAnalysisContext(config)) {
-  const project = context.project();
+  const project = context.project(), sourceHash = context.sourceHash();
   const inputs: RuntimeInput[] = [
     { name: "performance_comparison", file: config.runtimeInputs.performanceCurrent ?? config.runtimeInputs.performanceBaseline, parse: performanceComparisonRecords },
     { name: "react_compiler", file: config.runtimeInputs.reactCompiler, parse: compilerExecutionRecords },
@@ -27,7 +27,7 @@ export function measureRuntime(config: Config, command: string, context: Analysi
     { name: "axe", file: config.runtimeInputs.axe, parse: axeRecords },
     { name: "react_doctor", file: config.runtimeInputs.reactDoctor, parse: reactDoctorRecords },
   ];
-  const parsed = inputs.map((input) => parseRuntimeInput(config, input, sourceSetHash(project)));
+  const parsed = inputs.map((input) => parseRuntimeInput(config, input, sourceHash));
   const records = parsed.flatMap((item) => item.records);
   const configured = parsed.filter((item) => item.status.path !== null);
   const requiredInputs = configured.map((item) => `${item.name}_complete`);
@@ -37,7 +37,7 @@ export function measureRuntime(config: Config, command: string, context: Analysi
       runtime_inputs_complete: configured.every((item) => item.status.complete),
       ...Object.fromEntries(parsed.map((item) => [`${item.name}_complete`, item.status.complete])),
       ...(requiredInputs.length ? { required_inputs: ["source_roots_exist", "package_json_found", ...requiredInputs] } : {}),
-    }), sourceSetHash(project)),
+    }), sourceHash, context.identity()),
     summary: {
       status: configured.length === 0 ? "not_configured" : configured.every((item) => item.status.complete) ? "complete" : "incomplete",
       configured_inputs: configured.length,

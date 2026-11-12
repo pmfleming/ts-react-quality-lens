@@ -1,6 +1,6 @@
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
 import { dependencyCruiserCycles, dependencyCruiserEdges, findCycles, uniqueCycleCount } from "../graph.js";
-import { artifactBase, sourceSetHash } from "../provenance.js";
+import { artifactBase } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, ImportRecord, LayerRule } from "../types.js";
 
@@ -61,7 +61,8 @@ export function measureDependencyHealth(config: Config, command: string, context
         dependency_cruiser_available: depcruise.available,
         dependency_cruiser_ran: depcruise.ran,
       }),
-      sourceSetHash(project),
+      context.sourceHash(),
+      context.identity(),
     ),
     summary: {
       internal_edges: internalEdges.length,

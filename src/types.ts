@@ -439,6 +439,9 @@ export type ProjectAnalysis = {
 };
 
 export type AnalysisContext = {
+  sourceHash: () => string;
+  identity: () => AnalysisIdentity;
+  refresh: () => void;
   project: () => ProjectAnalysis;
   jscpd: () => JscpdResult;
   dependencyCruiser: () => DependencyCruiserResult;
