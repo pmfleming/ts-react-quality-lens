@@ -12,7 +12,7 @@ export function auditSarif(audit: AuditArtifact) {
     relatedLocations: (finding.related_locations ?? []).map((location, index) => ({ id: index + 1,
       physicalLocation: { artifactLocation: { uri: location.file.replaceAll("\\", "/") }, region: { startLine: location.start_line } },
       message: { text: location.role ?? "related" } })),
-    ...(finding.suppressed ? { suppressions: [{ kind: "external", status: "accepted", justification: finding.suppression_reason ?? "Configured suppression" }] } : {}),
+    ...(finding.suppressed ? { suppressions: [{ kind: "external", status: "accepted", justification: finding.suppression_reason?.trim() || "Configured suppression" }] } : {}),
     properties: { disposition: finding.disposition, producer_disposition: finding.producer_disposition, evidence_kind: finding.evidence_kind,
       confidence: finding.finding_confidence, introduced: finding.introduced, task_id: finding.task_id,
       impact: finding.severity ?? finding.risk, semantic_decision: finding.semantic_decision,

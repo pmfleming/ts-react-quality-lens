@@ -50,7 +50,7 @@ export function enrichFinding(config: Config, value: unknown): unknown {
     ...(relatedLocations.length ? { related_locations: relatedLocations } : {}),
     ...(fixGroupId ? { fix_group_id: fixGroupId } : {}),
     actions,
-    ...(suppression ? { suppressed: true, suppression_reason: suppression.reason ?? "Configured suppression." } : {}),
+    ...(suppression ? { suppressed: true, suppression_reason: suppression.reason?.trim() || "Configured suppression." } : {}),
   };
 }
 

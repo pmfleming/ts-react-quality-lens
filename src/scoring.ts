@@ -239,7 +239,11 @@ export function frameworkRiskRecords(project: ProjectAnalysis): ScoredRecord[] {
       signals: [{ kind: "client_component_transitively_imports_server_only" }],
     });
   }
+  const assessedRoutes = new Set<string>();
   for (const route of details.routes) {
+    // One file can match several conventions (a Remix folder route also looks like a Next app route).
+    if (assessedRoutes.has(route.file)) continue;
+    assessedRoutes.add(route.file);
     const module = project.modules.find((item) => item.file === route.file);
     const responsibilitySignals: Signal[] = [];
     if (module?.components.length) responsibilitySignals.push({ kind: "route_renders_ui" });

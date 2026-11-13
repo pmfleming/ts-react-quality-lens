@@ -60,7 +60,8 @@ export function attachArtifactEvidence(config: Config, artifact: Artifact): Arti
     rule_applicability: artifact.rule_applicability ?? familyApplicability(config, artifact),
   };
   result.evidence_contract = projectWireEvidence(result);
-  if (!validNativeEvidence(result, config)) throw new Error(`Invalid native evidence projection for ${artifact.task_id}`);
+  const problem = nativeEvidenceProblem(result, config);
+  if (problem) throw new Error(`Invalid native evidence projection for ${artifact.task_id}: ${problem}`);
   return result;
 }
 
@@ -107,7 +108,7 @@ function findingEvidence(record: ScoredRecord, runId: string): WireEvidence {
     severity: ["error", "high"].includes(record.severity ?? record.risk ?? "") ? "error"
       : ["warning", "medium"].includes(record.severity ?? record.risk ?? "") ? "warning" : "note",
     disposition: record.disposition ?? "review", message: record.message ?? record.id,
-    suppression: record.suppressed ? { reason: record.suppression_reason ?? "Configured suppression" } : null,
+    suppression: record.suppressed ? { reason: record.suppression_reason?.trim() || "Configured suppression" } : null,
   };
 }
 function summaryEvidence(artifact: Artifact, runId: string): WireEvidence[] {
@@ -138,12 +139,24 @@ const toolStatuses = (value: unknown): value is Record<string, unknown> => isRec
 const nativeShape = shape({ capabilities: arrayOf(validCapabilityEvidence), evidence_contract: arrayOf(isWireEvidence),
   tool_status: optional(toolStatuses), execution: optional(isRecord) });
 const findingsCollection = optional(arrayOf(isScoredRecord));
-function validNativeStructure(artifact: Artifact): boolean {
-  if (!nativeShape(artifact)) return false;
+function structureProblem(artifact: Artifact): string | null {
+  if (!nativeShape(artifact)) {
+    const invalid = isUnknownArray(artifact.evidence_contract) ? artifact.evidence_contract.find((entry) => !isWireEvidence(entry)) : undefined;
+    return invalid === undefined ? "capabilities, evidence contract or tool status have an invalid shape"
+      : `invalid wire evidence ${excerpt(invalid)}`;
+  }
   const primary = artifact.capabilities[0];
-  if (!primary || primary.capability !== artifact.task_id || artifact.confidence.complete !== (primary.status === "completed")) return false;
-  if (artifact.execution !== undefined && !["passed", "failed", "not_run", "unknown"].includes(String(artifact.execution.status))) return false;
-  return FINDING_COLLECTIONS.every((key) => findingsCollection(artifact[key]));
+  if (!primary || primary.capability !== artifact.task_id) return "the primary capability does not describe this task";
+  if (artifact.confidence.complete !== (primary.status === "completed")) return "confidence.complete disagrees with the primary capability";
+  if (artifact.execution !== undefined && !["passed", "failed", "not_run", "unknown"].includes(String(artifact.execution.status))) {
+    return `unknown execution status ${JSON.stringify(artifact.execution.status)}`;
+  }
+  const collection = FINDING_COLLECTIONS.find((key) => !findingsCollection(artifact[key]));
+  return collection ? `${collection} contains a record without a string id` : null;
+}
+function excerpt(value: unknown): string {
+  const text = JSON.stringify(value) ?? String(value);
+  return text.length > 400 ? `${text.slice(0, 400)}…` : text;
 }
 function wireIdentity(entry: WireEvidence): string {
   switch (entry.kind) {
@@ -155,12 +168,24 @@ function wireIdentity(entry: WireEvidence): string {
 
 /** Validate references and the native/common projection together, not just JSON shapes. */
 export function validNativeEvidence(artifact: Artifact, config?: Config): boolean {
-  if (artifact.provenance.run_id === undefined) return true;
+  return nativeEvidenceProblem(artifact, config) === null;
+}
+
+/** The first reason native evidence is invalid, precise enough to name the offending record; null when valid. */
+export function nativeEvidenceProblem(artifact: Artifact, config?: Config): string | null {
+  if (artifact.provenance.run_id === undefined) return null;
   try {
-    if (!validNativeStructure(artifact) || !validProducerPayload(artifact) || !validRuleApplicability(artifact.rule_applicability, artifact.task_id)) return false;
-    if (config && JSON.stringify(artifact.capabilities) !== JSON.stringify([producerCapability(artifact), ...toolCapabilities(config, artifact)])) return false;
+    const structure = structureProblem(artifact);
+    if (structure) return structure;
+    if (!validProducerPayload(artifact)) return "the task payload does not match its producer contract";
+    if (!validRuleApplicability(artifact.rule_applicability, artifact.task_id)) return "rule applicability is invalid";
+    if (config && JSON.stringify(artifact.capabilities) !== JSON.stringify([producerCapability(artifact), ...toolCapabilities(config, artifact)])) {
+      return "capabilities do not match the evidence they summarize";
+    }
     const expected = projectWireEvidence(artifact);
-    if (new Set(expected.map(wireIdentity)).size !== expected.length) return false;
-    return JSON.stringify(expected) === JSON.stringify(artifact.evidence_contract);
-  } catch { return false; }
+    const seen = new Set<string>();
+    const duplicates = [...new Set(expected.map(wireIdentity).filter((identity) => seen.has(identity) || !seen.add(identity)))];
+    if (duplicates.length) return `duplicate evidence identities ${duplicates.slice(0, 5).join(", ")}${duplicates.length > 5 ? ` (+${duplicates.length - 5} more)` : ""}`;
+    return JSON.stringify(expected) === JSON.stringify(artifact.evidence_contract) ? null : "the evidence contract does not match its native projection";
+  } catch (error) { return error instanceof Error ? error.message : String(error); }
 }

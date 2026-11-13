@@ -98,11 +98,22 @@ function isAccessibilityFinding(record: ScoredRecord): boolean {
 function reactModuleRecords(module: ModuleRecord, includeA11yFallback: boolean): ScoredRecord[] {
   return [
     ...(includeA11yFallback ? jsxA11yRecords(module) : []),
-    ...module.components.map((component) => componentHealthRecord(module, component)),
+    ...componentHealthRecords(module),
   ];
 }
 
-function componentHealthRecord(module: ModuleRecord, component: FunctionRecord): ScoredRecord {
+/**
+ * Component IDs are name-based so they survive edits; names repeated within one module (for example inline
+ * `Cell` renderers in a column list) are distinguished by their source position.
+ */
+function componentHealthRecords(module: ModuleRecord): ScoredRecord[] {
+  const counts = new Map<string, number>();
+  for (const component of module.components) counts.set(component.name, (counts.get(component.name) ?? 0) + 1);
+  return module.components.map((component) => componentHealthRecord(module, component,
+    (counts.get(component.name) ?? 0) > 1 ? `@${component.id.split(":").slice(-2).join(":")}` : ""));
+}
+
+function componentHealthRecord(module: ModuleRecord, component: FunctionRecord, position: string): ScoredRecord {
   const signals = [
     ...(component.lines > 120 ? [{ kind: "oversized_component", value: component.lines }] : []),
     ...(component.hooks > 5 ? [{ kind: "many_hooks", value: component.hooks }] : []),
@@ -111,7 +122,7 @@ function componentHealthRecord(module: ModuleRecord, component: FunctionRecord):
   ];
   const score = component.lines * 0.25 + component.hooks * 8 + component.effects * 12 + component.jsxConditionals * 6;
   return {
-    id: `component:${module.id}:${component.name}`,
+    id: `component:${module.id}:${component.name}${position}`,
     module_id: module.id,
     file: module.file,
     name: component.name,
@@ -150,21 +161,27 @@ function eslintFindingId(message: EslintMessage, source: string): string {
 }
 
 function jsxA11yRecords(module: ModuleRecord): ScoredRecord[] {
-  return [
+  const records = [
     ...[...module.text.matchAll(/<img\b(?![^>]*\balt=)[^>]*>/g)]
       .map((match) => a11yRecord(module, "img_missing_alt", match.index ?? 0, 45)),
     ...[...module.text.matchAll(/<(?:div|span)\b(?=[^>]*\bonClick=)(?![^>]*\brole=)[^>]*>/g)]
       .map((match) => a11yRecord(module, "interactive_non_semantic_element", match.index ?? 0, 55)),
   ];
+  // Line-based IDs stay stable; several hits of one kind on a line are distinguished by column.
+  const counts = new Map<string, number>();
+  for (const record of records) counts.set(record.id, (counts.get(record.id) ?? 0) + 1);
+  return records.map((record) => (counts.get(record.id) ?? 0) > 1 ? { ...record, id: `${record.id}:${record.column}` } : record);
 }
 
 function a11yRecord(module: ModuleRecord, kind: string, index: number, score: number): ScoredRecord {
-  const line = module.text.slice(0, index).split(/\r?\n/).length;
+  const before = module.text.slice(0, index).split(/\r?\n/);
+  const line = before.length;
   return {
     id: `a11y:${module.id}:${kind}:${line}`,
     module_id: module.id,
     file: module.file,
     line,
+    column: (before.at(-1)?.length ?? 0) + 1,
     kind,
     rule_id: `ts-react-quality-lens/${kind}`,
     evidence_kind: "heuristic",

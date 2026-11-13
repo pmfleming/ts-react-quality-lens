@@ -45,7 +45,9 @@ export function runTypedLint(config: Config): EslintTypeAwareResult {
       duration_ms: 0,
     };
   }
-  const result = runTemporaryEslint(config, "typed", typedLintConfig(config, projectMode));
+  const raw = runTemporaryEslint(config, "typed", typedLintConfig(config, projectMode));
+  // Project inline config comments (`/* eslint no-console: "error" */`) can enable rules outside the managed ruleset.
+  const result = { ...raw, messages: raw.messages.filter((message) => message.rule_id === "eslint/parser" || Object.hasOwn(TYPED_RULES, message.rule_id)) };
   const parserFailures = result.messages.filter((message) => message.rule_id === "eslint/parser");
   return {
     ...result,
