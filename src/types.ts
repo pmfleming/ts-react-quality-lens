@@ -33,6 +33,7 @@ export type RawConfig = {
   framework?: string;
   test_runner?: string;
   test_command?: string | null;
+  test_timeout_ms?: number;
   coverage_report?: string;
   exclude?: string[];
   layer_rules?: LayerRule[];
@@ -140,6 +141,7 @@ export type Config = {
   framework: string;
   testRunner: string;
   testCommand: string | null;
+  testTimeoutMs: number;
   coverageReport: string | null;
   exclude: string[];
   layerRules: LayerRule[];

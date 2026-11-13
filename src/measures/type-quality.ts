@@ -123,8 +123,15 @@ export function measureLint(config: Config, command: string, context: AnalysisCo
   return writeArtifact(config, "lint_health.json", artifact);
 }
 
+/**
+ * TS5101/TS5107: the analysis compiler (TypeScript 6) deprecates an option that still functions and that the
+ * project's own compiler may accept. They are migration warnings, not evidence that the project fails to compile.
+ */
+const OPTION_DEPRECATIONS = new Set([5101, 5107]);
+
 function compilerDiagnosticFinding(diagnostic: DiagnosticRecord): ScoredRecord {
-  const error = diagnostic.category === "Error";
+  const deprecation = OPTION_DEPRECATIONS.has(diagnostic.code);
+  const error = diagnostic.category === "Error" && !deprecation;
   const location = `${diagnostic.file ?? "project"}:${diagnostic.code}:${diagnostic.message}`;
   return {
     id: `tsc:${diagnostic.code}:${stableHash(location)}`,
@@ -132,6 +139,7 @@ function compilerDiagnosticFinding(diagnostic: DiagnosticRecord): ScoredRecord {
     kind: "compiler_diagnostic",
     evidence_kind: "diagnostic",
     disposition: error ? "block" : "warn",
+    ...(deprecation ? { classification_limitation: "Option deprecated by the TypeScript 6 analysis compiler; it still functions and is not a compile failure." } : {}),
     finding_confidence: "high",
     scope: diagnostic.file ? "file" : "project",
     ...(diagnostic.file ? { file: diagnostic.file } : {}),

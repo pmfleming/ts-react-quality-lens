@@ -24,6 +24,7 @@ The default filename is `ts-react-quality-lens.config.json` in the current worki
 | `framework` | Omitted or `auto`: detect Next, Remix, Expo, Astro, Vite, React Router, or React from dependencies/conventional files; otherwise `unknown`. |
 | `test_runner` | Omitted or `auto`: detect Vitest, Jest, Playwright, Cypress, or Node from dependencies, scripts, or conventional files. This labels evidence; it does not select a test command. |
 | `test_command` | When omitted, infer `<package-manager> run test` if the root manifest has a `test` script. `null` disables inference/execution. A string runs with the project shell. |
+| `test_timeout_ms` | Test command time limit, 1,000–86,400,000 ms (default 120,000). A command that exceeds it is recorded as failed. |
 | `exclude` | Adds to built-in excludes; does not replace them. |
 
 Source/test discovery walks directories and accepts `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, and `.cts`; `.mjs` and `.cjs` are not discovered as source files. Tests are recognized by test/spec/e2e filename suffixes or conventional test-directory path segments relative to `project_root`, and excluded from the source module set. Parent directories outside the project do not affect classification.

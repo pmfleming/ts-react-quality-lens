@@ -33,13 +33,14 @@ Required checks control completeness and certain audit downgrades, not task sche
 - React Hooks/Compiler findings become `review` when `react-hooks` is not required;
 - package-tool findings become `review` when `package` is not required.
 
-These downgrades apply in the audit, not to the standalone artifacts or LSP diagnostics. Compiler errors and executed failing tests remain blockers even if their check is not required. Managed accessibility and imported runtime/SARIF findings retain their own dispositions across profiles. No general per-rule promotion/override setting is implemented.
+These downgrades apply in the audit, not to the standalone artifacts or LSP diagnostics. Compiler errors and executed failing tests remain blockers even if their check is not required. With `compiler` required, any blocking compiler error fails the audit even when it is suppressed, baselined or inherited: suppressions and baselines do not establish that the project compiles. Managed accessibility and imported runtime/SARIF findings retain their own dispositions across profiles. No general per-rule promotion/override setting is implemented.
 
 ## Compiler and managed TypeScript rules
 
 | Rule/finding | Produced disposition |
 | --- | --- |
 | `typescript/TS…` compiler errors / non-errors | `block` / `warn` |
+| `typescript/TS5101`, `typescript/TS5107` option deprecations from the TypeScript 6 analysis compiler (the option still functions) | `warn`, not a compiler verification failure |
 | `test-runner/execution` failure | `block` |
 | `@typescript-eslint/no-unsafe-assignment`, `no-unsafe-argument`, `no-unsafe-call`, `no-unsafe-member-access`, `no-unsafe-return` | `block` |
 | `@typescript-eslint/no-floating-promises`, `no-misused-promises` | `block` |

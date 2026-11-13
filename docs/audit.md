@@ -19,6 +19,7 @@ node ./dist/bin/ts-react-quality-lens.js audit --config ./ts-react-quality-lens.
 | `--format summary` | Print a compact JSON summary (default). |
 | `--format json` | Print the complete audit artifact. |
 | `--format markdown` | Print a PR-ready Markdown summary. |
+| `--format sarif` | Print the audit as SARIF 2.1.0. |
 
 All formats still save the full artifact in local Turso. Use `export audit.json` to retrieve it later. Audit members publish in one transaction; readers validate their referenced payloads within one database snapshot. Relative baseline flags resolve from the shell working directory; `audit.baseline` in config resolves from the config directory.
 
@@ -36,7 +37,7 @@ The lens diffs the merge base against the **working tree**, not just committed H
 
 For a valid comparison, the lens creates a temporary detached Git worktree at the merge base, loads that tree's config, reuses installed dependencies through symlinks, and measures the base **without running tests**. It does not install dependencies. The config must exist in the base and resolve to the expected base project root.
 
-If base and current `analysis_identity.id` match:
+If the base and current runs have the same *attribution identity* (the analysis identity without `config_closure_hash`: schema, compiler API, rulesets and integration versions), their finding IDs are comparable and:
 
 - an ID present in the base is inherited (`introduced: false`), even if its location is now in a changed hunk;
 - an ID absent from the base is introduced, including findings in unchanged consumer files;
@@ -48,7 +49,9 @@ If compatible snapshot IDs are unavailable, locations/hunks provide fallback att
 
 **If no base is configured and `origin/main` does not exist**, audit uses whole-project scope and marks collected findings introduced; the absence of a base alone does not make this mode incomplete. Set `--base` explicitly in CI when changed-code comparison is required.
 
-An unavailable base snapshot after a valid diff, or a mismatched compiler/config/ruleset/integration identity, adds an incomplete reason. Configuration, manifest, and lockfile changes can therefore prevent identity-based comparison even if the source still compiles.
+An unavailable base snapshot after a valid diff adds an incomplete reason that says why (for example, the config is missing at the base or the base checkout failed). So does a mismatched compiler, ruleset or integration identity, for example a changed `react.ruleset`.
+
+Changes to the lens config, manifests, lockfiles or tsconfigs alone do not make the audit incomplete. `analysis_identity.id` still differs, so `comparison.status` and `summary.base_snapshot_compatible` report the exact cross-lens result (`incompatible`) with a reason. Base finding IDs are still used for attribution (`confidence.base_snapshot_attributable: true`): a finding absent from the base, such as a new diagnostic caused by a tsconfig change, is introduced by this change.
 
 ## Verdict and exit status
 
@@ -67,7 +70,7 @@ Required evidence checks cover compiler loading, completed typed lint, configure
 
 CLI audits run the configured or inferred project test command, regardless of whether `tests` is required by policy. Set `test_command: null` to disable it. If tests remain required, disabled execution yields incomplete evidence. A failing executed command emits a project-scoped blocker.
 
-Commands run in the project directory with its `node_modules/.bin` prepended to PATH and a 120-second timeout. Current execution states are `passed`, `failed`, `unknown` (no command), and `not_run` (catalog only). Timeout/process errors are currently recorded as failed, not a separate timeout state. Output on failure is truncated to 4,000 characters each for stdout and stderr.
+Commands run in the project directory with its `node_modules/.bin` prepended to PATH and the `test_timeout_ms` limit (default 120 seconds). Current execution states are `passed`, `failed`, `unknown` (no command), and `not_run` (catalog only). Timeout/process errors are currently recorded as failed, not a separate timeout state. Output on failure is truncated to 4,000 characters each for stdout and stderr.
 
 MCP audit differs: it skips tests unless the tool call explicitly supplies `run_tests: true`. Skipped required tests remain incomplete. These operations run trusted tools/configuration and are not sandboxed; neither CLI nor server analysis is guaranteed side-effect-free.
 

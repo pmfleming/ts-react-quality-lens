@@ -1,4 +1,4 @@
-import { enrichFinding, findingKind, suppressionMatches } from "../actions.js";
+import { enrichFinding, findingKind, isSuppressed, suppressionMatches } from "../actions.js";
 import { findingRecords } from "../findings.js";
 import { MEASURE_TASKS } from "../measures/registry.js";
 import { TASKS } from "../tasks.js";
@@ -159,6 +159,16 @@ export function staleSuppressionFindings(config: Config, findings: AuditFinding[
       }],
     } satisfies AuditFinding];
   });
+}
+
+/** Findings in gate scope: unsuppressed, and introduced unless the gate is "all". */
+export function activeFindings(findings: AuditFinding[], gate: "new-only" | "all"): AuditFinding[] {
+  return findings.filter((finding) => !isSuppressed(finding) && (gate === "all" || finding.introduced));
+}
+
+/** Active findings whose disposition can change the verdict. */
+export function gatedFindings(findings: AuditFinding[], gate: "new-only" | "all"): AuditFinding[] {
+  return activeFindings(findings, gate).filter((finding) => finding.disposition === "block" || finding.disposition === "warn");
 }
 
 export function auditVerdict(findings: AuditFinding[], incompleteReasons: string[], verificationFailures: string[] = []): AuditVerdict {

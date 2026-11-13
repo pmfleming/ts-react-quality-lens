@@ -34,9 +34,10 @@ export function runTestCommand(config: Config): TestExecution {
       cwd: config.projectRoot,
       encoding: "utf8",
       stdio: "pipe",
-      timeout: 120000,
+      timeout: config.testTimeoutMs,
       env: { ...process.env, PATH: `${path.join(config.projectRoot, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}` },
-      maxBuffer: 16 * 1024 * 1024,
+      // Only the 4,000-character tails are retained, but verbose suites must not fail on output volume.
+      maxBuffer: 256 * 1024 * 1024,
     });
     return { status: "passed", command: config.testCommand };
   } catch (error) {

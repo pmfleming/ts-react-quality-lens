@@ -1,9 +1,10 @@
 import { isSuppressed } from "../actions.js";
+import { gatedFindings } from "./findings.js";
 import type { AuditArtifact, AuditFinding } from "../types.js";
 
 export default function auditMarkdown(artifact: AuditArtifact): string {
   const lines = [...summaryLines(artifact), ""];
-  const active = activeFindings(artifact);
+  const active = gatedFindings(artifact.findings, artifact.summary.gate);
   if (!active.length) lines.push("No active findings.", "");
   lines.push("## Findings (all dispositions, inherited and suppressed)", "", ...artifact.findings.map(findingLine));
   if (artifact.reconciliation) lines.push("", "## Engine reconciliation", "", "```json", JSON.stringify(artifact.reconciliation, null, 2), "```");
@@ -35,14 +36,6 @@ function summaryLines(artifact: AuditArtifact): string[] {
     ...(summary.verification_failures ?? []).map((reason) => `- Verification failed: ${reason}`),
     ...(summary.incomplete_reasons.length ? [`- Incomplete reasons: ${summary.incomplete_reasons.join("; ")}`] : []),
   ];
-}
-
-function activeFindings(artifact: AuditArtifact): AuditFinding[] {
-  return artifact.findings.filter((finding) =>
-    !isSuppressed(finding) &&
-    (artifact.summary.gate === "all" || finding.introduced) &&
-    (finding.disposition === "block" || finding.disposition === "warn")
-  );
 }
 
 function findingLine(finding: AuditFinding): string {

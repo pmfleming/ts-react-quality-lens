@@ -9,6 +9,8 @@ import type { Config } from "../types.js";
 
 const require = createRequire(import.meta.url);
 const TOOL_TIMEOUT_MS = 120000;
+// Reports for large projects exceed Node's 1 MiB default (dependency-cruiser emits ~1.7 KB per module).
+const TOOL_MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
 
 export type ExecError = Error & { stdout?: unknown; stderr?: unknown; status?: number };
 type ToolRunOptions = childProcess.ExecFileSyncOptionsWithStringEncoding;
@@ -61,6 +63,7 @@ export function toolRunOptions(config: Config): ToolRunOptions {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: TOOL_TIMEOUT_MS,
+    maxBuffer: TOOL_MAX_OUTPUT_BYTES,
   };
 }
 
@@ -147,6 +150,8 @@ function quoteWindowsArg(value: string): string {
 
 export function toolError(error: unknown): string {
   const details = isRecord(error) ? error : {};
+  // Truncated output is not the failure; name the limit instead of echoing a partial report.
+  if (details.code === "ENOBUFS") return `Tool output exceeded ${TOOL_MAX_OUTPUT_BYTES} bytes (ENOBUFS).`;
   return (String(details.stderr ?? "").trim() || String(details.stdout ?? "").trim() ||
     (error instanceof Error ? error.message : String(error))).slice(0, 4000);
 }

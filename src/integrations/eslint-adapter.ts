@@ -138,8 +138,12 @@ const toolRequire = createRequire(${JSON.stringify(managedPackageJsonUrl())});
 const parser = toolRequire("@typescript-eslint/parser");
 const plugin = toolRequire("@typescript-eslint/eslint-plugin");
 export default [{
+  // ESLint lints JavaScript by default; typed lint is scoped to TypeScript, so JavaScript is not parsed here.
+  ignores: ["**/*.{js,jsx,mjs,cjs}"],
+}, {
   files: ["**/*.{ts,tsx,mts,cts}"],
   ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
+  linterOptions: ${LINTER_OPTIONS},
   languageOptions: {
     parser,
     parserOptions: {
@@ -168,12 +172,25 @@ ${hooks ? 'const reactHooks = toolRequire("eslint-plugin-react-hooks");' : ""}
 ${accessibility ? 'const jsxA11y = toolRequire("eslint-plugin-jsx-a11y");' : ""}
 export default [{
   files: ["**/*.{js,jsx,ts,tsx}"], ignores: ["node_modules/**", "dist/**", "build/**", "coverage/**", ".next/**", "target/**"],
+  linterOptions: ${LINTER_OPTIONS},
   languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true }, ecmaVersion: "latest", sourceType: "module" } },
   plugins: { ${hooks ? '"react-hooks": reactHooks,' : ""} ${accessibility ? '"jsx-a11y": jsxA11y,' : ""} },
   settings: ${JSON.stringify(settings)},
   rules: { ...${JSON.stringify(hooks ? rules : {})}, ...${accessibility ? "jsxA11y.configs.recommended.rules" : "{}"} }
 }];
 `;
+}
+
+/**
+ * Project inline directives target the project's own ESLint configuration. The managed runs load a subset of
+ * rules, so "unused" directives and directives naming unloaded plugins describe the managed config, not the code.
+ */
+const LINTER_OPTIONS = JSON.stringify({ reportUnusedDisableDirectives: "off" });
+const UNLOADED_RULE = /^Definition for rule '[^']+' was not found\.?$/;
+
+/** Only parse failures and ignore notices mean a file was not evaluated; other rule-less notices do not. */
+function unevaluated(message: { message: string; ruleId?: unknown; fatal?: unknown }): boolean {
+  return message.fatal === true || (typeof message.ruleId !== "string" && /^File ignored\b/.test(message.message));
 }
 
 const eslintReport = arrayOf(shape({ filePath: string, messages: arrayOf(shape({ message: string })) }));
@@ -184,7 +201,7 @@ function normalizeEslintReport(value: unknown, config: Config) {
     if (![1, 2].includes(Number(message.severity))) throw new Error("Invalid ESLint diagnostic");
     const ruleId = typeof message.ruleId === "string" ? message.ruleId : null;
     const fatal = message.fatal === true;
-    if (!ruleId && !fatal) return [];
+    if ((!ruleId && !fatal) || UNLOADED_RULE.test(message.message)) return [];
     return [{
       file: relativePath(config.projectRoot, result.filePath),
       line: numberOrNull(message.line),
@@ -196,7 +213,7 @@ function normalizeEslintReport(value: unknown, config: Config) {
       message: message.message,
     }];
   })).filter((message) => selected.has(message.file));
-  const evaluated_files = value.filter((file) => !file.messages.some((message) => message.fatal || !message.ruleId))
+  const evaluated_files = value.filter((file) => !file.messages.some(unevaluated))
     .map((file) => relativePath(config.projectRoot, file.filePath)).filter((file) => selected.has(file)).sort();
   return { messages, evaluated_files };
 }

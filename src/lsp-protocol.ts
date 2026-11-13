@@ -22,7 +22,7 @@ const configProperties = {
   configPath: string, configDir: string, projectName: string, projectRoot: string,
   sourceRoots: strings, testRoots: strings, outputDir: string, tsconfig: nullableString,
   packageManager: string, packageManagerDetected: boolean, framework: string, testRunner: string,
-  testCommand: nullableString, coverageReport: nullableString, exclude: strings,
+  testCommand: nullableString, testTimeoutMs: number, coverageReport: nullableString, exclude: strings,
   layerRules: array(object({ layer: string, patterns: strings })),
   performanceInputs: object({ bundleStats: nullableString, renderCosts: nullableString }),
   publicApi: object({ entry: strings, exports: array(object({ file: string, names: strings })) }),

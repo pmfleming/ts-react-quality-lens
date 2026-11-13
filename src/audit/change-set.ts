@@ -25,8 +25,10 @@ export function changeSetSince(config: Config, base: string): ChangeSet {
     ]));
     const untracked = gitOutput(config, ["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean);
     for (const file of untracked) {
-      const text = fs.readFileSync(path.resolve(config.projectRoot, file), "utf8");
-      lines.set(stripSourceExtension(file), [{ start: 1, end: text.split(/\r?\n/).length }]);
+      const text = untrackedText(path.resolve(config.projectRoot, file));
+      // The file still counts as changed; without readable regular content it simply has no line ranges.
+      // Physical lines, without the phantom line after a final newline (as in source records).
+      if (text !== null) lines.set(stripSourceExtension(file), [{ start: 1, end: Math.max(1, text.replace(/\r?\n$/, "").split(/\r?\n/).length) }]);
     }
     return { complete: true, reason: null, comparisonBase, files: [...new Set([...files, ...untracked])], lines };
   } catch (error) {
@@ -37,6 +39,15 @@ export function changeSetSince(config: Config, base: string): ChangeSet {
       files: [],
       lines: new Map(),
     };
+  }
+}
+
+/** Source discovery never follows symlinks or special files, so only readable regular files can carry findings. */
+function untrackedText(file: string): string | null {
+  try {
+    return fs.lstatSync(file).isFile() ? fs.readFileSync(file, "utf8") : null;
+  } catch {
+    return null;
   }
 }
 

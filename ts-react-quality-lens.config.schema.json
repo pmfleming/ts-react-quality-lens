@@ -16,6 +16,7 @@
     "framework": { "type": "string" },
     "test_runner": { "type": "string" },
     "test_command": { "type": ["string", "null"] },
+    "test_timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 86400000 },
     "coverage_report": { "type": "string" },
     "exclude": { "type": "array", "items": { "type": "string" } },
     "layer_rules": {

@@ -152,6 +152,16 @@ export function analysisIdentity(config: Config): AnalysisIdentity {
   };
 }
 
+/**
+ * Finding identities depend on the lens schema, compiler API, rulesets and integrations, not on the bytes of the
+ * project's config, manifests, lockfiles or tsconfigs. Two runs with the same attribution identity therefore emit
+ * comparable finding IDs even when the project configuration changed between them.
+ */
+export function attributionIdentity(identity: AnalysisIdentity): string {
+  const { id: _id, config_closure_hash: _config, ...lens } = identity;
+  return `sha256:${crypto.createHash("sha256").update(JSON.stringify(lens)).digest("hex")}`;
+}
+
 function configClosureHash(config: Config): string {
   const hash = crypto.createHash("sha256");
   const files = new Map<string, string | null>([

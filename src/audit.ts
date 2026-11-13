@@ -1,13 +1,15 @@
 import { isSuppressed } from "./actions.js";
 import { analysisConfidence, createAnalysisContext } from "./analysis-context.js";
-import { analysisIdentity, artifactBase, sourceSetHash } from "./provenance.js";
+import { analysisIdentity, artifactBase, attributionIdentity, sourceSetHash } from "./provenance.js";
 import { inputSnapshot } from "./input-snapshot.js";
 import { stagedAudit } from "./artifact-batch.js";
 import { baseSnapshotFindingIds, readBaselineIds, writeBaseline } from "./audit/baseline.js";
 import { changeSetSince, defaultBase, type LineRange } from "./audit/change-set.js";
 import auditMarkdown from "./audit/render.js";
 import {
+  activeFindings,
   auditVerdict,
+  gatedFindings,
   collectFindings,
   collectApplicability,
   collectReconciliation,
@@ -60,16 +62,22 @@ function runStagedAudit(config: Config, command: string, options: AuditOptions):
   const changedInputs = inputSnapshot(config, context.project());
   runAuditMeasurements(config, command, context, options.runTests !== false);
   const baselineIds = readBaselineIds(options.baseline ?? config.audit.baseline);
-  const baseSnapshot = scope.comparisonBase ? baseSnapshotFindingIds(config, scope.comparisonBase, command, baselineIds) : null;
-  const baseSnapshotCompatible = baseSnapshot
-    ? baseSnapshot.analysisIdentity.id === analysisIdentity(config).id
-    : null;
-  const baseIds = baseSnapshotCompatible ? baseSnapshot?.findingIds ?? null : null;
+  const base = scope.comparisonBase ? baseSnapshotFindingIds(config, scope.comparisonBase, command, baselineIds) : null;
+  const baseSnapshot = base?.snapshot ?? null;
+  const currentIdentity = analysisIdentity(config);
+  // Exact compatibility is the cross-lens contract; attribution only needs comparable finding identities, so a
+  // changed lockfile, manifest, tsconfig or lens config still allows base findings to mark what was inherited.
+  const baseSnapshotCompatible = baseSnapshot ? baseSnapshot.analysisIdentity.id === currentIdentity.id : null;
+  const attributable = baseSnapshot !== null &&
+    attributionIdentity(baseSnapshot.analysisIdentity) === attributionIdentity(currentIdentity);
+  const baseIds = attributable ? baseSnapshot.findingIds : null;
   const sets = findingSets(config, scope, baselineIds, baseIds);
   sets.incompleteReasons.push(...scope.incompleteReasons);
-  if (scope.diffAvailable && !baseSnapshot) sets.incompleteReasons.push("Base snapshot analysis is unavailable.");
-  if (baseSnapshot && baseSnapshotCompatible === false) {
-    sets.incompleteReasons.push("Base snapshot analysis identity differs from the current compiler, config, ruleset, or integration identity.");
+  if (scope.diffAvailable && !baseSnapshot) {
+    sets.incompleteReasons.push(`Base snapshot analysis is unavailable${base?.reason ? `: ${base.reason}` : "."}`);
+  }
+  if (baseSnapshot && !attributable) {
+    sets.incompleteReasons.push("Base snapshot analysis identity differs from the current compiler, ruleset, or integration identity.");
   }
   const inputChange = changedInputs();
   if (inputChange) sets.incompleteReasons.push(inputChange);
@@ -78,10 +86,13 @@ function runStagedAudit(config: Config, command: string, options: AuditOptions):
     status: baseSnapshotCompatible === true ? "compatible" : baseSnapshotCompatible === false ? "incompatible" : "unknown",
     baseline: baseSnapshot?.run ?? null,
     reasons: baseSnapshotCompatible === true ? [] : [baseSnapshotCompatible === false
-      ? "Baseline compiler/config/ruleset/integration identity differs."
+      ? attributable
+        ? "Baseline project configuration (lens config, manifests, lockfiles or tsconfigs) differs; findings absent from the base are attributed to this change."
+        : "Baseline compiler/ruleset/integration identity differs."
       : scope.base ? "Baseline snapshot evidence is unavailable." : "No baseline comparison requested."],
   };
   artifact.confidence.inputs_unchanged = !inputChange;
+  artifact.confidence.base_snapshot_attributable = attributable;
   if (inputChange) { artifact.confidence.complete = false; artifact.confidence.partial = true; }
   return artifact;
 }
@@ -123,8 +134,8 @@ function findingSets(
     }),
     ...staleSuppressionFindings(config, allFindings),
   ];
-  const active = findings.filter((finding) => !isSuppressed(finding) && (scope.gate === "all" || finding.introduced));
-  const gated = active.filter((finding) => finding.disposition === "block" || finding.disposition === "warn");
+  const active = activeFindings(findings, scope.gate);
+  const gated = gatedFindings(findings, scope.gate);
   return { findings, active, gated, incompleteReasons: requiredEvidenceReasons(config) };
 }
 
