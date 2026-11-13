@@ -6,7 +6,7 @@ Current package and artifact schema: **0.3.0**. Architecture risk model: **v3**.
 
 ## Quick start
 
-Requires Node.js **20.19 or newer** and npm. From this repository:
+Requires Node.js **20.19+, 22.13+, or 24+** (`^20.19.0 || ^22.13.0 || >=24`; the bundled ESLint, dependency-cruiser and Knip reject Node 21, 22.0–22.12 and 23) and npm. From this repository:
 
 ```sh
 npm ci
@@ -67,7 +67,8 @@ The runtime uses the pinned `@tursodatabase/database` embedded engine and its sy
 - `output_dir/lens.db` holds current artifacts, publication generations, and finding indexes by ID and by rule/file. MCP explanations use the ID index to select candidate artifacts before validating their evidence.
 - Audits measure into an in-memory Turso database and publish all members in one short transaction. Readers see committed evidence; failed commits roll back. Artifact references still bind exact payloads and run IDs, so later standalone measurements invalidate an older audit when they replace its inputs.
 - `output_dir/.cache/lens.db` holds the reusable analysis snapshot and its validation metadata. Cache and evidence have independent lifetimes; disabling the cache does not disable saved evidence. Connections close after synchronous operations. Replaced generations and finding rows are removed rather than accumulating history.
-- Turso's experimental multiprocess WAL support coordinates CLI processes and editor workers, with a five-second lock timeout. Keep its WAL/shared-memory sidecars with a live database; do not open it concurrently through a different SQLite engine. This dependency is pinned because this engine feature is still experimental.
+- On Linux and macOS, Turso's experimental multiprocess WAL support coordinates CLI processes and editor workers, with a five-second lock timeout. Keep its WAL/shared-memory sidecars with a live database; do not open it concurrently through a different SQLite engine.
+- Windows' Turso IO backend does not support multiprocess WAL, so each process holds an exclusive file lock while its short-lived connection is open. Overlapping processes wait up to five seconds for the lock and then fail closed with a locking error; they never read uncommitted evidence. This dependency is pinned because this engine feature is still experimental.
 
 This is a breaking storage change. Old artifact/cache JSON files are ignored; re-run measurements to populate Turso. Names such as `hotspots.json` are resource IDs, not files. Use `export hotspots.json > hotspots.json`, audit output formats, or MCP resources for portable evidence. Configuration, explicit baseline exports, SARIF, coverage, and external-tool interchange formats remain JSON. Stop all lens processes before removing a database and its sidecars to reset working storage.
 
@@ -129,7 +130,7 @@ Workspace discovery supports npm/Yarn package patterns, pnpm workspace patterns,
 
 The bundled dependencies include ESLint/plugins, Knip, jscpd, dependency-cruiser, publint, and ATTW. Integrations can still be unavailable or fail and have built-in fallbacks where implemented. See [integrations and protocol behavior](docs/integrations.md).
 
-Modern web evidence is disabled by default. Install the optional `modern-web-guidance@1.0.0` peer in the analyzed project, enable `modern_web`, and run `measure quality.modern_web`. Scanner execution needs Node 22+; other lens tasks retain the Node 20.19 minimum. Candidates remain review-only, including when browser support is established. See [configuration](docs/configuration.md#modern-web-evidence) and [scanner limitations](docs/integrations.md#modern-web-guidance).
+Modern web evidence is disabled by default. Install the optional `modern-web-guidance@1.0.0` peer in the analyzed project, enable `modern_web`, and run `measure quality.modern_web`. Scanner execution needs Node 22.13+; other lens tasks also support Node 20.19+. Candidates remain review-only, including when browser support is established. See [configuration](docs/configuration.md#modern-web-evidence) and [scanner limitations](docs/integrations.md#modern-web-guidance).
 
 ## Development
 
@@ -139,7 +140,7 @@ Modern web evidence is disabled by default. Install the optional `modern-web-gui
 | `npm run typecheck` / `npm run lint` | Type checking only; `lint` is an alias, not an ESLint run. |
 | `npm test` | Build and run Node's test suite. |
 | `npm run test:coverage` | Run the suite with raw V8 traces in `target/coverage/v8`, including inherited subprocess and worker coverage. Replaces the previous traces. |
-| `npm run ci` | Typecheck, build, schema/rule checks, formatting checks, tests, performance smoke, package smoke. |
+| `npm run ci` | Typecheck, build, production-dependency engine check, schema/rule checks, formatting checks, tests, performance smoke, package smoke. |
 | `npm run catalog` / `npm run measure` | Build and operate on `examples/basic`. |
 | `npm run self:measure` / `npm run self:audit` | Build and analyze this repository's root config. |
 | `npm run bench` | Synthetic multi-size benchmark. |
@@ -147,7 +148,7 @@ Modern web evidence is disabled by default. Install the optional `modern-web-gui
 | `npm run schema:check` / `npm run rule:check` | Validate contracts and drift checks. |
 | `npm run format:check` / `npm run package:smoke` | Repository formatting checks / built-package validation. |
 
-The build uses the TypeScript 7 native compiler through `@typescript/native`. Runtime compiler-API analysis uses `typescript`, aliased to `@typescript/typescript6`. GitHub Actions runs CI on Ubuntu and Windows with Node 24.
+The build uses the TypeScript 7 native compiler through `@typescript/native`. Runtime compiler-API analysis uses `typescript`, aliased to `@typescript/typescript6`. GitHub Actions runs `npm run ci` and the acceptance checks on Ubuntu and Windows with Node 20.19.0, 22.13.0 and 24.21.0. `scripts/engine-check.ts` verifies that every production dependency accepts the whole declared Node range. A separate job gates on high-severity advisories in production dependencies (`npm audit --omit=dev --audit-level=high`).
 
 Coverage collection preserves raw per-process V8 observations; it does not claim an aggregated or source-mapped TypeScript coverage percentage. Editor integration tests exercise the real subprocess and analysis worker and verify that both appear in the traces. The worker protocol validates versioned configuration snapshots and returned findings before use, including nested locations and actions.
 

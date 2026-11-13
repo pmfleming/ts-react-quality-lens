@@ -14,27 +14,44 @@ concurrency:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: ["20.19.0", "24.21.0"]
+        # The supported floors of each line in package.json engines.node, plus the current release.
+        node: ["20.19.0", "22.13.0", "24.21.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci --engine-strict
+      # Not --engine-strict: the optional modern-web-guidance dev tool requires Node 22. Production
+      # dependency engines are checked against the whole declared range by scripts/engine-check.ts.
+      - run: npm ci
       - run: npm run ci
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - run: python -m unittest discover -s acceptance -p "test_*.py"
       - run: python acceptance/check.py
-      - run: npm audit --audit-level=moderate
       - name: Retain platform identity
         if: always()
         run: node -e "console.log(JSON.stringify({node:process.version,platform:process.platform,arch:process.arch},null,2))"
+
+  # Advisories are published independently of code changes, so they are reported by a separate job
+  # instead of failing every test leg. Only shipped (production) dependencies at high severity gate.
+  advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+      - run: npm audit --omit=dev --audit-level=high

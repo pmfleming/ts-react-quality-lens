@@ -130,16 +130,30 @@ export function runJscpd(config: Config): JscpdResult {
         if (!isRecord(report) || !Array.isArray(report.duplicates) || !report.duplicates.every(isJscpdDuplicate) || !isRecord(report.statistics)) {
           throw new Error("Invalid jscpd report payload");
         }
-        const scope = new Set(selected.map((file) => path.resolve(file)));
-        if (report.duplicates.some((duplicate) => !scope.has(path.resolve(duplicate.firstFile.name)) || !scope.has(path.resolve(duplicate.secondFile.name)))) {
-          throw new Error("jscpd report contains files outside selected source scope");
-        }
-        return { duplicates: report.duplicates.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))), statistics: report.statistics };
+        // jscpd may report canonical paths (long names, drive-letter case, separators) for the selected files.
+        const scope = new Map(selected.map((file) => [canonicalPath(file), file]));
+        const selectedName = (name: string): string => {
+          const file = scope.get(canonicalPath(name));
+          if (!file) throw new Error("jscpd report contains files outside selected source scope");
+          return file;
+        };
+        const duplicates = report.duplicates.map((duplicate) => ({
+          ...duplicate,
+          firstFile: { ...duplicate.firstFile, name: selectedName(duplicate.firstFile.name) },
+          secondFile: { ...duplicate.secondFile, name: selectedName(duplicate.secondFile.name) },
+        }));
+        return { duplicates: duplicates.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))), statistics: report.statistics };
       },
     );
   } finally {
     fs.rmSync(outputDir, { recursive: true, force: true });
   }
+}
+
+function canonicalPath(file: string): string {
+  let resolved = path.resolve(file);
+  try { resolved = fs.realpathSync.native(resolved); } catch { /* A vanished file keeps its resolved spelling. */ }
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
 function isDependencyCruiserModule(value: unknown): value is DependencyCruiserModule {

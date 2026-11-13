@@ -12,7 +12,10 @@ test("syntax lint shares one invocation while preserving family findings, disabl
   const execute = t.mock.method(childProcess, "execFileSync");
   const context = createAnalysisContext(config);
   const hooks = context.reactHooksLint(), accessibility = context.jsxA11yLint();
-  assert.equal(execute.mock.calls.filter((call) => String(call.arguments[0]).includes("eslint")).length, 1);
+  // Windows launches the managed eslint.cmd through cmd.exe, so inspect the whole command line.
+  const eslintCalls = () => execute.mock.calls.filter((call) => [call.arguments[0], ...(Array.isArray(call.arguments[1]) ? call.arguments[1] : [])]
+    .some((part) => String(part).includes("eslint"))).length;
+  assert.equal(eslintCalls(), 1);
   assert.equal(hooks.complete, true);
   assert.equal(accessibility.complete, true);
   assert.ok(hooks.messages.some((item) => item.rule_id === "react-hooks/rules-of-hooks"));

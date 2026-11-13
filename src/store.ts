@@ -19,6 +19,15 @@ const SCHEMA = `
 `;
 const sessions = new Map<string, Database>();
 
+/**
+ * Turso's experimental multiprocess WAL is unavailable on the Windows IO backend. Without it the engine
+ * holds an exclusive per-process file lock, so overlapping processes serialize through the open retry
+ * instead of reading concurrently; a lock held past the retry deadline fails closed.
+ */
+export function multiprocessWalSupported(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== "win32";
+}
+
 export function databaseFile(directory: string): string {
   return path.join(directory, "lens.db");
 }
@@ -39,7 +48,7 @@ function connectLocal(file: string): Database {
   const deadline = Date.now() + 5000;
   const wait = new Int32Array(new SharedArrayBuffer(4));
   for (;;) {
-    try { return new Database(file, { timeout: 5000, experimental: file === ":memory:" ? [] : ["multiprocess_wal"] }); }
+    try { return new Database(file, { timeout: 5000, experimental: file === ":memory:" || !multiprocessWalSupported() ? [] : ["multiprocess_wal"] }); }
     catch (error) {
       // Turso briefly takes an exclusive file lock during open/initialization; its SQL timeout does not cover this.
       if (!(error instanceof Error) || !error.message.includes("Locking error:") || Date.now() >= deadline) throw error;

@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json",
-    "ci": "npm run typecheck && npm run build && node dist/scripts/schema-check.js && node dist/scripts/rule-contract-check.js && node dist/scripts/format-check.js && node dist/scripts/test-runner.js && node dist/scripts/perf-smoke.js && node dist/scripts/package-smoke.js",
+    "ci": "npm run typecheck && npm run build && node dist/scripts/engine-check.js && node dist/scripts/schema-check.js && node dist/scripts/rule-contract-check.js && node dist/scripts/format-check.js && node dist/scripts/test-runner.js && node dist/scripts/perf-smoke.js && node dist/scripts/package-smoke.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "npm run typecheck",
     "schema:check": "npm run build && node dist/scripts/schema-check.js",
@@ -36,7 +36,7 @@
     "prepack": "npm run build"
   },
   "engines": {
-    "node": ">=20.19"
+    "node": "^20.19.0 || ^22.13.0 || >=24"
   },
   "files": [
     "dist/bin/",

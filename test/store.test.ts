@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { createAnalysisContext } from "../src/analysis-context.js";
 import { loadConfig } from "../src/config.js";
-import { artifactNames, artifactText, databaseFile, openDatabase, textColumn, withStore } from "../src/store.js";
+import { artifactNames, artifactText, databaseFile, multiprocessWalSupported, openDatabase, textColumn, withStore } from "../src/store.js";
 
 const storeUrl = new URL("../src/store.js", import.meta.url).href;
 function child(directory: string, body: string) {
@@ -61,7 +61,9 @@ test("readers see committed evidence during writes and recover after an abruptly
   `);
   try {
     await Promise.race([once(worker.process.stdout, "data"), worker.done.then((result) => { throw new Error(result.stderr); })]);
-    assert.equal(withStore(directory, (db) => artifactText(db, "probe.json")), "previous");
+    if (multiprocessWalSupported()) assert.equal(withStore(directory, (db) => artifactText(db, "probe.json")), "previous");
+    // Without multiprocess WAL a held writer locks the file: readers fail closed instead of seeing uncommitted bytes.
+    else assert.throws(() => withStore(directory, (db) => artifactText(db, "probe.json")), /Locking error/);
     worker.process.kill("SIGKILL");
     await worker.done;
     withStore(directory, (db) => {

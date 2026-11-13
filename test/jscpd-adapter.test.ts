@@ -34,6 +34,29 @@ test("native clone engine uses managed config, absolute scoped paths and stable 
   assert.deepEqual(negative.duplicates, []);
 }));
 
+test("native clone reports with canonical spellings of selected files map back to the selected paths", (t) => fixture((root) => {
+  // Windows runners use 8.3 temp names that tools report in long form; a symlinked root reproduces the mismatch.
+  const link = `${root}-link`;
+  fs.symlinkSync(root, link, "junction");
+  try {
+    const config = loadConfig(path.join(link, "lens.json"));
+    const mock = t.mock.method(childProcess, "execFileSync", (_executable: unknown, args: string[]) => {
+      const managed = JSON.parse(fs.readFileSync(args[1]!, "utf8"));
+      const [first, second] = managed.path.map((file: string) => fs.realpathSync.native(file));
+      fs.writeFileSync(path.join(managed.output, "jscpd-report.json"), JSON.stringify({ statistics: {}, duplicates: [
+        { lines: 6, firstFile: { name: first, start: 1, end: 6 }, secondFile: { name: second, start: 1, end: 6 } },
+      ] }));
+      return "";
+    });
+    try {
+      const result = runJscpd(config);
+      assert.equal(result.ran, true, result.reason ?? "canonical names of selected files are in scope");
+      assert.deepEqual([result.duplicates[0]?.firstFile?.name, result.duplicates[0]?.secondFile?.name],
+        [path.join(link, "src/a.ts"), path.join(link, "src/b.ts")]);
+    } finally { mock.mock.restore(); }
+  } finally { fs.rmSync(link, { force: true }); }
+}));
+
 test("missing or malformed native clone reports are operational failures, never clean scans", (t) => fixture((_root, config) => {
   for (const report of [null, {}, { duplicates: [null], statistics: {} }, { duplicates: [{}], statistics: {} }]) {
     const mock = t.mock.method(childProcess, "execFileSync", (_executable: unknown, args: string[]) => {
