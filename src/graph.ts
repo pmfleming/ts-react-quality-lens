@@ -98,7 +98,7 @@ class TarjanCycleFinder {
     for (const node of [...this.graph.keys()].sort()) {
       if (!this.indexes.has(node)) this.strongConnect(node);
     }
-    return this.cycles.sort((left, right) => canonicalCycle(left).localeCompare(canonicalCycle(right)));
+    return this.cycles.sort((left, right) => compareCodeUnits(cycleKey(left), cycleKey(right)));
   }
 
   private strongConnect(node: string): void {
@@ -206,26 +206,31 @@ export function dependencyCruiserCycles(config: Config, modules: DependencyCruis
       }
     }
   }
-  return dedupeBy(cycles, (cycle) => canonicalCycle([...cycle, cycle[0] ?? ""]));
+  // dependency-cruiser's path already returns to `from`; every rotation of one cycle must share one key.
+  return dedupeBy(cycles, cycleKey);
 }
 
 export function uniqueCycleCount(...cycleSets: string[][][]): number {
-  return new Set(
-    cycleSets.flat().map((cycle) => {
-      const firstNode = cycle[0];
-      if (firstNode === undefined) return "";
-      const closed = firstNode === cycle.at(-1) ? cycle : [...cycle, firstNode];
-      return canonicalCycle(closed);
-    }),
-  ).size;
+  return new Set(cycleSets.flat().map(cycleKey)).size;
 }
 
-function canonicalCycle(cycle: string[]): string {
-  const bare = cycle.slice(0, -1);
+/** The members of a cycle path without the closing repetition, accepting open or closed paths. */
+export function cycleMembers(cycle: string[]): string[] {
+  return cycle.length > 1 && cycle[0] === cycle.at(-1) ? cycle.slice(0, -1) : cycle;
+}
+
+/** Rotation-independent identity of a directed cycle, as its least rotation closed back to its start. */
+export function cycleKey(cycle: string[]): string {
+  const bare = cycleMembers(cycle);
   const rotations = bare.map((_, index) => [...bare.slice(index), ...bare.slice(0, index)]);
-  rotations.sort((left, right) => left.join("\0").localeCompare(right.join("\0")));
+  rotations.sort((left, right) => compareCodeUnits(left.join("\0"), right.join("\0")));
   const first = rotations[0] ?? [];
   return [...first, first[0] ?? ""].join(" -> ");
+}
+
+/** Locale-independent ordering: cycle keys become finding identities and must match on every host. */
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function dependencyTarget(dependency: DependencyCruiserDependency): string {

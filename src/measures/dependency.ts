@@ -1,5 +1,6 @@
+import crypto from "node:crypto";
 import { analysisConfidence, createAnalysisContext } from "../analysis-context.js";
-import { dependencyCruiserCycles, dependencyCruiserEdges, findCycles, uniqueCycleCount } from "../graph.js";
+import { cycleKey, cycleMembers, dependencyCruiserCycles, dependencyCruiserEdges, findCycles, uniqueCycleCount } from "../graph.js";
 import { artifactBase } from "../provenance.js";
 import { writeArtifact } from "../writer.js";
 import type { AnalysisContext, Config, ImportRecord, LayerRule } from "../types.js";
@@ -10,23 +11,29 @@ export function measureDependencyHealth(config: Config, command: string, context
   const internalEdges = project.imports.filter((edge) => edge.to_kind === "relative");
   const externalEdges = project.imports.filter((edge) => edge.to_kind === "external");
   const depcruiseCycles = depcruise.ran ? dependencyCruiserCycles(config, depcruise.modules) : [];
-  const cycles = depcruise.ran ? [] : findCycles(internalEdges);
+  // dependency-cruiser runs without project configuration, so it cannot follow tsconfig path aliases. The internal
+  // graph resolves them: keep its witness for every cyclic component that dependency-cruiser did not report.
+  const reported = new Set(depcruiseCycles.flatMap(cycleMembers));
+  const internalCycles = findCycles(internalEdges);
+  const cycles = internalCycles.filter((cycle) => !cycleMembers(cycle).some((module) => reported.has(module)));
+  // Records locate modules by file path, the key other artifacts and the architecture map use.
+  const moduleFiles = new Map(project.modules.map((module) => [module.id, module.file]));
+  const fileOf = (module: string): string => moduleFiles.get(module) ?? module;
   const deepRelativeImports = project.imports.filter((edge) => edge.specifier.startsWith("../../"));
   const barrelModules = project.modules.filter((module) => module.isBarrel);
   const layerByModule = new Map(project.modules.map((module) => [module.id, classifyLayer(module.file, config.layerRules)]));
   const layerViolations = internalEdges.filter((edge) => isLayerViolation(edge, layerByModule, config.layerRules));
   const workspaceEdges = project.imports.filter((edge) => edge.workspace_dependency && edge.from_workspace && edge.to_workspace);
   const records = [
-    ...cycles.map((cycle, index) => cycleRecord(cycle, `cycle:${index + 1}`, 18)),
-    ...depcruiseCycles.map((cycle, index) =>
-      cycleRecord(cycle, `depcruise-cycle:${index + 1}`, 20, "dependency-cruiser"),
-    ),
+    ...cycles.map((cycle) => cycleRecord(cycle, "cycle", 18, fileOf)),
+    ...depcruiseCycles.map((cycle) => cycleRecord(cycle, "depcruise-cycle", 20, fileOf, "dependency-cruiser")),
     ...deepRelativeImports.map((edge) => ({
       id: `deep-import:${edge.from}:${edge.line}`,
       kind: "deep_relative_import",
       severity: "medium",
       score: 35,
-      file: edge.from,
+      module_id: edge.from,
+      file: fileOf(edge.from),
       line: edge.line,
       specifier: edge.specifier,
       evidence: edge.source,
@@ -40,7 +47,7 @@ export function measureDependencyHealth(config: Config, command: string, context
       exports: module.exports.length,
       evidence: "Module is mostly re-export statements.",
     })),
-    ...layerViolations.map((edge) => layerViolationRecord(edge, layerByModule)),
+    ...layerViolations.map((edge) => layerViolationRecord(edge, layerByModule, fileOf)),
     ...project.unsupportedPatterns.map((signal, index) => ({
       id: `unsupported:${index + 1}:${signal.file}:${signal.line ?? 0}`,
       kind: "unsupported_pattern",
@@ -69,6 +76,7 @@ export function measureDependencyHealth(config: Config, command: string, context
       external_edges: externalEdges.length,
       cycles: uniqueCycleCount(cycles, depcruiseCycles),
       heuristic_cycles: cycles.length,
+      internal_cycle_witnesses: internalCycles.length,
       internal_cycle_scope: "one-directed-witness-per-cyclic-component",
       dependency_cruiser_cycles: depcruiseCycles.length,
       deep_relative_imports: deepRelativeImports.length,
@@ -88,8 +96,8 @@ export function measureDependencyHealth(config: Config, command: string, context
       },
     },
     engine_relationships: [{ capability: "dependency-cycles", producers: ["dependency-cruiser", "internal-import-graph"],
-      mode: "alternative", external_evaluated: depcruise.ran,
-      scope: "External cycle results replace internal fallback; non-evaluated fallback is not disagreement",
+      mode: "complementary", external_evaluated: depcruise.ran,
+      scope: "dependency-cruiser cycles, plus internal-graph witnesses for cyclic components it did not report (for example through tsconfig path aliases, which it runs without)",
       selected_files: project.sourceFiles.map((file) => file.relativePath), exclusions: config.exclude,
       comparison: "not_comparable", reason: "Only the selected cycle engine is evaluated; graph construction/resolution scopes may differ." }],
     records,
@@ -140,7 +148,7 @@ function isLayerViolation(edge: ImportRecord, layerByModule: Map<string, string 
   return fromIndex >= 0 && toIndex >= 0 && fromIndex > toIndex;
 }
 
-function layerViolationRecord(edge: ImportRecord, layerByModule: Map<string, string | null>) {
+function layerViolationRecord(edge: ImportRecord, layerByModule: Map<string, string | null>, fileOf: (module: string) => string) {
   const fromLayer = layerByModule.get(edge.from) ?? "unknown";
   const toLayer = layerByModule.get(edge.to) ?? "unknown";
   return {
@@ -148,9 +156,11 @@ function layerViolationRecord(edge: ImportRecord, layerByModule: Map<string, str
     kind: "layer_violation",
     severity: "high",
     score: 75,
-    file: edge.from,
+    module_id: edge.from,
+    file: fileOf(edge.from),
     line: edge.line,
     target: edge.to,
+    target_file: fileOf(edge.to),
     from_layer: fromLayer,
     to_layer: toLayer,
     specifier: edge.specifier,
@@ -164,14 +174,21 @@ function globMatch(file: string, pattern: string): boolean {
   return new RegExp(`^${escaped}$`).test(file) || new RegExp(`(^|/)${escaped}$`).test(file);
 }
 
-function cycleRecord(cycle: string[], id: string, lineWeight: number, source: string | null = null) {
+/**
+ * IDs derive from the rotation-independent cycle, not its position in the list, so a newly introduced cycle
+ * can never inherit the ID of an existing one in a base-snapshot comparison.
+ */
+function cycleRecord(cycle: string[], prefix: string, lineWeight: number, fileOf: (module: string) => string, source: string | null = null) {
+  const members = cycleMembers(cycle);
+  const closed = [...members, members[0] ?? ""];
   return {
-    id,
+    id: `${prefix}:${crypto.createHash("sha256").update(cycleKey(members)).digest("hex").slice(0, 16)}`,
     kind: "import_cycle",
-    severity: cycle.length > 3 ? "high" : "medium",
-    score: Math.min(100, cycle.length * lineWeight),
-    files: cycle,
-    evidence: cycle.join(" -> "),
+    severity: closed.length > 3 ? "high" : "medium",
+    score: Math.min(100, closed.length * lineWeight),
+    files: [...new Set(members.map(fileOf))],
+    modules: members,
+    evidence: closed.map(fileOf).join(" -> "),
     ...(source ? { source } : {}),
   };
 }
